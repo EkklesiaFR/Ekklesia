@@ -24,12 +24,8 @@ export function Header({
   };
 
   const getDisplayName = () => {
-    if (!user) return "";
-    if (user.displayName) {
-      // Return first name if available
-      return user.displayName.split(' ')[0];
-    }
-    // Fallback to email prefix
+    if (!user) return "Membre";
+    if (user.displayName) return user.displayName;
     return user.email?.split('@')[0] || "Membre";
   };
 
@@ -44,7 +40,7 @@ export function Header({
             <div className="flex items-center gap-4 border-l pl-8 border-border h-6">
               <span className={cn(
                 "text-[13px] font-medium tracking-tight font-body",
-                isVoteOpen ? "text-[#7DC092]" : "text-muted-foreground"
+                isVoteOpen ? "text-[#7DC092]" : "text-black"
               )}>
                 {statusText}
               </span>
@@ -56,7 +52,7 @@ export function Header({
           {!isUserLoading && user ? (
             <div className="flex items-center gap-8">
               <span className="text-[13px] font-medium text-black font-body">
-                Bonjour, {getDisplayName()}
+                Membre : {getDisplayName()}
               </span>
               {role === 'admin' && (
                 <Link href="/admin" className="text-[13px] font-medium hover:text-[#7DC092] transition-colors font-body">

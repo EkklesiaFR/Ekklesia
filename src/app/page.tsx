@@ -82,7 +82,10 @@ export default function Home() {
 
   const getStatusText = (s: VotingSession) => {
     const now = new Date();
-    if (s.isResultsPublished) return "Résultats publiés";
+    // 1. Status precedence
+    if (s.isResultsPublished || s.status === 'published') return "Résultats publiés";
+    
+    // 2. Derive from timestamps
     if (now < s.votingOpensAt) return "Vote à venir";
     if (now > s.votingClosesAt) return "Vote clos";
     return "Vote ouvert";
