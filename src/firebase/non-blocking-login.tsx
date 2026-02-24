@@ -6,6 +6,8 @@ import {
   signInWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
 } from 'firebase/auth';
 
 /** Initiate anonymous sign-in (non-blocking). */
@@ -29,8 +31,17 @@ export function initiateEmailSignIn(authInstance: Auth, email: string, password:
   // Code continues immediately. Auth state change is handled by onAuthStateChanged listener.
 }
 
-/** Initiate Google Sign-in. */
+/** 
+ * Initiate Google Sign-in with automatic fallback.
+ * Attempts a popup first; if blocked or fails, falls back to redirect.
+ */
 export const signInWithGoogle = async (authInstance: Auth) => {
   const provider = new GoogleAuthProvider();
-  await signInWithPopup(authInstance, provider);
+  try {
+    await signInWithPopup(authInstance, provider);
+  } catch (error: any) {
+    console.error('Google Sign-In Popup failed, falling back to redirect:', error);
+    // Automatically fallback to redirect for any popup error (blocked, environment, etc.)
+    await signInWithRedirect(authInstance, provider);
+  }
 };

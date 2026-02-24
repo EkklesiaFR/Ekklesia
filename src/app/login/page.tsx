@@ -9,7 +9,7 @@ import { useEffect, useState } from 'react';
 import { LogIn } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { doc, getDoc } from 'firebase/firestore';
-import { signOut } from 'firebase/auth';
+import { signOut, getRedirectResult } from 'firebase/auth';
 
 const ALLOWLIST_ENABLED = false;
 
@@ -19,6 +19,26 @@ export default function LoginPage() {
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Handle result from Google Redirect login
+  useEffect(() => {
+    const handleRedirectResult = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result) {
+          console.log('Successfully identified via redirect');
+        }
+      } catch (error: any) {
+        console.error('Google redirect result error:', error);
+        toast({
+          variant: "destructive",
+          title: "Erreur d'identification",
+          description: error.message || "Le retour d'identification a échoué.",
+        });
+      }
+    };
+    handleRedirectResult();
+  }, [auth]);
 
   useEffect(() => {
     if (!isUserLoading && user) {

@@ -1,9 +1,7 @@
-
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
-import { DebugPanel } from '@/components/debug/DebugPanel';
 
 export const metadata: Metadata = {
   title: 'Ekklesia Vote',
@@ -26,7 +24,6 @@ export default function RootLayout({
         <FirebaseClientProvider>
           {children}
           <Toaster />
-          <DebugPanel />
         </FirebaseClientProvider>
       </body>
     </html>
