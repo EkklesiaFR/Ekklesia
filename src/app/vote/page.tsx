@@ -27,7 +27,7 @@ function VoteGate() {
 
   // 2. Charger le vote spécifique via activeVoteId
   const voteRef = useMemoFirebase(() => {
-    if (!activeAssembly?.activeVote甩d) return null;
+    if (!activeAssembly?.activeVoteId) return null;
     return doc(db, 'assemblies', activeAssembly.id, 'votes', activeAssembly.activeVoteId);
   }, [db, activeAssembly]);
   const { data: activeVote, isLoading: isVoteLoading, error: voteError } = useDoc<Vote>(voteRef);
@@ -68,7 +68,7 @@ function VoteGate() {
       </div>
       <p>Assembly ID: {activeAssembly?.id || 'null'}</p>
       <p>Assembly State: {activeAssembly?.state || 'null'}</p>
-      <p>activeVoteId: {activeAssembly?.activeVote甩d || 'null'}</p>
+      <p>activeVoteId: {activeAssembly?.activeVoteId || 'null'}</p>
       <p>Vote Path: {activeAssembly && activeAssembly.activeVoteId ? `assemblies/${activeAssembly.id}/votes/${activeAssembly.activeVoteId}` : 'N/A'}</p>
       <p>Vote Doc Exists: {activeVote ? 'YES' : 'NO'}</p>
       <p>Vote State: {activeVote?.state || 'null'}</p>
@@ -155,7 +155,7 @@ function VoteGate() {
       <VoteModule 
         vote={activeVote} 
         projects={voteProjects} 
-        userBallot={userBall ಕ್ಕೆ userBallot} 
+        userBallot={userBallot} 
         assemblyId={activeAssembly.id}
       />
       {debugPanel}
