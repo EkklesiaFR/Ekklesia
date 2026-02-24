@@ -47,7 +47,7 @@ const MOCK_SESSION: VotingSession = {
       ownerBio: 'Association de promotion des énergies propres et des nouveaux modes de transport.',
       links: [
         { label: 'Carte des implantations prévues', url: '#' },
-        { label: 'Partenariat Énergie Verte', url: '#' }
+        { label: 'Partenariat Énergie Verde', url: '#' }
       ]
     }
   ]
@@ -98,7 +98,7 @@ export default function Home() {
         <section className="space-y-8">
           <div className="space-y-4">
             <span className="text-xs uppercase tracking-[0.3em] font-bold text-muted-foreground block">
-              Assemblée en cours
+              assemblée de mars 2026
             </span>
             <h1 className="text-5xl md:text-7xl font-bold leading-[1.1] tracking-tight text-balance">
               1 voix. 1 communauté.<br />
