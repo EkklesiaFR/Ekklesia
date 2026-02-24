@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { ArrowRight, Clock, Users } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { VotingSession } from '@/types';
 import Image from 'next/image';
 
@@ -69,72 +69,85 @@ export default function Home() {
 
   return (
     <MainLayout role="member" statusText={session.status === 'open' ? 'Scrutin en cours' : 'Annonce'}>
-      <div className="space-y-16">
-        <section className="space-y-6">
-          <h1 className="text-4xl md:text-5xl font-bold leading-tight">
-            Assemblée Ekklesia — {session.title}
-          </h1>
-          <p className="text-lg text-muted-foreground leading-relaxed">
+      <div className="space-y-24 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+        {/* Hero Section */}
+        <section className="space-y-8">
+          <div className="space-y-4">
+            <span className="text-xs uppercase tracking-[0.3em] font-bold text-muted-foreground block">
+              Assemblée en cours
+            </span>
+            <h1 className="text-5xl md:text-7xl font-bold leading-[1.1] tracking-tight text-balance">
+              1 voix. 1 communauté.<br />
+              Assemblée — Printemps 2024
+            </h1>
+          </div>
+          <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed max-w-2xl font-medium">
             Votre participation façonne l'avenir de notre communauté. Prenez le temps d'étudier les projets soumis et exprimez vos préférences par un vote ordonné.
           </p>
         </section>
 
+        {/* Typographic Counters */}
         {session.status === 'open' && (
-          <section className="bg-primary/5 border border-primary/20 p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-8">
-            <div className="space-y-2">
-              <h2 className="text-xl font-bold flex items-center gap-3">
-                <Clock className="h-5 w-5 text-primary" />
-                Le vote est ouvert
-              </h2>
-              <div className="flex gap-6 text-sm">
-                <span className="flex items-center gap-2">
-                  <span className="font-semibold">{timeLeft}</span> restants
-                </span>
-                <span className="flex items-center gap-2 border-l border-border pl-6">
-                  <Users className="h-4 w-4" />
-                  <span className="font-semibold">142</span> bulletins déposés
-                </span>
+          <section className="border-y border-border py-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-12">
+            <div className="flex flex-col md:flex-row gap-12 md:gap-16">
+              <div className="space-y-1">
+                <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Participation</p>
+                <p className="text-3xl font-bold">
+                  <span className="text-primary">142</span> bulletins déposés
+                </p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Échéance</p>
+                <p className="text-3xl font-bold">
+                  Clôture dans <span className="text-primary">{timeLeft}</span>
+                </p>
               </div>
             </div>
+            
             <Link href="/vote">
-              <Button size="lg" className="bg-black hover:bg-black/90 text-white rounded-none px-8 flex items-center gap-2">
+              <Button size="lg" className="bg-black hover:bg-black/90 text-white rounded-none px-10 py-8 text-lg flex items-center gap-3 transition-all hover:gap-5">
                 Exprimer mon choix
-                <ArrowRight className="h-4 w-4" />
+                <ArrowRight className="h-5 w-5" />
               </Button>
             </Link>
           </section>
         )}
 
-        <section className="space-y-8">
-          <h3 className="text-2xl font-bold">Projets soumis au vote</h3>
-          <div className="grid gap-12">
+        {/* Projects Section */}
+        <section className="space-y-16">
+          <div className="space-y-4">
+            <h3 className="text-3xl font-bold tracking-tight">Projets soumis au vote</h3>
+            <div className="h-1 w-20 bg-primary"></div>
+          </div>
+          
+          <div className="grid gap-24">
             {session.projects.map((project) => (
-              <div key={project.id} className="group border border-border p-0 overflow-hidden">
-                <div className="relative h-[400px] w-full border-b border-border">
+              <div key={project.id} className="group grid md:grid-cols-2 gap-12 items-center">
+                <div className="relative aspect-video w-full overflow-hidden border border-border">
                   <Image 
                     src={project.imageUrl || 'https://picsum.photos/seed/ekklesia/800/400'} 
                     alt={project.title}
                     fill
-                    className="object-cover grayscale hover:grayscale-0 transition-all duration-500"
+                    className="object-cover grayscale hover:grayscale-0 transition-all duration-700 scale-105 group-hover:scale-100"
                     data-ai-hint="civic project"
                   />
                 </div>
-                <div className="p-8 space-y-6">
-                  <div className="flex justify-between items-start gap-4">
-                    <h4 className="text-2xl font-bold">{project.title}</h4>
-                    <span className="bg-secondary px-3 py-1 text-sm font-bold border border-border">
-                      {project.budget}
+                <div className="space-y-8">
+                  <div className="space-y-4">
+                    <span className="inline-block px-3 py-1 bg-secondary text-[10px] uppercase tracking-widest font-black border border-border">
+                      Budget : {project.budget}
                     </span>
+                    <h4 className="text-4xl font-bold tracking-tight">{project.title}</h4>
                   </div>
-                  <p className="text-lg leading-relaxed">
+                  <p className="text-lg text-muted-foreground leading-relaxed">
                     {project.summary}
                   </p>
-                  <div className="space-y-3">
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Points clés</p>
-                    <ul className="flex flex-wrap gap-x-6 gap-y-2">
+                  <div className="space-y-4">
+                    <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground font-bold">Infrastructures & Impact</p>
+                    <ul className="grid grid-cols-1 gap-3">
                       {project.keyFeatures.map((feat, i) => (
-                        <li key={i} className="text-sm flex items-center gap-2">
-                          <span className="w-1.5 h-1.5 bg-primary rounded-full"></span>
+                        <li key={i} className="text-sm flex items-center gap-3 font-medium">
+                          <span className="w-4 h-[1px] bg-primary"></span>
                           {feat}
                         </li>
                       ))}
