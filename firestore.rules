@@ -5,7 +5,7 @@ service cloud.firestore {
 
     /**
      * EKKLESIA VOTE SECURITY RULES
-     * Pattern: Composite IDs {sessionId}_{uid} for ballots to enforce one-vote-per-session.
+     * Enforces strict data isolation for members and administrative control.
      */
 
     // --- HELPER FUNCTIONS ---
@@ -24,17 +24,16 @@ service cloud.firestore {
 
     // --- COLLECTION RULES ---
 
+    /**
+     * @description User profiles: Users can manage their own data; Admins can view all.
+     */
     match /userProfiles/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow list: if isAdmin();
-      allow create: if isOwner(userId);
-      allow update: if isOwner(userId) || isAdmin();
-      allow delete: if isAdmin();
+      allow get, create, update: if isOwner(userId);
+      allow list, delete: if isAdmin();
     }
 
     /**
-     * @description Secure voting pattern using composite IDs.
-     * Enforces: one ballot per session per user, creation only, authenticated ownership.
+     * @description Secure voting: One ballot per session per user, creation only.
      */
     match /ballots/{ballotId} {
       allow get: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin());
@@ -42,38 +41,52 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.userId
         && ballotId == request.resource.data.sessionId + "_" + request.auth.uid;
-      allow update, delete: if false;
+      allow update, delete: if false; // Votes are final once cast
     }
 
+    /**
+     * @description Administrative roles lookup.
+     */
     match /roles_admin/{userId} {
       allow get: if isSignedIn();
-      allow list: if isAdmin();
-      allow create, update, delete: if isAdmin();
+      allow list, write: if isAdmin();
     }
 
+    /**
+     * @description Email allowlist: Authenticated users can read; Admins manage.
+     */
     match /emailAllowlist/{emailEntryId} {
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
 
+    /**
+     * @description Sessions and Projects: Authenticated users can read; Admins manage.
+     */
     match /votingSessions/{sessionId} {
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
+      allow write: if isAdmin();
 
       match /projects/{projectId} {
         allow get, list: if isSignedIn();
-        allow create, update, delete: if isAdmin();
+        allow write: if isAdmin();
       }
     }
 
+    /**
+     * @description Voting results: Immutable from the client (managed by backend).
+     */
     match /votingResults/{sessionId} {
       allow get, list: if isSignedIn();
-      allow create, update, delete: if false;
+      allow write: if false; // Managed exclusively via Admin SDK
     }
 
+    /**
+     * @description Public session data: Read-only for all (for homepage preview).
+     */
     match /publicVotingSessions/{sessionId} {
       allow get, list: if true;
-      allow create, update, delete: if isAdmin();
+      allow write: if isAdmin();
     }
   }
 }
