@@ -18,10 +18,13 @@ import {
   Users,
   Activity,
   PlusCircle,
-  FileText
+  Clock,
+  Calendar
 } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { Project, Vote, Ballot } from '@/types';
+import { format, formatDistanceToNow } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 function AssemblyDashboardContent() {
   const { isAdmin } = useAuthStatus();
@@ -42,14 +45,14 @@ function AssemblyDashboardContent() {
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
-  // 3. Récupération des bulletins pour les stats
+  // 3. Récupération des bulletins pour les stats de participation
   const ballotsQuery = useMemoFirebase(() => {
     if (!activeVote) return null;
     return collection(db, 'assemblies', activeVote.assemblyId, 'votes', activeVote.id, 'ballots');
   }, [db, activeVote]);
   const { data: ballots } = useCollection<Ballot>(ballotsQuery);
 
-  // 4. Calcul des résultats (Schulze)
+  // 4. Calcul des résultats (Schulze) pour l'affichage de la tendance ou du gagnant
   const results = (ballots && activeProjects.length > 0) 
     ? computeSchulzeResults(activeProjects.map(p => p.id), ballots)
     : null;
@@ -104,74 +107,99 @@ function AssemblyDashboardContent() {
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="border border-border p-8 bg-white space-y-6">
+            <div className="border border-border p-8 bg-white space-y-8">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
                   <Activity className="h-3 w-3" />
-                  Session en cours
+                  Scrutin en cours
                 </h3>
                 {activeVote.state === 'open' ? (
-                  <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Ouvert</span>
+                    <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                  </div>
                 ) : (
                   <span className="text-[10px] font-bold text-muted-foreground px-2 py-1 bg-secondary uppercase">CLOS</span>
                 )}
               </div>
-              <div className="space-y-2">
-                <p className="text-2xl font-bold">{activeVote.question}</p>
-                <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1.5 font-medium">
-                    <Users className="h-4 w-4" />
-                    {ballots?.length || 0} bulletins déposés
+              
+              <div className="space-y-4">
+                <p className="text-2xl font-bold leading-tight">{activeVote.question}</p>
+                
+                <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+                  <span className="flex items-center gap-2 font-medium">
+                    <Users className="h-4 w-4 text-primary" />
+                    <strong>{ballots?.length || 0}</strong> bulletins déposés
                   </span>
+                  
+                  {activeVote.closesAt && activeVote.state === 'open' && (
+                    <span className="flex items-center gap-2 font-medium">
+                      <Clock className="h-4 w-4 text-primary" />
+                      Clôture {formatDistanceToNow(new Date(activeVote.closesAt.seconds * 1000), { addSuffix: true, locale: fr })}
+                    </span>
+                  )}
                 </div>
               </div>
+
               {activeVote.state === 'open' && (
                 <Link href="/vote" className="block pt-4">
-                  <Button className="w-full rounded-none h-12 font-bold uppercase tracking-widest text-xs">
+                  <Button className="w-full rounded-none h-14 font-bold uppercase tracking-widest text-xs shadow-sm hover:shadow-md transition-all">
                     Voter maintenant
                   </Button>
                 </Link>
               )}
             </div>
 
-            <div className="border border-border p-8 bg-black text-white space-y-6">
-              <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
-                <Trophy className="h-3 w-3 text-primary" />
-                {activeVote.state === 'open' ? "Tendance actuelle" : "Résultat Final"}
-              </h3>
-              <div className="space-y-4">
-                {winnerProject ? (
-                  <div className="space-y-2">
-                    <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Projet en tête</p>
-                    <p className="text-2xl font-bold leading-tight">{winnerProject.title}</p>
-                    <p className="text-sm text-gray-400 italic">Méthode de Schulze (Condorcet)</p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-gray-400 italic">Calcul des résultats en cours...</p>
-                )}
+            <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
+              <div className="space-y-6">
+                <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
+                  <Trophy className="h-3 w-3 text-primary" />
+                  {activeVote.state === 'open' ? "Tendance actuelle" : "Résultat Final"}
+                </h3>
+                <div className="space-y-4">
+                  {winnerProject ? (
+                    <div className="space-y-2">
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Projet en tête</p>
+                      <p className="text-2xl font-bold leading-tight">{winnerProject.title}</p>
+                      <p className="text-sm text-gray-400 italic">Méthode de Schulze (Condorcet)</p>
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400 italic">Calcul des résultats en cours...</p>
+                  )}
+                </div>
               </div>
               <Link href="/results" className="block pt-4">
                 <Button variant="outline" className="w-full border-gray-700 text-white hover:bg-white hover:text-black rounded-none h-12 font-bold uppercase tracking-widest text-xs">
-                  Voir les détails
+                  Détail des votes
                 </Button>
               </Link>
             </div>
           </div>
 
           <section className="space-y-8">
-            <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
-              Projets proposés ({activeProjects.length})
-            </h3>
+            <div className="flex items-center justify-between border-b border-border pb-4">
+              <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
+                Projets soumis au vote ({activeProjects.length})
+              </h3>
+              <Link href="/projects" className="text-[10px] uppercase font-bold text-primary hover:underline">
+                Voir tout
+              </Link>
+            </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {activeProjects.map((project) => (
-                <div key={project.id} className="border border-border p-6 bg-white space-y-4 hover:border-black transition-colors">
+                <div key={project.id} className="group border border-border p-6 bg-white space-y-4 hover:border-black transition-all cursor-default">
                   <div className="space-y-1">
-                    <h4 className="font-bold text-lg">{project.title}</h4>
-                    <p className="text-xs font-bold text-primary uppercase tracking-wider">{project.budget}</p>
+                    <h4 className="font-bold text-lg group-hover:text-primary transition-colors">{project.title}</h4>
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{project.budget}</p>
                   </div>
                   <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
                     {project.summary}
                   </p>
+                  <div className="pt-2">
+                     <span className="text-[10px] font-bold uppercase tracking-widest text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                       En savoir plus <ChevronRight className="h-3 w-3" />
+                     </span>
+                  </div>
                 </div>
               ))}
             </div>
