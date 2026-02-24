@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -29,7 +28,7 @@ export default function Home() {
   const [session, setSession] = useState<VotingSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
-  // Query for the latest published session
+  // Query for the latest published session - accessible to everyone via publicVotingSessions
   const lastPublishedSessionQuery = useMemoFirebase(() => {
     return query(
       collection(db, 'publicVotingSessions'),
