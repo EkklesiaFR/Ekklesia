@@ -1,7 +1,6 @@
-
 'use client';
 
-import { useEffect, ReactNode } from 'react';
+import { useEffect, ReactNode, Suspense } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/firebase';
 import { useAuthStatus } from './AuthStatusProvider';
@@ -25,13 +24,13 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     }
 
     if (!isActiveMember && pathname !== '/access-denied') {
-      router.replace('/access-denied');
+      router.replace('/access-denied?reason=member');
       return;
     }
 
     // Protection pour la route admin
     if (pathname.startsWith('/admin') && !isAdmin) {
-      router.replace('/access-denied');
+      router.replace('/access-denied?reason=admin');
       return;
     }
   }, [user, isUserLoading, isMemberLoading, isActiveMember, isAdmin, router, pathname]);
