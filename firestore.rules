@@ -1,100 +1,69 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    /**
-     * EKKLESIA VOTE SECURITY RULES
-     * Version: 1.8 - Explicit Public Access for Public Sessions
-     */
-
-    // --- HELPER FUNCTIONS ---
+    // --- FONCTIONS DE VÉRIFICATION ---
 
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    function getMemberData() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
+    }
+
+    function isMemberActive() {
+      return isSignedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid)) 
+             && getMemberData().status == "active";
+    }
+
+    function isAdminActive() {
+      return isMemberActive() && getMemberData().role == "admin";
     }
 
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // --- COLLECTION RULES ---
+    // --- RÈGLES DES COLLECTIONS ---
 
-    /**
-     * @description Public session data: Read allowed for EVERYONE.
-     * Crucial for the homepage to function without authentication.
-     */
-    match /publicVotingSessions/{sessionId} {
-      allow get, list: if true;
-      allow write: if isAdmin();
+    // Profils membres
+    match /members/{uid} {
+      allow get: if isSignedIn() && (isOwner(uid) || isAdminActive());
+      allow list: if isAdminActive();
+      allow write: if isAdminActive();
     }
 
-    /**
-     * @description User Profiles: Users manage their own; admins see all.
-     */
-    match /userProfiles/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId);
-      allow list, delete: if isAdmin();
-    }
-    
-    match /users/{userId} {
-      allow get: if isOwner(userId) || isAdmin();
-      allow create, update: if isOwner(userId);
-      allow list, delete: if isAdmin();
-    }
+    // Assemblées et Votes
+    match /assemblies/{assemblyId} {
+      allow read: if isMemberActive();
+      allow write: if isAdminActive();
 
-    /**
-     * @description Secure Ballot: One ballot per session per user.
-     */
-    match /ballots/{ballotId} {
-      allow get: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin());
-      allow list: if isAdmin();
-      allow create: if isSignedIn()
-        && request.auth.uid == request.resource.data.userId
-        && ballotId == request.resource.data.sessionId + "_" + request.auth.uid;
-      allow update, delete: if false; 
-    }
+      match /votes/{proposalId} {
+        allow read: if isMemberActive();
+        allow write: if isAdminActive();
 
-    /**
-     * @description Admin role lookups.
-     */
-    match /roles_admin/{userId} {
-      allow get: if isSignedIn();
-      allow list, write: if isAdmin();
-    }
-
-    /**
-     * @description Email Allowlist: Read for signed-in members; management for admins.
-     */
-    match /emailAllowlist/{emailEntryId} {
-      allow get, list: if isSignedIn();
-      allow write: if isAdmin();
-    }
-
-    /**
-     * @description Sessions and Projects: Read for signed-in members; management for admins.
-     */
-    match /votingSessions/{sessionId} {
-      allow get, list: if isSignedIn();
-      allow write: if isAdmin();
-
-      match /projects/{projectId} {
-        allow get, list: if isSignedIn();
-        allow write: if isAdmin();
+        // Bulletins de vote
+        match /ballots/{uid} {
+          allow get: if isOwner(uid) || isAdminActive();
+          allow list: if isAdminActive();
+          
+          allow create: if isMemberActive()
+            && uid == request.auth.uid
+            && !exists(request.path)
+            && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data.state == "open"
+            && request.time >= get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data.opensAt
+            && request.time <= get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data.closesAt;
+            
+          allow update, delete: if false;
+        }
       }
     }
 
-    /**
-     * @description Voting Results: Immutable from client.
-     */
-    match /votingResults/{sessionId} {
-      allow get, list: if isSignedIn();
-      allow write: if false; 
+    // Compatibilité avec les anciennes collections (optionnel, selon besoin)
+    match /publicVotingSessions/{sessionId} {
+      allow read: if true;
+      allow write: if isAdminActive();
     }
   }
 }
