@@ -2,40 +2,64 @@
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
-import { useAuth, useUser } from '@/firebase';
+import { useAuth, useUser, useFirestore } from '@/firebase';
 import { signInWithGoogle } from '@/firebase/non-blocking-login';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { LogIn } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { doc, getDoc } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 
 export default function LoginPage() {
   const auth = useAuth();
+  const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // We only redirect if the user is authenticated AND we've verified they are allowed
+  // For the redirect check, we'll rely on the fact that if they logged in via this page, 
+  // we already did the check. If they are already logged in, we verify one last time.
   useEffect(() => {
     if (!isUserLoading && user) {
-      router.push('/');
+      const checkAllowlist = async () => {
+        const email = user.email?.toLowerCase();
+        if (!email) {
+          await signOut(auth);
+          return;
+        }
+        
+        const allowlistRef = doc(db, 'emailAllowlist', email);
+        const allowlistSnap = await getDoc(allowlistRef);
+        
+        if (allowlistSnap.exists()) {
+          router.push('/');
+        } else {
+          await signOut(auth);
+          toast({
+            variant: "destructive",
+            title: "Accès refusé",
+            description: "Accès réservé aux membres invités (bêta).",
+          });
+        }
+      };
+      
+      checkAllowlist();
     }
-  }, [user, isUserLoading, router]);
+  }, [user, isUserLoading, router, auth, db]);
 
   const handleGoogleSignIn = async () => {
     setIsSubmitting(true);
     try {
       await signInWithGoogle(auth);
-      toast({
-        title: "Connexion réussie",
-        description: "Bienvenue sur la plateforme Ekklesia.",
-      });
+      // The useEffect above will handle the allowlist check and redirection
     } catch (error: any) {
       toast({
         variant: "destructive",
         title: "Erreur de connexion",
         description: "Une erreur est survenue lors de l'identification avec Google.",
       });
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -57,7 +81,7 @@ export default function LoginPage() {
             className="w-full h-14 bg-white hover:bg-secondary text-black border border-border rounded-none font-bold flex items-center justify-center gap-3 transition-all"
           >
             {isSubmitting ? (
-              "Authentification..."
+              "Vérification..."
             ) : (
               <>
                 <LogIn className="h-5 w-5" />
