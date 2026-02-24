@@ -5,7 +5,7 @@ service cloud.firestore {
 
     /**
      * EKKLESIA VOTE SECURITY RULES
-     * Version: 1.7 - Explicit Public Access for Homepage Results
+     * Version: 1.8 - Explicit Public Access for Public Sessions
      */
 
     // --- HELPER FUNCTIONS ---
@@ -25,16 +25,16 @@ service cloud.firestore {
     // --- COLLECTION RULES ---
 
     /**
-     * @description Données de session publiques : Lecture autorisée pour TOUS.
-     * Crucial pour l'affichage de la page d'accueil sans connexion.
+     * @description Public session data: Read allowed for EVERYONE.
+     * Crucial for the homepage to function without authentication.
      */
     match /publicVotingSessions/{sessionId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isAdmin();
     }
 
     /**
-     * @description Profils utilisateurs : Les utilisateurs gèrent leurs propres données ; les admins voient tout.
+     * @description User Profiles: Users manage their own; admins see all.
      */
     match /userProfiles/{userId} {
       allow get: if isOwner(userId) || isAdmin();
@@ -49,7 +49,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Vote sécurisé : Un seul bulletin par session et par utilisateur.
+     * @description Secure Ballot: One ballot per session per user.
      */
     match /ballots/{ballotId} {
       allow get: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin());
@@ -61,7 +61,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Recherche des rôles administratifs.
+     * @description Admin role lookups.
      */
     match /roles_admin/{userId} {
       allow get: if isSignedIn();
@@ -69,7 +69,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Liste d'autorisation e-mail : Lecture pour les membres identifiés ; gestion par les admins.
+     * @description Email Allowlist: Read for signed-in members; management for admins.
      */
     match /emailAllowlist/{emailEntryId} {
       allow get, list: if isSignedIn();
@@ -77,7 +77,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Sessions et Projets : Lecture pour les membres identifiés ; gestion par les admins.
+     * @description Sessions and Projects: Read for signed-in members; management for admins.
      */
     match /votingSessions/{sessionId} {
       allow get, list: if isSignedIn();
@@ -90,7 +90,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Résultats de vote : Immuables depuis le client.
+     * @description Voting Results: Immutable from client.
      */
     match /votingResults/{sessionId} {
       allow get, list: if isSignedIn();

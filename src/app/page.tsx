@@ -12,7 +12,7 @@ import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-// Mock session stable pour l'état initial
+// Static mock for the initial state of the current active session
 const MOCK_CURRENT_SESSION: VotingSession = {
   id: 'session-2024-03',
   title: 'Session de Printemps 2024',
@@ -29,7 +29,7 @@ export default function Home() {
   const [session, setSession] = useState<VotingSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
-  // Requête pour la dernière session publiée - accessible publiquement
+  // Query for the last published session - this is the public access point
   const lastPublishedSessionQuery = useMemoFirebase(() => {
     return query(
       collection(db, 'publicVotingSessions'),
@@ -43,7 +43,7 @@ export default function Home() {
   const lastPublishedSession = publishedSessions?.[0] as any | undefined;
 
   useEffect(() => {
-    // Initialisation sécurisée après l'hydratation
+    // Safe initialization after hydration
     setSession(MOCK_CURRENT_SESSION);
     
     const timer = setInterval(() => {
@@ -95,7 +95,7 @@ export default function Home() {
             <span className="text-xs uppercase tracking-[0.3em] font-bold text-muted-foreground block">
               assemblée de mars 2026
             </span>
-            <h1 className="text-5xl md:text-7xl font-bold leading-[1.1] tracking-tight text-balance">
+            <h1 className="text-5xl md:text-7xl font-bold leading-[1.1] tracking-tight text-balance text-black">
               1 voix. 1 communauté.<br />
               Des milliers de projets à financer.
             </h1>
@@ -141,7 +141,7 @@ export default function Home() {
         {/* Derniers projets financés */}
         <section className="space-y-12 pt-12 border-t border-border">
           <header className="space-y-4">
-            <h2 className="text-3xl font-bold tracking-tight">Derniers projets financés</h2>
+            <h2 className="text-3xl font-bold tracking-tight text-black">Derniers projets financés</h2>
             <div className="h-1 w-20 bg-[#7DC092]"></div>
           </header>
 
@@ -157,7 +157,7 @@ export default function Home() {
                       <div className="space-y-4">
                         <div className="space-y-1">
                           <p className="text-[10px] uppercase tracking-widest font-bold text-[#7DC092]"> Lauréat — {lastPublishedSession.title}</p>
-                          <h3 className="text-2xl font-bold">{lastPublishedSession.winnerProjectTitle}</h3>
+                          <h3 className="text-2xl font-bold text-black">{lastPublishedSession.winnerProjectTitle}</h3>
                         </div>
                         <p className="text-muted-foreground leading-relaxed max-w-xl">
                           Ce projet a été plébiscité par la communauté lors de la session de {formatDate(lastPublishedSession.resultsPublishedAt || lastPublishedSession.votingClosesAt)}.
@@ -178,13 +178,13 @@ export default function Home() {
                           {item.rank || i + 1}.
                         </span>
                         <div className="flex-grow space-y-1">
-                          <h4 className="text-lg font-bold tracking-tight group-hover:text-primary transition-colors">
+                          <h4 className="text-lg font-bold tracking-tight text-black group-hover:text-primary transition-colors">
                             {item.title}
                           </h4>
                           <p className="text-sm text-muted-foreground line-clamp-1">{item.summary}</p>
                         </div>
                         <div className="text-right flex-shrink-0">
-                          <span className="text-xs font-bold uppercase tracking-widest bg-secondary px-2 py-1 border border-border">
+                          <span className="text-xs font-bold uppercase tracking-widest bg-secondary px-2 py-1 border border-border text-black">
                             {item.budget}
                           </span>
                         </div>
@@ -226,7 +226,7 @@ export default function Home() {
         {/* Manifesto Section */}
         <section className="grid md:grid-cols-2 gap-16 py-12 border-t border-border">
           <div className="space-y-6">
-            <h3 className="text-3xl font-bold tracking-tight">Le Manifeste Ekklesia</h3>
+            <h3 className="text-3xl font-bold tracking-tight text-black">Le Manifeste Ekklesia</h3>
             <div className="h-1 w-20 bg-[#7DC092]"></div>
             <p className="text-lg text-muted-foreground leading-relaxed">
               Nous croyons en une démocratie directe, transparente et technologique. Ekklesia permet à chaque membre de l'assemblée de peser sur les décisions budgétaires de manière équitable grâce au vote par classement.
@@ -234,11 +234,11 @@ export default function Home() {
           </div>
           <div className="grid grid-cols-1 gap-8">
             <div className="space-y-2">
-              <h4 className="font-bold uppercase tracking-widest text-sm">Transparence Totale</h4>
+              <h4 className="font-bold uppercase tracking-widest text-sm text-black">Transparence Totale</h4>
               <p className="text-muted-foreground">Chaque bulletin est cryptographié et vérifiable, assurant l'intégrité absolue du scrutin.</p>
             </div>
             <div className="space-y-2">
-              <h4 className="font-bold uppercase tracking-widest text-sm">Méthode Schulze</h4>
+              <h4 className="font-bold uppercase tracking-widest text-sm text-black">Méthode Schulze</h4>
               <p className="text-muted-foreground">Nous utilisons des algorithmes de théorie des jeux pour dégager un consensus réel, dépassant le simple vote majoritaire.</p>
             </div>
           </div>
