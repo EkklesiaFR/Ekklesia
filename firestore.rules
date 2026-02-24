@@ -8,6 +8,10 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
     function getMemberData() {
       return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
     }
@@ -21,10 +25,6 @@ service cloud.firestore {
       return isMemberActive() && getMemberData().role == "admin";
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
     // --- RÈGLES DES COLLECTIONS ---
 
     // Profils membres
@@ -32,6 +32,11 @@ service cloud.firestore {
       allow get: if isSignedIn() && (isOwner(uid) || isAdminActive());
       allow list: if isAdminActive();
       allow write: if isAdminActive();
+    }
+
+    // Projets - Réservé strictement aux administrateurs actifs
+    match /projects/{projectId} {
+      allow read, write: if isAdminActive();
     }
 
     // Assemblées et Votes
