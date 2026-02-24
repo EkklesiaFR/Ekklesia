@@ -1,39 +1,32 @@
-
 /**
- * Schulze Method Tallying Implementation
- * Computes the winner and full ranking of projects based on ranked ballots.
+ * Implémentation de la méthode de Schulze (Condorcet)
+ * Calcule le classement final à partir de bulletins préférentiels.
  */
 
-export function computeSchulzeResults(projectIds: string[], ballots: { rankedProjectIds: string[] }[]) {
+export function computeSchulzeResults(projectIds: string[], ballots: { ranking: string[] }[]) {
   const numProjects = projectIds.length;
+  if (numProjects === 0) return { winnerId: null, ranking: [], total: 0 };
+
   const projectIndexMap = new Map(projectIds.map((id, index) => [id, index]));
 
-  // 1. Compute pairwise preferences d[i][j]
-  // d[i][j] is the number of voters who prefer project i to project j
+  // 1. Calcul des préférences par paires d[i][j]
+  // d[i][j] est le nombre de votants préférant le projet i au projet j
   const d: number[][] = Array.from({ length: numProjects }, () => Array(numProjects).fill(0));
 
   for (const ballot of ballots) {
-    const ranking = ballot.rankedProjectIds;
+    const ranking = ballot.ranking;
     for (let i = 0; i < ranking.length; i++) {
-      const pI = projectIndexMap.get(ranking[i])!;
+      const pI = projectIndexMap.get(ranking[i]);
+      if (pI === undefined) continue;
       for (let j = i + 1; j < ranking.length; j++) {
-        const pJ = projectIndexMap.get(ranking[j])!;
+        const pJ = projectIndexMap.get(ranking[j]);
+        if (pJ === undefined) continue;
         d[pI][pJ]++;
-      }
-    }
-    
-    // Handle unranked projects: Ranked > Unranked
-    const unranked = projectIds.filter(id => !ranking.includes(id));
-    for (const rankedId of ranking) {
-      const pRanked = projectIndexMap.get(rankedId)!;
-      for (const unrankedId of unranked) {
-        const pUnranked = projectIndexMap.get(unrankedId)!;
-        d[pRanked][pUnranked]++;
       }
     }
   }
 
-  // 2. Compute strongest path strengths p[i][j]
+  // 2. Calcul des forces des chemins les plus forts p[i][j] (Floyd-Warshall)
   const p: number[][] = Array.from({ length: numProjects }, () => Array(numProjects).fill(0));
 
   for (let i = 0; i < numProjects; i++) {
@@ -60,9 +53,9 @@ export function computeSchulzeResults(projectIds: string[], ballots: { rankedPro
     }
   }
 
-  // 3. Determine relative ranking
-  // Project i is better than project j if p[i][j] > p[j][i]
-  const winCounts = projectIds.map((id, i) => {
+  // 3. Détermination du classement final
+  // Le projet i est "meilleur" que j si p[i][j] > p[j][i]
+  const scores = projectIds.map((id, i) => {
     let wins = 0;
     for (let j = 0; j < numProjects; j++) {
       if (i !== j && p[i][j] > p[j][i]) {
@@ -72,17 +65,12 @@ export function computeSchulzeResults(projectIds: string[], ballots: { rankedPro
     return { id, wins };
   });
 
-  // Sort by number of wins descending
-  winCounts.sort((a, b) => b.wins - a.wins);
-
-  const fullRanking = winCounts.map((wc, index) => ({
-    projectId: wc.id,
-    rank: index + 1
-  }));
+  // Tri par nombre de victoires décroissant
+  const sorted = [...scores].sort((a, b) => b.wins - a.wins);
 
   return {
-    winnerId: winCounts[0]?.id || null,
-    fullRanking,
-    totalBallots: ballots.length
+    winnerId: sorted[0]?.id || null,
+    ranking: sorted.map((s, idx) => ({ id: s.id, rank: idx + 1 })),
+    total: ballots.length
   };
 }
