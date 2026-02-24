@@ -1,3 +1,34 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "project-1",
+      "description": "Urban Garden Initiative",
+      "imageUrl": "https://images.unsplash.com/photo-1676647782875-a996c4f65399?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHx1cmJhbiUyMGdhcmRlbnxlbnwwfHx8fDE3NzE5NDAxODF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "urban garden"
+    },
+    {
+      "id": "project-2",
+      "description": "Community Tech Hub",
+      "imageUrl": "https://images.unsplash.com/photo-1762330465633-2f517c1782a6?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHx0ZWNobm9sb2d5JTIwY29tbXVuaXR5fGVufDB8fHx8MTc3MTk0MDE4MXww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "technology community"
+    },
+    {
+      "id": "project-3",
+      "description": "Renewable Energy Park",
+      "imageUrl": "https://images.unsplash.com/photo-1508514177221-188b1cf16e9d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxzb2xhciUyMHBhbmVsc3xlbnwwfHx8fDE3NzE5NDAxODF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "solar panels"
+    },
+    {
+      "id": "project-4",
+      "description": "Local Arts Center",
+      "imageUrl": "https://images.unsplash.com/photo-1507643179773-3e975d7ac515?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxhcnQlMjBnYWxsZXJ5fGVufDB8fHx8MTc3MTk0MDE4MXww&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "art gallery"
+    },
+    {
+      "id": "project-5",
+      "description": "Public Transportation Expansion",
+      "imageUrl": "https://images.unsplash.com/photo-1759674406716-9645dcddd353?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHwzfHxtb2Rlcm4lMjBidXN8ZW58MHx8fHwxNzcxODQ2ODMyfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "modern bus"
+    }
+  ]
 }
