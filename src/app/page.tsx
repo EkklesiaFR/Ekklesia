@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -11,7 +12,7 @@ import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-// Mock current session for initial state display
+// Mock session stable pour l'état initial
 const MOCK_CURRENT_SESSION: VotingSession = {
   id: 'session-2024-03',
   title: 'Session de Printemps 2024',
@@ -28,7 +29,7 @@ export default function Home() {
   const [session, setSession] = useState<VotingSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
-  // Query for the latest published session - accessible publicly
+  // Requête pour la dernière session publiée - accessible publiquement
   const lastPublishedSessionQuery = useMemoFirebase(() => {
     return query(
       collection(db, 'publicVotingSessions'),
@@ -42,6 +43,7 @@ export default function Home() {
   const lastPublishedSession = publishedSessions?.[0] as any | undefined;
 
   useEffect(() => {
+    // Initialisation sécurisée après l'hydratation
     setSession(MOCK_CURRENT_SESSION);
     
     const timer = setInterval(() => {
@@ -63,7 +65,8 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
-  const getStatusText = (s: VotingSession) => {
+  const getStatusText = (s: VotingSession | null) => {
+    if (!s) return "Chargement...";
     const now = new Date();
     if (s.isResultsPublished || s.status === 'published') return "Résultats publiés";
     if (now < s.votingOpensAt) return "Vote à venir";
@@ -135,7 +138,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* Latest Funded Projects Section */}
+        {/* Derniers projets financés */}
         <section className="space-y-12 pt-12 border-t border-border">
           <header className="space-y-4">
             <h2 className="text-3xl font-bold tracking-tight">Derniers projets financés</h2>
@@ -145,7 +148,6 @@ export default function Home() {
           {!isPublishedLoading && lastPublishedSession ? (
             <div className="space-y-12">
               <div className="grid gap-8">
-                {/* Winner Highlight */}
                 {lastPublishedSession.winnerProjectTitle && (
                   <div className="bg-secondary/30 p-8 border border-border group hover:border-[#7DC092]/30 transition-all">
                     <div className="flex items-start gap-6">
@@ -165,7 +167,6 @@ export default function Home() {
                   </div>
                 )}
 
-                {/* Other Rankings */}
                 <div className="divide-y divide-border">
                   {(lastPublishedSession.rankingSummary || lastPublishedSession.projects || []).slice(0, 5).map((item: any, i: number) => {
                     const isWinner = i === 0 && lastPublishedSession.winnerProjectTitle === (item.title || item.projectId);
@@ -222,7 +223,7 @@ export default function Home() {
           )}
         </section>
 
-        {/* Manifesto/Mission Section */}
+        {/* Manifesto Section */}
         <section className="grid md:grid-cols-2 gap-16 py-12 border-t border-border">
           <div className="space-y-6">
             <h3 className="text-3xl font-bold tracking-tight">Le Manifeste Ekklesia</h3>
