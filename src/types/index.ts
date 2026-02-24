@@ -9,13 +9,22 @@ export interface UserProfile {
   isAllowlisted: boolean;
 }
 
+export interface ProjectLink {
+  label: string;
+  url: string;
+}
+
 export interface Project {
   id: string;
   title: string;
   summary: string;
+  longDescription?: string;
   budget: string;
   imageUrl?: string;
   keyFeatures: string[];
+  ownerName?: string;
+  ownerBio?: string;
+  links?: ProjectLink[];
 }
 
 export interface VotingSession {
