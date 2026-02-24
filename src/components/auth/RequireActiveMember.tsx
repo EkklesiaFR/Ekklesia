@@ -7,11 +7,14 @@ import { useUser } from '@/firebase';
 import { useAuthStatus } from './AuthStatusProvider';
 import { MainLayout } from '@/components/layout/MainLayout';
 
+/**
+ * Composant Guard pour protéger l'accès aux pages privées.
+ */
 export function RequireActiveMember({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isUserLoading } = useUser();
-  const { member, isMemberLoading, isActiveMember, isAdmin } = useAuthStatus();
+  const { isMemberLoading, isActiveMember, isAdmin } = useAuthStatus();
 
   useEffect(() => {
     if (isUserLoading || isMemberLoading) return;
@@ -26,7 +29,7 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Protection supplémentaire pour /admin
+    // Protection pour la route admin
     if (pathname.startsWith('/admin') && !isAdmin) {
       router.push('/');
       return;
@@ -46,7 +49,6 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     );
   }
 
-  // Si on est sur une route protégée et que les conditions sont remplies
   if (user && isActiveMember) {
     return <>{children}</>;
   }

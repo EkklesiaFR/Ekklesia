@@ -7,7 +7,7 @@ import { AuthStatusProvider } from '@/components/auth/AuthStatusProvider';
 
 export const metadata: Metadata = {
   title: 'Ekklesia Vote',
-  description: 'An institutional voting platform for the Ekklesia Assembly.',
+  description: 'Une plateforme de vote institutionnelle pour l\'Assemblée Ekklesia.',
 };
 
 export default function RootLayout({
@@ -16,7 +16,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="fr">
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />

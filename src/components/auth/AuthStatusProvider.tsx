@@ -2,7 +2,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
-import { useUser, useFirestore, useMemoFirebase } from '@/firebase';
+import { useUser, useFirestore } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 interface MemberProfile {
@@ -25,6 +25,9 @@ const AuthStatusContext = createContext<AuthStatusContextType>({
   isAdmin: false,
 });
 
+/**
+ * Provider global pour l'état d'authentification et de membre.
+ */
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useUser();
   const db = useFirestore();
@@ -51,7 +54,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       }
       setIsMemberLoading(false);
     }, (error) => {
-      console.error("Error fetching member status:", error);
+      console.error("Erreur lors de la récupération du statut membre:", error);
       setMember(null);
       setIsMemberLoading(false);
     });
@@ -74,4 +77,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Hook pour consommer l'état d'authentification et de membre.
+ */
 export const useAuthStatus = () => useContext(AuthStatusContext);
