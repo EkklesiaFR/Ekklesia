@@ -20,23 +20,26 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     if (isUserLoading || isMemberLoading) return;
 
     if (!user) {
-      router.push('/login');
+      router.replace('/login');
       return;
     }
 
     if (!isActiveMember && pathname !== '/access-denied') {
-      router.push('/access-denied');
+      router.replace('/access-denied');
       return;
     }
 
     // Protection pour la route admin
     if (pathname.startsWith('/admin') && !isAdmin) {
-      router.push('/');
+      router.replace('/access-denied');
       return;
     }
   }, [user, isUserLoading, isMemberLoading, isActiveMember, isAdmin, router, pathname]);
 
-  if (isUserLoading || isMemberLoading) {
+  // Détermination de l'autorisation pour l'affichage
+  const isAuthorized = user && isActiveMember && (!pathname.startsWith('/admin') || isAdmin);
+
+  if (isUserLoading || isMemberLoading || !isAuthorized) {
     return (
       <MainLayout statusText="Vérification">
         <div className="flex flex-col items-center justify-center py-24 space-y-4">
@@ -49,9 +52,5 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     );
   }
 
-  if (user && isActiveMember) {
-    return <>{children}</>;
-  }
-
-  return null;
+  return <>{children}</>;
 }
