@@ -1,3 +1,4 @@
+
 'use client';
 
 import Link from 'next/link';
@@ -15,7 +16,7 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
 
   const tabs = [
     { label: 'Accueil', href: '/' },
-    { label: 'Projets', href: '/#projects' },
+    { label: 'Projets', href: '/projects' },
     { label: 'Vote', href: '/vote', disabled: !isVoteOpen },
     { label: 'Compte', href: user ? '/account' : '/login' },
   ];
