@@ -16,7 +16,9 @@ import {
   ChevronRight,
   Trophy,
   Users,
-  Activity
+  Activity,
+  PlusCircle,
+  FileText
 } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { Project, Vote, Ballot } from '@/types';
@@ -29,7 +31,7 @@ function AssemblyDashboardContent() {
   const activeVoteQuery = useMemoFirebase(() => {
     return query(collectionGroup(db, 'votes'), where('state', 'in', ['open', 'closed']), limit(1));
   }, [db]);
-  const { data: votes } = useCollection<Vote>(activeVoteQuery);
+  const { data: votes, isLoading: isVotesLoading } = useCollection<Vote>(activeVoteQuery);
   const activeVote = votes?.[0];
 
   // 2. Récupération des projets pour cette session
@@ -54,47 +56,53 @@ function AssemblyDashboardContent() {
 
   const winnerProject = results?.winnerId ? activeProjects.find(p => p.id === results.winnerId) : null;
 
-  const menuItems = [
-    {
-      title: "Voter",
-      description: "Exprimez vos préférences pour la session en cours.",
-      href: "/vote",
-      icon: VoteIcon,
-      color: "bg-primary/10 text-primary",
-      disabled: activeVote?.state !== 'open'
-    },
-    {
-      title: "Projets",
-      description: "Consultez le détail des propositions soumises.",
-      href: "/projects",
-      icon: LayoutGrid,
-      color: "bg-blue-50 text-blue-600",
-      disabled: false
-    },
-    {
-      title: "Mon Compte",
-      description: "Gérez vos informations et votre statut de membre.",
-      href: "/account",
-      icon: User,
-      color: "bg-gray-100 text-gray-600",
-      disabled: false
-    }
-  ];
+  if (isVotesLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 space-y-4">
+        <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
+        <p className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Chargement du dashboard...</p>
+      </div>
+    );
+  }
 
   return (
-    <MainLayout statusText={activeVote?.state === 'open' ? "Vote ouvert" : "Dashboard"}>
-      <div className="space-y-16 animate-in fade-in duration-700">
-        <header className="space-y-6">
-          <div className="space-y-2">
-            <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground block">
-              Espace Membre
-            </span>
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Une voix, une communauté.</h1>
-          </div>
-          <p className="text-xl text-muted-foreground max-w-2xl">Bienvenue dans votre interface de participation citoyenne.</p>
-        </header>
+    <div className="space-y-16 animate-in fade-in duration-700">
+      <header className="space-y-6">
+        <div className="space-y-2">
+          <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground block">
+            Espace Membre
+          </span>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Une voix, une communauté.</h1>
+        </div>
+        <p className="text-xl text-muted-foreground max-w-2xl">Bienvenue dans votre interface de participation citoyenne.</p>
+      </header>
 
-        {activeVote && (
+      {!activeVote ? (
+        <section className="border border-border p-12 bg-secondary/5 text-center space-y-6">
+          <div className="mx-auto w-16 h-16 bg-muted flex items-center justify-center rounded-full mb-4">
+            <Activity className="h-8 w-8 text-muted-foreground" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-bold">Aucune session active</h2>
+            <p className="text-muted-foreground max-w-md mx-auto">
+              Il n'y a pas de session de vote ouverte ou récemment clôturée pour le moment.
+            </p>
+          </div>
+          {isAdmin ? (
+            <Link href="/admin" className="inline-block pt-4">
+              <Button className="rounded-none h-12 px-8 font-bold uppercase tracking-widest text-xs gap-2">
+                <PlusCircle className="h-4 w-4" />
+                Créer une session
+              </Button>
+            </Link>
+          ) : (
+            <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground pt-4">
+              Revenez plus tard
+            </p>
+          )}
+        </section>
+      ) : (
+        <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div className="border border-border p-8 bg-white space-y-6">
               <div className="flex items-center justify-between">
@@ -105,7 +113,7 @@ function AssemblyDashboardContent() {
                 {activeVote.state === 'open' ? (
                   <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
                 ) : (
-                  <span className="text-[10px] font-bold text-muted-foreground">CLOS</span>
+                  <span className="text-[10px] font-bold text-muted-foreground px-2 py-1 bg-secondary uppercase">CLOS</span>
                 )}
               </div>
               <div className="space-y-2">
@@ -149,58 +157,77 @@ function AssemblyDashboardContent() {
               </Link>
             </div>
           </div>
+
+          <section className="space-y-8">
+            <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
+              Projets proposés ({activeProjects.length})
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {activeProjects.map((project) => (
+                <div key={project.id} className="border border-border p-6 bg-white space-y-4 hover:border-black transition-colors">
+                  <div className="space-y-1">
+                    <h4 className="font-bold text-lg">{project.title}</h4>
+                    <p className="text-xs font-bold text-primary uppercase tracking-wider">{project.budget}</p>
+                  </div>
+                  <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+                    {project.summary}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 border-t border-border">
+        <Link href="/projects" className="group">
+          <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
+            <div className="w-12 h-12 bg-blue-50 text-blue-600 flex items-center justify-center">
+              <LayoutGrid className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold">Projets</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">Consultez le détail des propositions soumises.</p>
+            </div>
+          </div>
+        </Link>
+
+        <Link href="/account" className="group">
+          <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
+            <div className="w-12 h-12 bg-gray-100 text-gray-600 flex items-center justify-center">
+              <User className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold">Mon Compte</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">Gérez vos informations et votre statut de membre.</p>
+            </div>
+          </div>
+        </Link>
+
+        {isAdmin && (
+          <Link href="/admin" className="group">
+            <div className="h-full border border-dashed border-primary p-8 bg-primary/5 hover:bg-primary/10 transition-all space-y-6">
+              <div className="w-12 h-12 bg-primary text-white flex items-center justify-center">
+                <Settings className="h-6 w-6" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold">Administration</h3>
+                <p className="text-sm text-muted-foreground">Gérer les sessions, les membres et les émargements.</p>
+              </div>
+            </div>
+          </Link>
         )}
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {menuItems.map((item) => (
-            <Link key={item.href} href={item.disabled ? "#" : item.href} className={item.disabled ? "opacity-50 cursor-not-allowed" : "group"}>
-              <div className="h-full border border-border p-8 bg-white hover:border-black transition-all flex flex-col justify-between space-y-8">
-                <div className="space-y-6">
-                  <div className={`w-12 h-12 ${item.color} flex items-center justify-center`}>
-                    <item.icon className="h-6 w-6" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-xl font-bold">{item.title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
-                  </div>
-                </div>
-                {!item.disabled && (
-                  <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest group-hover:gap-4 transition-all">
-                    Y accéder <ChevronRight className="h-3 w-3" />
-                  </div>
-                )}
-              </div>
-            </Link>
-          ))}
-
-          {isAdmin && (
-            <Link href="/admin" className="group md:col-span-3">
-              <div className="border border-dashed border-primary p-8 bg-primary/5 hover:bg-primary/10 transition-all flex items-center justify-between">
-                <div className="flex items-center gap-6">
-                  <div className="w-12 h-12 bg-primary text-white flex items-center justify-center">
-                    <Settings className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold">Administration</h3>
-                    <p className="text-sm text-muted-foreground">Gérer les sessions, les membres et les émargements.</p>
-                  </div>
-                </div>
-                <Button variant="ghost" className="rounded-none font-bold uppercase tracking-widest text-[10px]">
-                  Gérer <ArrowRight className="ml-2 h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </Link>
-          )}
-        </div>
       </div>
-    </MainLayout>
+    </div>
   );
 }
 
 export default function AssemblyDashboard() {
   return (
     <RequireActiveMember>
-      <AssemblyDashboardContent />
+      <MainLayout statusText="Dashboard">
+        <AssemblyDashboardContent />
+      </MainLayout>
     </RequireActiveMember>
   );
 }
