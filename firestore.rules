@@ -5,7 +5,7 @@ service cloud.firestore {
 
     /**
      * EKKLESIA VOTE SECURITY RULES
-     * Enforces strict data isolation for members and administrative control.
+     * Version: 1.1 - Public Access for Homepage Data
      */
 
     // --- HELPER FUNCTIONS ---
@@ -25,15 +25,22 @@ service cloud.firestore {
     // --- COLLECTION RULES ---
 
     /**
-     * @description User profiles: Users can manage their own data; Admins can view all.
+     * @description User profiles: Users manage their own data; Admins view all.
+     * Supports both /userProfiles and /users paths for consistency.
      */
     match /userProfiles/{userId} {
+      allow get, create, update: if isOwner(userId);
+      allow list, delete: if isAdmin();
+    }
+    
+    match /users/{userId} {
       allow get, create, update: if isOwner(userId);
       allow list, delete: if isAdmin();
     }
 
     /**
      * @description Secure voting: One ballot per session per user, creation only.
+     * Enforces the {sessionId}_{userId} document ID pattern.
      */
     match /ballots/{ballotId} {
       allow get: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin());
@@ -74,19 +81,19 @@ service cloud.firestore {
     }
 
     /**
-     * @description Voting results: Immutable from the client (managed by backend).
+     * @description Voting results: Immutable from the client (managed by Admin SDK).
      */
     match /votingResults/{sessionId} {
       allow get, list: if isSignedIn();
-      allow write: if false; // Managed exclusively via Admin SDK
+      allow write: if false; 
     }
 
     /**
-     * @description Public session data: Read-only for all (for homepage preview).
-     * This collection is specifically denormalized for unauthenticated public access.
+     * @description Public session data: Read-only for everyone (including unauthenticated).
+     * This is required for the homepage "Derniers projets financés" section.
      */
     match /publicVotingSessions/{sessionId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isAdmin();
     }
   }
