@@ -55,10 +55,15 @@ export default function LoginPage() {
       await signInWithGoogle(auth);
       // The useEffect above will handle the allowlist check and redirection
     } catch (error: any) {
+      console.error('Google Sign-In failed:', error);
+      
+      const errorCode = error?.code || 'auth/unknown-error';
+      const errorMessage = error?.message || "Une erreur est survenue lors de l'identification.";
+
       toast({
         variant: "destructive",
-        title: "Erreur de connexion",
-        description: "Une erreur est survenue lors de l'identification avec Google.",
+        title: "Erreur d'identification",
+        description: `Détails : [${errorCode}] ${errorMessage}`,
       });
       setIsSubmitting(false);
     }
