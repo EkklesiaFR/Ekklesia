@@ -20,6 +20,7 @@ import { computeSchulzeResults } from '@/lib/tally';
 import { Project, Vote, Assembly, Ballot } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 function AssemblyDashboardContent() {
   const { isAdmin } = useAuthStatus();
@@ -39,19 +40,19 @@ function AssemblyDashboardContent() {
   }, [db, activeAssembly]);
   const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
-  // 3. Charger les projets
+  // 3. Charger les projets pour le vote
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
-  // 4. Charger les bulletins
+  // 4. Charger les bulletins pour le vote actif
   const ballotsQuery = useMemoFirebase(() => {
     if (!activeAssembly || !activeVote) return null;
     return collection(db, 'assemblies', activeAssembly.id, 'votes', activeVote.id, 'ballots');
   }, [db, activeAssembly, activeVote]);
   const { data: ballots } = useCollection<Ballot>(ballotsQuery);
 
-  // 5. Calcul Schulze
+  // 5. Calcul Schulze (Tendance en temps réel)
   const results = (ballots && activeProjects.length > 0) 
     ? computeSchulzeResults(activeProjects.map(p => p.id), ballots)
     : null;
@@ -118,7 +119,7 @@ function AssemblyDashboardContent() {
                 </div>
               </div>
               <Link href="/vote" className="block pt-4">
-                <Button className="w-full rounded-none h-14 font-bold uppercase tracking-widest text-xs">Voter maintenant</Button>
+                <Button className="w-full rounded-none h-14 font-bold uppercase tracking-widest text-xs">Je vote</Button>
               </Link>
             </div>
 
@@ -147,7 +148,13 @@ function AssemblyDashboardContent() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-8 border-t border-border">
-        <Link href="/vote" className="group h-full">
+        <Link 
+          href={activeAssembly ? "/vote" : "#"} 
+          className={cn(
+            "group h-full",
+            !activeAssembly && "opacity-50 pointer-events-none"
+          )}
+        >
           <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
             <div className="w-12 h-12 bg-secondary text-black flex items-center justify-center"><Activity className="h-6 w-6" /></div>
             <div className="space-y-2">
