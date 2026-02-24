@@ -9,15 +9,18 @@ import { signOut } from 'firebase/auth';
 
 export function Header({ 
   role, 
-  statusText 
+  statusText,
+  isVoteOpen: isVoteOpenProp
 }: { 
   role?: string; 
-  statusText?: string 
+  statusText?: string;
+  isVoteOpen?: boolean;
 }) {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
   
-  const isVoteOpen = statusText === "Vote ouvert";
+  // Utilise la prop isVoteOpen fournie par MainLayout ou fallback sur le texte
+  const isVoteOpen = isVoteOpenProp ?? (statusText === "Vote ouvert");
 
   const handleLogout = () => {
     signOut(auth);

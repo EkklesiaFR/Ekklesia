@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
@@ -8,44 +9,47 @@ import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collectionGroup, query, where, limit, collection } from 'firebase/firestore';
 import Link from 'next/link';
 import { 
-  Vote as VoteIcon, 
   LayoutGrid, 
   User, 
   Settings, 
-  ArrowRight,
-  ChevronRight,
   Trophy,
   Users,
   Activity,
-  PlusCircle,
   Clock,
-  Calendar
+  Landmark
 } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { Project, Vote, Ballot } from '@/types';
-import { format, formatDistanceToNow } from 'date-fns';
+import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
 function AssemblyDashboardContent() {
   const { isAdmin } = useAuthStatus();
   const db = useFirestore();
 
-  // 1. Récupération de la session de vote ouverte (ou la plus récente)
+  // 1. Récupération de la session de vote ouverte ou close
   const activeVoteQuery = useMemoFirebase(() => {
+    // On cherche d'abord le vote ouvert, sinon le plus récent clos
     return query(collectionGroup(db, 'votes'), where('state', 'in', ['open', 'closed']), limit(1));
   }, [db]);
-  const { data: votes, isLoading: isVotesLoading } = useCollection<Vote>(activeVoteQuery);
+
+  const { data: votes, isLoading: isVotesLoading, error: voteError } = useCollection<Vote>(activeVoteQuery);
   const activeVote = votes?.[0];
 
-  // 2. Récupération des projets pour cette session
+  // Logs de diagnostic
+  useEffect(() => {
+    console.log('[DEBUG] AssemblyDashboard: votes récupérés:', votes);
+    if (voteError) console.error('[DEBUG] AssemblyDashboard: Erreur query votes:', voteError);
+  }, [votes, voteError]);
+
+  // 2. Récupération des projets
   const projectsQuery = useMemoFirebase(() => {
-    if (!activeVote) return null;
     return collection(db, 'projects');
-  }, [db, activeVote]);
+  }, [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
-  // 3. Récupération des bulletins pour les stats de participation
+  // 3. Récupération des bulletins (uniquement si un vote est identifié)
   const ballotsQuery = useMemoFirebase(() => {
     if (!activeVote) return null;
     return collection(db, 'assemblies', activeVote.assemblyId, 'votes', activeVote.id, 'ballots');
@@ -91,9 +95,13 @@ function AssemblyDashboardContent() {
               Il n'y a pas de session de vote ouverte pour le moment.
             </p>
           </div>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground pt-4">
-            Revenez plus tard
-          </p>
+          {isAdmin && (
+            <Link href="/admin">
+              <Button variant="outline" className="rounded-none uppercase tracking-widest text-[10px] font-bold h-12 px-8">
+                Aller à l'administration
+              </Button>
+            </Link>
+          )}
         </section>
       ) : (
         <>
@@ -193,6 +201,18 @@ function AssemblyDashboardContent() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-8 border-t border-border">
+        <Link href="/vote" className="group">
+          <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
+            <div className="w-12 h-12 bg-secondary text-black flex items-center justify-center">
+              <Activity className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold">Je vote</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">Participez au scrutin en cours et exprimez vos préférences.</p>
+            </div>
+          </div>
+        </Link>
+
         <Link href="/projects" className="group">
           <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
             <div className="w-12 h-12 bg-secondary text-black flex items-center justify-center">
@@ -205,20 +225,8 @@ function AssemblyDashboardContent() {
           </div>
         </Link>
 
-        <Link href="/account" className="group">
-          <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
-            <div className="w-12 h-12 bg-secondary text-black flex items-center justify-center">
-              <User className="h-6 w-6" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-bold">Mon Compte</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Gérez vos informations et votre statut de membre actif.</p>
-            </div>
-          </div>
-        </Link>
-
-        {isAdmin && (
-          <Link href="/admin" className="group lg:col-span-1">
+        {isAdmin ? (
+          <Link href="/admin" className="group">
             <div className="h-full border border-dashed border-primary p-8 bg-primary/5 hover:bg-primary/10 transition-all space-y-6">
               <div className="w-12 h-12 bg-primary text-white flex items-center justify-center">
                 <Settings className="h-6 w-6" />
@@ -226,6 +234,18 @@ function AssemblyDashboardContent() {
               <div className="space-y-2">
                 <h3 className="text-xl font-bold">Administration</h3>
                 <p className="text-sm text-muted-foreground">Outils de gestion des sessions, des membres et des projets.</p>
+              </div>
+            </div>
+          </Link>
+        ) : (
+          <Link href="/account" className="group">
+            <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
+              <div className="w-12 h-12 bg-secondary text-black flex items-center justify-center">
+                <User className="h-6 w-6" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold">Mon Compte</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">Gérez vos informations et votre statut de membre actif.</p>
               </div>
             </div>
           </Link>
