@@ -100,7 +100,7 @@ export default function Home() {
             </Link>
             <Link href="/vote">
               <Button size="lg" variant="outline" className="w-full sm:w-auto border-black hover:bg-black hover:text-white rounded-none px-10 py-8 text-lg flex items-center gap-3 transition-all">
-                Exprimer mon choix
+                votez
                 <ArrowRight className="h-5 w-5" />
               </Button>
             </Link>
