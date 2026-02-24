@@ -6,7 +6,7 @@ import { useUser, useFirestore } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 
 interface MemberProfile {
-  status: 'active' | 'pending' | 'revoked' | 'inactive';
+  status: 'active' | 'pending' | 'revoked';
   role: 'admin' | 'member';
   joinedAt?: any;
 }
@@ -48,7 +48,12 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
-        setMember(docSnap.data() as MemberProfile);
+        const data = docSnap.data();
+        setMember({
+          status: data.status || 'pending',
+          role: data.role || 'member',
+          joinedAt: data.joinedAt || null,
+        } as MemberProfile);
       } else {
         setMember(null);
       }
