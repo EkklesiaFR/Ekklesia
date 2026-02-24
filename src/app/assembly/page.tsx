@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collectionGroup, query, where, limit, collection } from 'firebase/firestore';
-import Link from 'next/link';
+import Link from 'link';
 import { 
   LayoutGrid, 
   User, 
@@ -15,8 +15,7 @@ import {
   Trophy,
   Users,
   Activity,
-  Clock,
-  Landmark
+  Clock
 } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { Project, Vote, Ballot } from '@/types';
@@ -90,9 +89,9 @@ function AssemblyDashboardContent() {
             <Activity className="h-8 w-8 text-muted-foreground" />
           </div>
           <div className="space-y-2">
-            <h2 className="text-2xl font-bold">Aucune session active</h2>
+            <h2 className="text-2xl font-bold">Aucun vote ouvert pour le moment</h2>
             <p className="text-muted-foreground max-w-md mx-auto">
-              Il n'y a pas de session de vote ouverte pour le moment.
+              Il n’y a pas de vote en cours. Revenez prochainement pour participer.
             </p>
           </div>
           {isAdmin && (
@@ -111,7 +110,7 @@ function AssemblyDashboardContent() {
                 <div className="flex items-center justify-between">
                   <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
                     <Activity className="h-3 w-3" />
-                    Scrutin en cours
+                    {activeVote.state === 'open' ? "Vote en cours" : "Scrutin clos"}
                   </h3>
                   {activeVote.state === 'open' ? (
                     <div className="flex items-center gap-2">
@@ -126,6 +125,10 @@ function AssemblyDashboardContent() {
                 <div className="space-y-4">
                   <p className="text-2xl font-bold leading-tight">{activeVote.question}</p>
                   
+                  {activeVote.state === 'open' && (
+                    <p className="text-sm text-muted-foreground">Participez avant la clôture.</p>
+                  )}
+
                   <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
                     <span className="flex items-center gap-2 font-medium">
                       <Users className="h-4 w-4 text-primary" />
@@ -208,7 +211,9 @@ function AssemblyDashboardContent() {
             </div>
             <div className="space-y-2">
               <h3 className="text-xl font-bold">Je vote</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Participez au scrutin en cours et exprimez vos préférences.</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">
+                {activeVote?.state === 'open' ? 'Participez au scrutin en cours et exprimez vos préférences.' : 'Aucun vote en cours.'}
+              </p>
             </div>
           </div>
         </Link>
