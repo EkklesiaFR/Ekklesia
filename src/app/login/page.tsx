@@ -11,6 +11,8 @@ import { toast } from '@/hooks/use-toast';
 import { doc, getDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth';
 
+const ALLOWLIST_ENABLED = false;
+
 export default function LoginPage() {
   const auth = useAuth();
   const db = useFirestore();
@@ -18,15 +20,27 @@ export default function LoginPage() {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // We only redirect if the user is authenticated AND we've verified they are allowed
-  // For the redirect check, we'll rely on the fact that if they logged in via this page, 
-  // we already did the check. If they are already logged in, we verify one last time.
   useEffect(() => {
     if (!isUserLoading && user) {
       const checkAllowlist = async () => {
         const email = user.email?.toLowerCase();
         if (!email) {
           await signOut(auth);
+          return;
+        }
+
+        if (!ALLOWLIST_ENABLED) {
+          // Check anyway for logging purposes if disabled
+          const allowlistRef = doc(db, 'emailAllowlist', email);
+          try {
+            const allowlistSnap = await getDoc(allowlistRef);
+            if (!allowlistSnap.exists()) {
+              console.log(`[ALLOWLIST BYPASS] User ${email} would have been rejected. Collection: emailAllowlist`);
+            }
+          } catch (e) {
+            console.error('[ALLOWLIST LOG ERROR]', e);
+          }
+          router.push('/');
           return;
         }
         
@@ -53,7 +67,6 @@ export default function LoginPage() {
     setIsSubmitting(true);
     try {
       await signInWithGoogle(auth);
-      // The useEffect above will handle the allowlist check and redirection
     } catch (error: any) {
       console.error('Google Sign-In failed:', error);
       
