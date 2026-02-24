@@ -1,4 +1,3 @@
-
 'use client';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -35,10 +34,16 @@ export default function LoginPage() {
     handleRedirectResult();
   }, [auth]);
 
-  // Redirection automatique si déjà connecté et actif
+  // Redirection automatique si déjà connecté et membre actif
   useEffect(() => {
-    if (!isUserLoading && !isMemberLoading && user && isActiveMember) {
-      router.push('/');
+    if (!isUserLoading && !isMemberLoading) {
+      if (user) {
+        if (isActiveMember) {
+          router.replace('/assembly');
+        } else {
+          router.replace('/access-denied?reason=member');
+        }
+      }
     }
   }, [user, isUserLoading, isMemberLoading, isActiveMember, router]);
 
@@ -60,14 +65,14 @@ export default function LoginPage() {
         <header className="space-y-4 text-center">
           <h1 className="text-4xl font-bold tracking-tight text-black">Ekklesia Vote</h1>
           <p className="text-muted-foreground max-w-sm mx-auto">
-            Accès réservé aux membres de l'assemblée.
+            Accès réservé aux membres de l'assemblée pour participer aux scrutins.
           </p>
         </header>
 
         <div className="w-full max-w-sm space-y-6">
           <Button
             onClick={handleGoogleSignIn}
-            disabled={isUserLoading}
+            disabled={isUserLoading || isMemberLoading}
             className="w-full h-14 bg-white hover:bg-secondary text-black border border-border rounded-none font-bold flex items-center justify-center gap-3 transition-all"
           >
             <LogIn className="h-5 w-5" />
@@ -75,7 +80,7 @@ export default function LoginPage() {
           </Button>
 
           <p className="text-[10px] uppercase tracking-widest text-center text-muted-foreground leading-relaxed">
-            Votre compte doit être activé par un administrateur pour accéder aux votes.
+            Votre compte doit être activé par un administrateur pour accéder à l'assemblée.
           </p>
         </div>
       </div>
