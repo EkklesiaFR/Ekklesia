@@ -1,47 +1,63 @@
 'use client';
 import {
-  Auth, // Import Auth type for type hinting
+  Auth,
   signInAnonymously,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
-  getRedirectResult,
 } from 'firebase/auth';
 
 /** Initiate anonymous sign-in (non-blocking). */
 export function initiateAnonymousSignIn(authInstance: Auth): void {
-  // CRITICAL: Call signInAnonymously directly. Do NOT use 'await signInAnonymously(...)'.
   signInAnonymously(authInstance);
-  // Code continues immediately. Auth state change is handled by onAuthStateChanged listener.
 }
 
 /** Initiate email/password sign-up (non-blocking). */
 export function initiateEmailSignUp(authInstance: Auth, email: string, password: string): void {
-  // CRITICAL: Call createUserWithEmailAndPassword directly. Do NOT use 'await createUserWithEmailAndPassword(...)'.
   createUserWithEmailAndPassword(authInstance, email, password);
-  // Code continues immediately. Auth state change is handled by onAuthStateChanged listener.
 }
 
 /** Initiate email/password sign-in (non-blocking). */
 export function initiateEmailSignIn(authInstance: Auth, email: string, password: string): void {
-  // CRITICAL: Call signInWithEmailAndPassword directly. Do NOT use 'await signInWithEmailAndPassword(...)'.
   signInWithEmailAndPassword(authInstance, email, password);
-  // Code continues immediately. Auth state change is handled by onAuthStateChanged listener.
 }
 
 /** 
- * Initiate Google Sign-in with automatic fallback.
- * Attempts a popup first; if blocked or fails, falls back to redirect.
+ * Initiate Google Sign-in with automatic device detection and fallback.
+ * Uses redirect on mobile/tablets by default.
+ * Uses popup on desktop with redirect fallback if blocked.
  */
 export const signInWithGoogle = async (authInstance: Auth) => {
   const provider = new GoogleAuthProvider();
+  
+  // Detect mobile device or small screen
+  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
+                   (typeof window !== 'undefined' && window.innerWidth < 768);
+
+  if (isMobile) {
+    // Mobile browsers often block popups or handle them poorly; redirect is more reliable.
+    return signInWithRedirect(authInstance, provider);
+  }
+
   try {
+    // Desktop: Try popup first for a better UX.
     await signInWithPopup(authInstance, provider);
   } catch (error: any) {
-    console.error('Google Sign-In Popup failed, falling back to redirect:', error);
-    // Automatically fallback to redirect for any popup error (blocked, environment, etc.)
-    await signInWithRedirect(authInstance, provider);
+    console.error('Google Sign-In Popup failed:', error);
+    
+    // Fallback to redirect if popup is blocked or closed unexpectedly
+    if (
+      error.code === 'auth/popup-blocked' || 
+      error.code === 'auth/cancelled-popup-request' ||
+      error.code === 'auth/popup-closed-by-user'
+    ) {
+      console.log('Falling back to signInWithRedirect...');
+      return signInWithRedirect(authInstance, provider);
+    }
+    
+    // Rethrow other errors to be handled by the UI
+    throw error;
   }
 };

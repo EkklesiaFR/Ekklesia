@@ -30,11 +30,15 @@ export default function LoginPage() {
         }
       } catch (error: any) {
         console.error('Google redirect result error:', error);
-        toast({
-          variant: "destructive",
-          title: "Erreur d'identification",
-          description: error.message || "Le retour d'identification a échoué.",
-        });
+        
+        // Don't show toast for user cancellation errors to avoid noise
+        if (error.code !== 'auth/redirect-cancelled-by-user') {
+          toast({
+            variant: "destructive",
+            title: "Erreur d'identification",
+            description: `Détails : [${error.code}] ${error.message}`,
+          });
+        }
       }
     };
     handleRedirectResult();
@@ -106,7 +110,7 @@ export default function LoginPage() {
     <MainLayout statusText="Identification">
       <div className="flex flex-col items-center justify-center py-24 space-y-12 animate-in fade-in duration-700">
         <header className="space-y-4 text-center">
-          <h1 className="text-4xl font-bold tracking-tight">Accès à l'assemblée</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-black">Accès à l'assemblée</h1>
           <p className="text-muted-foreground max-w-sm mx-auto">
             Identifiez-vous pour participer aux débats et exprimer votre vote.
           </p>
@@ -118,7 +122,7 @@ export default function LoginPage() {
             disabled={isSubmitting || isUserLoading}
             className="w-full h-14 bg-white hover:bg-secondary text-black border border-border rounded-none font-bold flex items-center justify-center gap-3 transition-all"
           >
-            {isSubmitting ? (
+            {isSubmitting && !auth.currentUser ? (
               "Vérification..."
             ) : (
               <>
