@@ -83,9 +83,10 @@ service cloud.firestore {
 
     /**
      * @description Public session data: Read-only for all (for homepage preview).
+     * This collection is specifically denormalized for unauthenticated public access.
      */
     match /publicVotingSessions/{sessionId} {
-      allow get, list: if true;
+      allow read: if true;
       allow write: if isAdmin();
     }
   }
