@@ -13,7 +13,9 @@ import {
   serverTimestamp, 
   doc, 
   updateDoc, 
-  collectionGroup
+  collectionGroup,
+  deleteDoc,
+  getDocs
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,12 +39,14 @@ import {
   Archive,
   Wand2,
   LayoutGrid,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project } from '@/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { PlaceHolderImages } from '@/lib/placeholder-images';
 
 function AdminContent() {
   const { user } = useUser();
@@ -114,24 +118,43 @@ function AdminContent() {
   const generateDemoProjects = async () => {
     if (!user) return;
     
-    if (projects && projects.length > 0) {
-      if (!confirm(`Il y a déjà ${projects.length} projets. Voulez-vous en ajouter 10 de plus ?`)) {
-        return;
-      }
-    }
-
     setIsGenerating(true);
     const demoData = [
-      { title: "Pistes cyclables sécurisées", summary: "Aménagement de voies réservées aux vélos pour favoriser la mobilité douce.", budget: "45 000 €" },
-      { title: "Rénovation de l'école primaire", summary: "Isolation thermique et modernisation des salles de classe pour le confort des élèves.", budget: "120 000 €" },
-      { title: "Festival des Arts de Rue", summary: "Organisation d'un événement annuel gratuit pour promouvoir la culture locale.", budget: "15 000 €" },
-      { title: "Installation de panneaux solaires", summary: "Équiper les bâtiments publics de panneaux photovoltaïques.", budget: "85 000 €" },
-      { title: "Centre de santé communautaire", summary: "Création d'un espace de consultation accessible à tous.", budget: "200 000 €" },
-      { title: "Programme d'inclusion numérique", summary: "Ateliers de formation aux outils numériques pour les seniors.", budget: "12 000 €" },
-      { title: "Jardins partagés urbains", summary: "Transformation de terrains vagues en espaces de culture collective.", budget: "8 000 €" },
-      { title: "Bibliothèque mobile (Bibliobus)", summary: "Un bus itinérant pour apporter des livres dans les quartiers excentrés.", budget: "60 000 €" },
-      { title: "Maison des Jeunes", summary: "Construction d'un lieu de rencontre et d'activités pour les adolescents.", budget: "150 000 €" },
-      { title: "Reforestation urbaine", summary: "Plantation de 500 arbres pour créer des îlots de fraîcheur.", budget: "25 000 €" },
+      { 
+        title: "Pistes cyclables sécurisées", 
+        summary: "Aménagement de voies réservées aux vélos pour favoriser la mobilité douce.", 
+        longDescription: "Ce projet vise à créer un réseau continu de pistes cyclables protégées reliant le centre-ville aux quartiers périphériques. Il inclut l'installation de signalisation spécifique et d'abris vélos sécurisés.",
+        budget: "45 000 €",
+        imageUrl: PlaceHolderImages[4].imageUrl
+      },
+      { 
+        title: "Rénovation de l'école primaire", 
+        summary: "Isolation thermique et modernisation des salles de classe pour le confort des élèves.", 
+        longDescription: "Un projet ambitieux pour réduire l'empreinte carbone de notre école tout en améliorant l'acoustique et la luminosité des salles de cours.",
+        budget: "120 000 €",
+        imageUrl: PlaceHolderImages[1].imageUrl
+      },
+      { 
+        title: "Festival des Arts de Rue", 
+        summary: "Organisation d'un événement annuel gratuit pour promouvoir la culture locale.", 
+        longDescription: "Un festival de 3 jours regroupant théâtre, cirque et musique, accessible à tous les habitants sur la place centrale.",
+        budget: "15 000 €",
+        imageUrl: PlaceHolderImages[3].imageUrl
+      },
+      { 
+        title: "Installation de panneaux solaires", 
+        summary: "Équiper les bâtiments publics de panneaux photovoltaïques.", 
+        longDescription: "Phase 1 du plan d'autonomie énergétique : installation sur le toit de la mairie et du gymnase municipal.",
+        budget: "85 000 €",
+        imageUrl: PlaceHolderImages[2].imageUrl
+      },
+      { 
+        title: "Jardins partagés urbains", 
+        summary: "Transformation de terrains vagues en espaces de culture collective.", 
+        longDescription: "Création de trois zones de potagers partagés avec système de récupération d'eau de pluie et composteurs.",
+        budget: "8 000 €",
+        imageUrl: PlaceHolderImages[0].imageUrl
+      }
     ];
 
     try {
@@ -140,15 +163,33 @@ function AdminContent() {
           ...item,
           status: "candidate",
           createdAt: serverTimestamp(),
-          createdByUserId: user.uid,
           updatedAt: serverTimestamp(),
-          assetUrl: "",
-          sessionId: "" // Standalone candidate
+          ownerUid: user.uid,
+          ownerName: "Administration Ekklesia",
+          ownerBio: "Direction des services techniques.",
+          links: [{ label: "Voir le plan directeur", url: "#" }]
         });
       }
-      toast({ title: "Projets générés", description: "10 projets de démonstration ont été ajoutés." });
+      toast({ title: "Projets générés", description: "5 projets de démonstration avec images ont été ajoutés." });
     } catch (e) {
       toast({ variant: "destructive", title: "Erreur", description: "Échec de la génération." });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const clearAllProjects = async () => {
+    if (!confirm("Voulez-vous vraiment supprimer TOUS les projets ? Cette action est irréversible.")) return;
+    
+    setIsGenerating(true);
+    try {
+      const snap = await getDocs(collection(db, 'projects'));
+      for (const docSnap of snap.docs) {
+        await deleteDoc(doc(db, 'projects', docSnap.id));
+      }
+      toast({ title: "Projets supprimés", description: "La collection a été vidée." });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erreur lors de la suppression." });
     } finally {
       setIsGenerating(false);
     }
@@ -368,15 +409,26 @@ function AdminContent() {
               <LayoutGrid className="h-5 w-5" />
               Liste des Projets ({projects?.length || 0})
             </h2>
-            <Button 
-              onClick={generateDemoProjects} 
-              disabled={isGenerating}
-              variant="outline"
-              className="rounded-none border-primary text-primary hover:bg-primary hover:text-white font-bold uppercase tracking-widest text-xs gap-2"
-            >
-              {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-              {projects && projects.length > 0 ? "Ajouter 10 projets" : "Générer des projets (démo)"}
-            </Button>
+            <div className="flex gap-4">
+              <Button 
+                onClick={clearAllProjects} 
+                disabled={isGenerating || !projects || projects.length === 0}
+                variant="ghost"
+                className="rounded-none text-destructive hover:bg-destructive/5 font-bold uppercase tracking-widest text-xs gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                Vider
+              </Button>
+              <Button 
+                onClick={generateDemoProjects} 
+                disabled={isGenerating}
+                variant="outline"
+                className="rounded-none border-primary text-primary hover:bg-primary hover:text-white font-bold uppercase tracking-widest text-xs gap-2"
+              >
+                {isGenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                Générer 5 Projets Tests
+              </Button>
+            </div>
           </div>
 
           {!projects || projects.length === 0 ? (
@@ -391,19 +443,26 @@ function AdminContent() {
             <div className="grid gap-4">
               {projects.map((project) => (
                 <div key={project.id} className="border border-border p-6 bg-white hover:border-black transition-all flex flex-col md:flex-row md:items-center justify-between gap-6">
-                  <div className="space-y-2 flex-grow">
-                    <div className="flex items-center gap-3">
-                      <h4 className="font-bold text-lg">{project.title}</h4>
-                      <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-widest">
-                        {project.budget || "Sans budget"}
-                      </Badge>
+                  <div className="flex gap-6 items-center flex-grow">
+                    {project.imageUrl && (
+                      <div className="relative h-16 w-16 flex-shrink-0 border border-border bg-secondary overflow-hidden">
+                        <Image src={project.imageUrl} alt="" fill className="object-cover grayscale" />
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-3">
+                        <h4 className="font-bold text-lg">{project.title}</h4>
+                        <Badge variant="outline" className="text-[10px] uppercase font-bold tracking-widest">
+                          {project.budget}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground line-clamp-1 max-w-2xl">
+                        {project.summary}
+                      </p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground pt-1">
+                        Status: {project.status} • Par {project.ownerName}
+                      </p>
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2 max-w-2xl leading-relaxed">
-                      {project.summary}
-                    </p>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground pt-1">
-                      Ajouté le {project.createdAt?.seconds ? format(new Date(project.createdAt.seconds * 1000), 'dd MMM yyyy HH:mm', { locale: fr }) : '...'}
-                    </p>
                   </div>
                 </div>
               ))}

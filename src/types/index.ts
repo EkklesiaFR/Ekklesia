@@ -11,9 +11,18 @@ export interface Project {
   id: string;
   title: string;
   summary: string;
-  description?: string;
+  longDescription?: string;
   budget: string;
   imageUrl?: string;
+  ownerName?: string;
+  ownerBio?: string;
+  links?: { label: string; url: string }[];
+  status: "draft" | "submitted" | "approved" | "elected" | "rejected" | "candidate";
+  createdAt: any;
+  updatedAt: any;
+  ownerUid?: string;
+  ownerEmail?: string;
+  sessionId?: string;
 }
 
 export interface Assembly {
