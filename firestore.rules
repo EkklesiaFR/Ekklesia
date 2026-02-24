@@ -48,19 +48,24 @@ service cloud.firestore {
           allow get: if isOwner(uid) || isAdminActive();
           allow list: if isAdminActive();
           
-          allow create: if isMemberActive()
-            && uid == request.auth.uid
-            && !exists(request.path)
-            && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data.state == "open"
-            && request.time >= get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data.opensAt
-            && request.time <= get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data.closesAt;
-            
-          allow update, delete: if false;
+          function isValidBallotRequest() {
+            let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data;
+            return isMemberActive()
+              && uid == request.auth.uid
+              && vote.state == "open"
+              && (vote.opensAt == null || request.time >= vote.opensAt)
+              && (vote.closesAt == null || request.time <= vote.closesAt)
+              && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
+          }
+
+          allow create: if isValidBallotRequest() && !exists(request.path);
+          allow update: if isValidBallotRequest();
+          allow delete: if false;
         }
       }
     }
 
-    // Compatibilité avec les anciennes collections (optionnel, selon besoin)
+    // Compatibilité avec les anciennes collections
     match /publicVotingSessions/{sessionId} {
       allow read: if true;
       allow write: if isAdminActive();
