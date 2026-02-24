@@ -25,7 +25,6 @@ export function MainLayout({
 
   // Détection dynamique d'un vote ouvert dans toute la base.
   // On ne lance la requête que si l'utilisateur est un membre actif pour respecter les règles de sécurité Firestore
-  // et éviter les erreurs de permission sur les pages publiques (Login, etc.).
   const openVoteQuery = useMemoFirebase(() => {
     if (isMemberLoading || !isActiveMember) return null;
     return query(collectionGroup(db, 'votes'), where('state', '==', 'open'), limit(1));

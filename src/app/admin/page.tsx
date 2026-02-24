@@ -206,13 +206,19 @@ function AdminContent() {
 
   const updateSessionState = async (assemblyId: string, newState: 'open' | 'closed') => {
     try {
+      // 1. Mettre à jour l'assemblée
       await updateDoc(doc(db, 'assemblies', assemblyId), { state: newState });
-      const sessionVotes = allVotes?.filter(v => v.assemblyId === assemblyId) || [];
-      for (const v of sessionVotes) {
-        await updateDoc(doc(db, 'assemblies', assemblyId, 'votes', v.id), { state: newState });
+      
+      // 2. Récupérer et mettre à jour explicitement les documents de vote dans la sous-collection
+      // C'est plus fiable que de compter sur une collectionGroup filtrée localement
+      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
+      for (const voteDoc of votesSnap.docs) {
+        await updateDoc(doc(db, 'assemblies', assemblyId, 'votes', voteDoc.id), { state: newState });
       }
+      
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'fermée'}` });
     } catch (e: any) {
+      console.error("Erreur mise à jour session:", e);
       toast({ variant: "destructive", title: "Erreur", description: "Action impossible." });
     }
   };

@@ -34,9 +34,10 @@ service cloud.firestore {
       allow write: if isAdminActive();
     }
 
-    // Projets - Réservé strictement aux administrateurs actifs
+    // Projets
     match /projects/{projectId} {
-      allow read, write: if isAdminActive();
+      allow read: if isMemberActive();
+      allow write: if isAdminActive();
     }
 
     // Assemblées et Votes

@@ -28,25 +28,36 @@ function AssemblyDashboardContent() {
 
   // 1. Récupération de la session de vote ouverte ou close
   const activeVoteQuery = useMemoFirebase(() => {
-    // On cherche d'abord le vote ouvert, sinon le plus récent clos
-    return query(collectionGroup(db, 'votes'), where('state', 'in', ['open', 'closed']), limit(1));
+    // On cherche d'abord les votes actifs pour en trouver un 'open'
+    return query(collectionGroup(db, 'votes'), where('state', 'in', ['open', 'closed']), limit(5));
   }, [db]);
 
   const { data: votes, isLoading: isVotesLoading, error: voteError } = useCollection<Vote>(activeVoteQuery);
-  const activeVote = votes?.[0];
+  
+  // Priorité au vote 'open', sinon le premier trouvé
+  const activeVote = votes?.find(v => v.state === 'open') || votes?.[0];
 
   // Logs de diagnostic
   useEffect(() => {
     console.log('[DEBUG] AssemblyDashboard: votes récupérés:', votes);
+    if (votes) {
+        console.log(`[DEBUG] AssemblyDashboard: ${votes.length} vote(s) trouvé(s). Vote actif:`, activeVote);
+    }
     if (voteError) console.error('[DEBUG] AssemblyDashboard: Erreur query votes:', voteError);
-  }, [votes, voteError]);
+  }, [votes, voteError, activeVote]);
 
   // 2. Récupération des projets
   const projectsQuery = useMemoFirebase(() => {
     return collection(db, 'projects');
   }, [db]);
-  const { data: allProjects } = useCollection<Project>(projectsQuery);
+  const { data: allProjects, error: projectsError } = useCollection<Project>(projectsQuery);
+  
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
+
+  useEffect(() => {
+    if (projectsError) console.error('[DEBUG] AssemblyDashboard: Erreur query projets:', projectsError);
+    if (allProjects) console.log(`[DEBUG] AssemblyDashboard: ${allProjects.length} projets au total.`);
+  }, [allProjects, projectsError]);
 
   // 3. Récupération des bulletins (uniquement si un vote est identifié)
   const ballotsQuery = useMemoFirebase(() => {
