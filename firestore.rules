@@ -4,7 +4,7 @@ service cloud.firestore {
 
     /**
      * EKKLESIA VOTE SECURITY RULES
-     * Version: 1.2 - Robust Public Access & Profile Security
+     * Version: 1.3 - Public Access for Home Results
      */
 
     // --- HELPER FUNCTIONS ---
@@ -28,7 +28,7 @@ service cloud.firestore {
      * This is required for the homepage "Derniers projets financés" section.
      */
     match /publicVotingSessions/{sessionId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isAdmin();
     }
 
