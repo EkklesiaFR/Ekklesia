@@ -6,6 +6,7 @@ import { MobileNav } from './MobileNav';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collectionGroup, query, where, limit } from 'firebase/firestore';
 import { Vote } from '@/types';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 /**
  * MainLayout gère désormais dynamiquement l'état "Vote Ouvert" pour toute l'application.
@@ -20,24 +21,25 @@ export function MainLayout({
   statusText?: string 
 }) {
   const db = useFirestore();
+  const { isActiveMember, isMemberLoading } = useAuthStatus();
 
-  // Détection dynamique d'un vote ouvert dans toute la base
+  // Détection dynamique d'un vote ouvert dans toute la base.
+  // On ne lance la requête que si l'utilisateur est un membre actif pour respecter les règles de sécurité Firestore
+  // et éviter les erreurs de permission sur les pages publiques (Login, etc.).
   const openVoteQuery = useMemoFirebase(() => {
+    if (isMemberLoading || !isActiveMember) return null;
     return query(collectionGroup(db, 'votes'), where('state', '==', 'open'), limit(1));
-  }, [db]);
+  }, [db, isActiveMember, isMemberLoading]);
 
-  const { data: openVotes, error } = useCollection<Vote>(openVoteQuery);
+  const { data: openVotes } = useCollection<Vote>(openVoteQuery);
   const isVoteOpen = !!(openVotes && openVotes.length > 0);
 
-  // Logs de diagnostic (Dev only)
+  // Logs de diagnostic (uniquement si l'utilisateur est autorisé)
   useEffect(() => {
-    if (openVotes) {
+    if (isActiveMember && openVotes) {
       console.log(`[DEBUG] MainLayout: Vote ouvert détecté ? ${isVoteOpen}`, openVotes);
     }
-    if (error) {
-      console.error('[DEBUG] MainLayout: Erreur lors de la détection du vote:', error);
-    }
-  }, [openVotes, isVoteOpen, error]);
+  }, [openVotes, isVoteOpen, isActiveMember]);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
