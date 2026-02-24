@@ -33,6 +33,7 @@ export interface Assembly {
   createdBy: string;
   startsAt?: any;
   endsAt?: any;
+  activeVoteId?: string;
 }
 
 export interface Vote {

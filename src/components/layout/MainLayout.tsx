@@ -1,11 +1,11 @@
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode } from 'react';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collectionGroup, query, where, limit } from 'firebase/firestore';
-import { Vote } from '@/types';
+import { collection, query, where, limit } from 'firebase/firestore';
+import { Assembly } from '@/types';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 /**
@@ -23,22 +23,14 @@ export function MainLayout({
   const db = useFirestore();
   const { isActiveMember, isMemberLoading } = useAuthStatus();
 
-  // Détection dynamique d'un vote ouvert dans toute la base.
-  // On ne lance la requête que si l'utilisateur est un membre actif pour respecter les règles de sécurité Firestore
-  const openVoteQuery = useMemoFirebase(() => {
+  // Détection d'un vote ouvert : on regarde si une assemblée a l'état 'open'
+  const openAssemblyQuery = useMemoFirebase(() => {
     if (isMemberLoading || !isActiveMember) return null;
-    return query(collectionGroup(db, 'votes'), where('state', '==', 'open'), limit(1));
+    return query(collection(db, 'assemblies'), where('state', '==', 'open'), limit(1));
   }, [db, isActiveMember, isMemberLoading]);
 
-  const { data: openVotes } = useCollection<Vote>(openVoteQuery);
-  const isVoteOpen = !!(openVotes && openVotes.length > 0);
-
-  // Logs de diagnostic (uniquement si l'utilisateur est autorisé)
-  useEffect(() => {
-    if (isActiveMember && openVotes) {
-      console.log(`[DEBUG] MainLayout: Vote ouvert détecté ? ${isVoteOpen}`, openVotes);
-    }
-  }, [openVotes, isVoteOpen, isActiveMember]);
+  const { data: openAssemblies } = useCollection<Assembly>(openAssemblyQuery);
+  const isVoteOpen = !!(openAssemblies && openAssemblies.length > 0);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
