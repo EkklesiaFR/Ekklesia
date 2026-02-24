@@ -32,17 +32,17 @@ export function ProjectDetailModal({ project, isOpen, onClose }: ProjectDetailMo
           <div className="space-y-12">
             <header className="space-y-4">
               <div className="flex items-start justify-between gap-8">
-                <h2 className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
+                <DialogPrimitive.Title className="text-4xl md:text-5xl font-bold tracking-tight leading-tight">
                   {project.title}
-                </h2>
+                </DialogPrimitive.Title>
                 <DialogPrimitive.Close className="flex-shrink-0 p-2 hover:bg-secondary transition-colors">
                   <X className="h-6 w-6" />
                   <span className="sr-only">Close</span>
                 </DialogPrimitive.Close>
               </div>
-              <p className="text-lg font-medium text-muted-foreground">
+              <DialogPrimitive.Description className="text-lg font-medium text-muted-foreground">
                 Budget : {project.budget}
-              </p>
+              </DialogPrimitive.Description>
             </header>
 
             {project.imageUrl && (
