@@ -47,6 +47,7 @@ import { Assembly, Vote, Project } from '@/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
+import Image from 'next/image';
 
 function AdminContent() {
   const { user } = useUser();
