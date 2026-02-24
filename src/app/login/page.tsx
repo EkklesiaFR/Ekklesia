@@ -3,21 +3,20 @@
 
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
-import { useAuth, useUser, useFirestore } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 import { signInWithGoogle } from '@/firebase/non-blocking-login';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { LogIn } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { doc, getDoc } from 'firebase/firestore';
 import { getRedirectResult } from 'firebase/auth';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 export default function LoginPage() {
   const auth = useAuth();
-  const db = useFirestore();
   const { user, isUserLoading } = useUser();
+  const { isActiveMember, isMemberLoading } = useAuthStatus();
   const router = useRouter();
-  const [isChecking, setIsChecking] = useState(false);
 
   useEffect(() => {
     const handleRedirectResult = async () => {
@@ -36,30 +35,12 @@ export default function LoginPage() {
     handleRedirectResult();
   }, [auth]);
 
+  // Redirection automatique si déjà connecté et actif
   useEffect(() => {
-    if (!isUserLoading && user) {
-      const verifyAccess = async () => {
-        setIsChecking(true);
-        try {
-          const memberRef = doc(db, 'members', user.uid);
-          const memberSnap = await getDoc(memberRef);
-          
-          if (memberSnap.exists() && memberSnap.data().status === 'active') {
-            router.push('/');
-          } else {
-            router.push('/access-denied');
-          }
-        } catch (e) {
-          console.error('[ACCESS CHECK ERROR]', e);
-          router.push('/access-denied');
-        } finally {
-          setIsChecking(false);
-        }
-      };
-      
-      verifyAccess();
+    if (!isUserLoading && !isMemberLoading && user && isActiveMember) {
+      router.push('/');
     }
-  }, [user, isUserLoading, router, db]);
+  }, [user, isUserLoading, isMemberLoading, isActiveMember, router]);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -86,17 +67,11 @@ export default function LoginPage() {
         <div className="w-full max-w-sm space-y-6">
           <Button
             onClick={handleGoogleSignIn}
-            disabled={isChecking || isUserLoading}
+            disabled={isUserLoading}
             className="w-full h-14 bg-white hover:bg-secondary text-black border border-border rounded-none font-bold flex items-center justify-center gap-3 transition-all"
           >
-            {isChecking ? (
-              "Vérification..."
-            ) : (
-              <>
-                <LogIn className="h-5 w-5" />
-                Se connecter avec Google
-              </>
-            )}
+            <LogIn className="h-5 w-5" />
+            Se connecter avec Google
           </Button>
 
           <p className="text-[10px] uppercase tracking-widest text-center text-muted-foreground leading-relaxed">

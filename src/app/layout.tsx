@@ -1,7 +1,9 @@
+
 import type {Metadata} from 'next';
 import './globals.css';
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from '@/firebase/client-provider';
+import { AuthStatusProvider } from '@/components/auth/AuthStatusProvider';
 
 export const metadata: Metadata = {
   title: 'Ekklesia Vote',
@@ -22,8 +24,10 @@ export default function RootLayout({
       </head>
       <body className="font-body antialiased selection:bg-primary/20">
         <FirebaseClientProvider>
-          {children}
-          <Toaster />
+          <AuthStatusProvider>
+            {children}
+            <Toaster />
+          </AuthStatusProvider>
         </FirebaseClientProvider>
       </body>
     </html>
