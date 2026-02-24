@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { RankedList } from '@/components/voting/RankedList';
 import { Button } from '@/components/ui/button';
@@ -9,6 +9,7 @@ import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
+import { useUser } from '@/firebase';
 
 const MOCK_PROJECTS = [
   {
@@ -35,12 +36,24 @@ const MOCK_PROJECTS = [
 ];
 
 export default function VotePage() {
+  const { user, isUserLoading } = useUser();
   const router = useRouter();
   const [rankedIds, setRankedIds] = useState<string[]>(MOCK_PROJECTS.map(p => p.id));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
 
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      toast({
+        title: "Identification requise",
+        description: "Vous devez être connecté pour participer au vote.",
+      });
+      router.push('/login');
+    }
+  }, [user, isUserLoading, router]);
+
   const handleSubmit = async () => {
+    if (!user) return;
     setIsSubmitting(true);
     // Simulate server processing
     await new Promise(resolve => setTimeout(resolve, 1500));
@@ -52,6 +65,18 @@ export default function VotePage() {
       description: "Votre bulletin a été déposé avec succès dans l'urne numérique.",
     });
   };
+
+  if (isUserLoading || !user) {
+    return (
+      <MainLayout role="member" statusText="Vote ouvert">
+        <div className="flex items-center justify-center py-24">
+          <p className="text-sm uppercase tracking-widest text-muted-foreground animate-pulse">
+            Vérification de l'accès...
+          </p>
+        </div>
+      </MainLayout>
+    );
+  }
 
   if (hasVoted) {
     return (

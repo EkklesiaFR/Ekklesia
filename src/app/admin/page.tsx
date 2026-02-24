@@ -6,17 +6,41 @@ import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Settings, Plus, Users, BarChart3, Mail, Download } from 'lucide-react';
-import Link from 'next/link';
-import { generateProjectSummary } from '@/ai/flows/generate-project-summary';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useUser } from '@/firebase';
+import { useRouter } from 'next/navigation';
+import { toast } from '@/hooks/use-toast';
 
 export default function AdminDashboard() {
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
   const [isGenerating, setIsGenerating] = useState(false);
 
+  useEffect(() => {
+    if (!isUserLoading && !user) {
+      toast({
+        title: "Accès restreint",
+        description: "Vous devez être connecté pour accéder à l'administration.",
+      });
+      router.push('/login');
+    }
+  }, [user, isUserLoading, router]);
+
   const handleDryRun = () => {
-    // Simulated
     alert("Simulation de dépouillement : Le projet 'Rénovation du Parvis Central' est en tête avec 52% des scores Schulze.");
   };
+
+  if (isUserLoading || !user) {
+    return (
+      <MainLayout role="admin" statusText="Administration">
+        <div className="flex items-center justify-center py-24">
+          <p className="text-sm uppercase tracking-widest text-muted-foreground animate-pulse">
+            Vérification des droits...
+          </p>
+        </div>
+      </MainLayout>
+    );
+  }
 
   return (
     <MainLayout role="admin" statusText="Administration">
