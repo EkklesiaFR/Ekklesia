@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -7,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { ArrowRight, LayoutGrid, Award, CheckCircle2 } from 'lucide-react';
 import { VotingSession } from '@/types';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -25,19 +24,23 @@ const MOCK_CURRENT_SESSION: VotingSession = {
 };
 
 export default function Home() {
+  const { user, isUserLoading } = useUser();
   const db = useFirestore();
   const [session, setSession] = useState<VotingSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
-  // Query for the last published session - this is the public access point
+  // Emergency Fix: Only run public queries if the user is identified to prevent permission crashes
+  // Requirement: Skip queries (including public) if unauthenticated to ensure stability
   const lastPublishedSessionQuery = useMemoFirebase(() => {
+    if (isUserLoading || !user) return null;
+    
     return query(
       collection(db, 'publicVotingSessions'),
       where('status', '==', 'published'),
       orderBy('resultsPublishedAt', 'desc'),
       limit(1)
     );
-  }, [db]);
+  }, [db, user, isUserLoading]);
 
   const { data: publishedSessions, isLoading: isPublishedLoading } = useCollection(lastPublishedSessionQuery);
   const lastPublishedSession = publishedSessions?.[0] as any | undefined;
