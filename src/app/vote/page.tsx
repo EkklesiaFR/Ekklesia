@@ -27,7 +27,7 @@ function VoteGate() {
 
   // 2. Charger le vote spécifique via activeVoteId
   const voteRef = useMemoFirebase(() => {
-    if (!activeAssembly?.activeVoteId) return null;
+    if (!activeAssembly?.activeVote甩d) return null;
     return doc(db, 'assemblies', activeAssembly.id, 'votes', activeAssembly.activeVoteId);
   }, [db, activeAssembly]);
   const { data: activeVote, isLoading: isVoteLoading, error: voteError } = useDoc<Vote>(voteRef);
@@ -68,8 +68,9 @@ function VoteGate() {
       </div>
       <p>Assembly ID: {activeAssembly?.id || 'null'}</p>
       <p>Assembly State: {activeAssembly?.state || 'null'}</p>
-      <p>activeVoteId: {activeAssembly?.activeVoteId || 'null'}</p>
+      <p>activeVoteId: {activeAssembly?.activeVote甩d || 'null'}</p>
       <p>Vote Path: {activeAssembly && activeAssembly.activeVoteId ? `assemblies/${activeAssembly.id}/votes/${activeAssembly.activeVoteId}` : 'N/A'}</p>
+      <p>Vote Doc Exists: {activeVote ? 'YES' : 'NO'}</p>
       <p>Vote State: {activeVote?.state || 'null'}</p>
       <p>Project IDs in Vote: {activeVote?.projectIds?.length || 0}</p>
       <p>Resolved Projects: {voteProjects.length}</p>
@@ -106,7 +107,7 @@ function VoteGate() {
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
           <h1 className="text-2xl font-bold">Assemblée ouverte mais configuration incomplète</h1>
-          <p className="text-muted-foreground">Le document de vote n'est pas encore lié à cette assemblée.</p>
+          <p className="text-muted-foreground">Le document de vote n'est pas encore lié à cette assemblée (activeVoteId manquant).</p>
         </div>
         {debugPanel}
       </>
@@ -118,7 +119,7 @@ function VoteGate() {
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
           <h1 className="text-2xl font-bold">Vote introuvable</h1>
-          <p className="text-muted-foreground">Le scrutin lié (ID: {activeAssembly.activeVoteId}) n'existe pas dans Firestore.</p>
+          <p className="text-muted-foreground">Le scrutin lié (ID: {activeAssembly.activeVoteId}) n'existe pas dans la sous-collection.</p>
         </div>
         {debugPanel}
       </>
@@ -130,7 +131,7 @@ function VoteGate() {
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
           <h1 className="text-2xl font-bold">Le vote est clos</h1>
-          <p className="text-muted-foreground">La session de vote pour cette assemblée est terminée.</p>
+          <p className="text-muted-foreground">La session de vote pour cette assemblée est terminée (state: {activeVote.state}).</p>
         </div>
         {debugPanel}
       </>
@@ -142,7 +143,7 @@ function VoteGate() {
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
           <h1 className="text-2xl font-bold">Aucun projet associé</h1>
-          <p className="text-muted-foreground">Ce vote ne contient aucun projet à classer.</p>
+          <p className="text-muted-foreground">Ce vote ne contient aucun projet à classer (projectIds vides).</p>
         </div>
         {debugPanel}
       </>
@@ -154,7 +155,7 @@ function VoteGate() {
       <VoteModule 
         vote={activeVote} 
         projects={voteProjects} 
-        userBallot={userBallot} 
+        userBallot={userBall ಕ್ಕೆ userBallot} 
         assemblyId={activeAssembly.id}
       />
       {debugPanel}

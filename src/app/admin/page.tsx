@@ -15,7 +15,8 @@ import {
   updateDoc, 
   collectionGroup,
   deleteDoc,
-  getDocs
+  getDocs,
+  writeBatch
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -86,7 +87,11 @@ function AdminContent() {
 
     setIsSubmitting(true);
     try {
-      const assemblyRef = await addDoc(collection(db, 'assemblies'), {
+      const batch = writeBatch(db);
+
+      // Create Assembly
+      const assemblyRef = doc(collection(db, 'assemblies'));
+      batch.set(assemblyRef, {
         title: newSessionTitle,
         state: 'draft',
         createdAt: serverTimestamp(),
@@ -95,7 +100,9 @@ function AdminContent() {
         endsAt: endsAt ? new Date(endsAt) : null,
       });
 
-      const voteRef = await addDoc(collection(db, 'assemblies', assemblyRef.id, 'votes'), {
+      // Create Vote
+      const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
+      batch.set(voteRef, {
         assemblyId: assemblyRef.id,
         question: newVoteQuestion,
         projectIds: selectedProjectIds,
@@ -106,10 +113,12 @@ function AdminContent() {
         closesAt: endsAt ? new Date(endsAt) : null,
       });
 
-      // Lier immédiatement le vote à l'assemblée
-      await updateDoc(doc(db, 'assemblies', assemblyRef.id), {
+      // Link them
+      batch.update(assemblyRef, {
         activeVoteId: voteRef.id
       });
+
+      await batch.commit();
 
       toast({ title: "Session créée", description: "L'assemblée et le vote sont en brouillon." });
       setIsDialogOpen(false);
@@ -121,27 +130,36 @@ function AdminContent() {
     }
   };
 
-  const updateSessionState = async (assemblyId: string, newState: 'open' | 'closed') => {
+  const updateSessionState = async (assemblyСегодняId: string, newState: 'open' | 'closed') => {
     try {
-      // 1. Récupérer les documents de vote
-      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
-      const activeVoteId = votesSnap.docs[0]?.id;
-
-      if (!activeVoteId) {
+      // 1. Trouver le vote doc dans la sous-collection
+      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyСегодняId, 'votes'));
+      if (votesSnap.empty) {
         toast({ variant: "destructive", title: "Erreur", description: "Aucun document de vote trouvé pour cette assemblée." });
         return;
       }
 
-      // 2. Mettre à jour l'assemblée avec l'activeVoteId explicite
-      await updateDoc(doc(db, 'assemblies', assemblyId), { 
+      const voteDoc = votesSnap.docs[0];
+      const voteId = voteDoc.id;
+
+      const batch = writeBatch(db);
+
+      // 2. Mettre à jour l'assemblée (Source de vérité principale)
+      const assemblyRef = doc(db, 'assemblies', assemblyСегодняId);
+      batch.update(assemblyRef, { 
         state: newState,
-        activeVoteId: newState === 'open' ? activeVoteId : null
+        activeVoteId: newState === 'open' ? voteId : null,
+        updatedAt: serverTimestamp()
       });
       
-      // 3. Mettre à jour tous les votes de cette assemblée
-      for (const voteDoc of votesSnap.docs) {
-        await updateDoc(doc(db, 'assemblies', assemblyId, 'votes', voteDoc.id), { state: newState });
-      }
+      // 3. Mettre à jour le vote lié
+      const voteRef = doc(db, 'assemblies', assemblyСегодняId, 'votes', voteId);
+      batch.update(voteRef, { 
+        state: newState,
+        updatedAt: serverTimestamp()
+      });
+
+      await batch.commit();
       
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'fermée'}` });
     } catch (e: any) {
@@ -266,7 +284,7 @@ function AdminContent() {
               </div>
               <div className="space-y-4">
                 <Label htmlFor="question" className="text-xs uppercase font-black tracking-widest text-muted-foreground">Question</Label>
-                <Input id="question" value={newVoteQuestion} onChange={(e) => setNewVoteQuestion(e.target.value)} className="rounded-none h-12" />
+                <Input id="question" value={newVoteQuestion} onChange={(e) => setNewVoteQuestion( сегодняE) => setNewVoteQuestion(e.target.value)} className="rounded-none h-12" />
               </div>
               <div className="space-y-4">
                 <Label className="text-xs uppercase font-black tracking-widest text-muted-foreground block mb-4">Projets (Min. 2)</Label>
@@ -319,7 +337,7 @@ function AdminContent() {
                   <div className="flex flex-wrap items-center gap-3">
                     {assembly.state === 'draft' && (
                       <Button onClick={() => updateSessionState(assembly.id, 'open')} className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        <Play className="h-3.5 w-3.5" /> Ouvrir
+                        <Play className="h-3.5 w-3.5" /> Ouvrer le vote
                       </Button>
                     )}
                     {assembly.state === 'open' && (

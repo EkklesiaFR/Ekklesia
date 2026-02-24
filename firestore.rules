@@ -2,8 +2,6 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- FONCTIONS DE VÉRIFICATION ---
-
     function isSignedIn() {
       return request.auth != null;
     }
@@ -17,30 +15,26 @@ service cloud.firestore {
     }
 
     function isMemberActive() {
-      return isSignedIn() && exists(/databases/$(database)/documents/members/$(request.auth.uid)) 
-             && getMemberData().status == "active";
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        && getMemberData().status == "active";
     }
 
     function isAdminActive() {
       return isMemberActive() && getMemberData().role == "admin";
     }
 
-    // --- RÈGLES DES COLLECTIONS ---
-
-    // Profils membres
     match /members/{uid} {
       allow get: if isSignedIn() && (isOwner(uid) || isAdminActive());
       allow list: if isAdminActive();
       allow write: if isAdminActive();
     }
 
-    // Projets (Lecture pour membres actifs, écriture admin)
     match /projects/{projectId} {
       allow read: if isMemberActive();
       allow write: if isAdminActive();
     }
 
-    // Assemblées et Votes
     match /assemblies/{assemblyId} {
       allow read: if isMemberActive();
       allow write: if isAdminActive();
@@ -49,17 +43,17 @@ service cloud.firestore {
         allow read: if isMemberActive();
         allow write: if isAdminActive();
 
-        // Bulletins de vote
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive();
-          allow list: if isAdminActive() || isMemberActive();
-          
+          // ⚠️ je te conseille de retirer "list" pour les membres (sinon un membre peut lister les bulletins)
+          allow list: if isAdminActive();
+
           function isValidBallotRequest() {
             let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data;
             return isMemberActive()
               && uid == request.auth.uid
               && vote.state == "open"
-              && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
+              && request.resource.data.keys().hasOnly(['ranking','castAt','updatedAt']);
           }
 
           allow create: if isValidBallotRequest();
@@ -67,12 +61,6 @@ service cloud.firestore {
           allow delete: if false;
         }
       }
-    }
-
-    // Compatibilité avec les anciennes collections
-    match /publicVotingSessions/{sessionId} {
-      allow read: if true;
-      allow write: if isAdminActive();
     }
   }
 }
