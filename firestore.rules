@@ -1,0 +1,169 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    /**
+     * EKKLESIA VOTE SECURITY RULES
+     *
+     * CORE PHILOSOPHY
+     * This ruleset implements a strict administrative-control model combined with user-specific ownership 
+     * for voting activities. It leverages "Authorization Independence" by using denormalized status fields 
+     * and a dedicated "roles_admin" collection to minimize cross-document lookups (get() calls), 
+     * ensuring high performance and atomic authorization.
+     *
+     * DATA STRUCTURE
+     * - /userProfiles/{userId}: Private user data.
+     * - /roles_admin/{userId}: Existence-based administrative flag.
+     * - /votingSessions/{sessionId}: Admin-managed session metadata.
+     * - /votingSessions/{sessionId}/projects/{projectId}: Session-specific proposals.
+     * - /userProfiles/{userId}/ballots/{ballotId}: User-specific ranked votes.
+     * - /votingResults/{sessionId}: Tally results, public once published.
+     * - /publicVotingSessions/{sessionId}: Segregated collection for public homepage display.
+     *
+     * KEY SECURITY DECISIONS
+     * 1. DBAC (Database-Based Access Control): Administrative status is determined by the existence 
+     *    of a document in the /roles_admin collection.
+     * 2. Window-Based Voting: Ballot creation is restricted based on denormalized session times 
+     *    within the ballot document itself to avoid slow lookups during high-traffic voting periods.
+     * 3. Structural Segregation: Public homepage data is mirrored to /publicVotingSessions to 
+     *    allow open 'list' queries without exposing sensitive draft session data.
+     * 4. Relational Integrity: On ballot creation, the ballot ID must match the session ID 
+     *    to enforce a "one vote per user per session" constraint.
+     */
+
+    // --- HELPER FUNCTIONS ---
+
+    /** @description Checks if the request is from an authenticated user. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** @description Checks if the authenticated user is a platform administrator. */
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    /** @description Checks if the authenticated user's UID matches the provided userId. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    /** @description Checks ownership and ensures the document exists for updates/deletes. */
+    function isExistingOwner(userId) {
+      return isOwner(userId) && resource != null;
+    }
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description User profile management. Users manage their own; admins manage all.
+     * @path /userProfiles/{userId}
+     * @allow (create) if auth.uid == userId
+     * @deny (update) if auth.uid != userId && !isAdmin()
+     * @principle Path-based ownership and role-based access.
+     */
+    match /userProfiles/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId);
+      allow update: if isExistingOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
+
+      /**
+       * @description User-specific ballots. Immutable once cast. 
+       * @path /userProfiles/{userId}/ballots/{ballotId}
+       * @allow (create) if auth.uid == userId && ballotId == session_id && window_is_open
+       * @deny (update) Always denied (ballots are immutable).
+       * @principle Denormalization for time-window validation and path-based ownership.
+       */
+      match /ballots/{ballotId} {
+        allow get: if isOwner(userId) || isAdmin();
+        allow list: if isOwner(userId) || isAdmin();
+        // Validation: Must be the owner, and ballotId must match sessionId to enforce 1 per session.
+        // Prototyping Mode: We don't check data types, only relational/auth critical fields.
+        allow create: if isOwner(userId) 
+          && request.resource.data.sessionId == ballotId
+          && request.time >= request.resource.data.sessionOpenTime
+          && request.time <= request.resource.data.sessionCloseTime;
+        allow update, delete: if false;
+      }
+    }
+
+    /**
+     * @description Administrative role assignments. Existence-based DBAC.
+     * @path /roles_admin/{userId}
+     * @allow (get) if isSignedIn()
+     * @deny (write) if !isAdmin()
+     * @principle Existence-based permissions (DBAC).
+     */
+    match /roles_admin/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Allowed email list for registration. Admin only.
+     * @path /emailAllowlist/{emailEntryId}
+     * @allow (read) if isAdmin()
+     * @deny (create) if !isAdmin()
+     * @principle Administrative lockdown of system allowlists.
+     */
+    match /emailAllowlist/{emailEntryId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Internal management of voting sessions. Admin only.
+     * @path /votingSessions/{sessionId}
+     * @allow (read/write) if isAdmin()
+     * @deny (read) if !isAdmin()
+     * @principle Segregation of administrative session management.
+     */
+    match /votingSessions/{sessionId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+
+      /**
+       * @description Projects within a session. Publicly readable after announcement.
+       * @path /votingSessions/{sessionId}/projects/{projectId}
+       * @allow (get) if admin OR current_time >= sessionAnnouncementTime
+       * @deny (write) if !isAdmin()
+       * @principle Authorization Independence via denormalized announcement times.
+       */
+      match /projects/{projectId} {
+        allow get: if isAdmin() || (resource != null && request.time >= resource.data.sessionAnnouncementTime);
+        // Note: list is restricted to admin as it cannot securely evaluate resource data in this context per P6.
+        allow list: if isAdmin();
+        allow create, update, delete: if isAdmin();
+      }
+    }
+
+    /**
+     * @description Computed voting results. Public read if results are published.
+     * @path /votingResults/{sessionId}
+     * @allow (get) if admin OR published == true
+     * @deny (create) if !isAdmin()
+     * @principle Denormalized status flag for public result visibility.
+     */
+    match /votingResults/{sessionId} {
+      allow get: if isAdmin() || (resource != null && resource.data.isSessionResultsPublished == true);
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Publicly published sessions for homepage "Dernière assemblée".
+     * @path /publicVotingSessions/{sessionId}
+     * @allow (read) if true
+     * @deny (write) if !isAdmin()
+     * @principle Structural segregation for safe public listing of published data.
+     */
+    match /publicVotingSessions/{sessionId} {
+      allow get, list: if true;
+      allow create, update, delete: if isAdmin();
+    }
+
+  }
+}

@@ -1,0 +1,435 @@
+{
+  "entities": {
+    "UserProfile": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "UserProfile",
+      "type": "object",
+      "description": "Represents a user of the Ekklesia Vote application, storing their role and membership status. This entity does not store authentication credentials, which are handled by an external system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the UserProfile entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "The user's email address, used for login and allowlist enforcement.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "The role assigned to the user (e.g., 'admin', 'member'), determining their application permissions."
+        },
+        "membershipStatus": {
+          "type": "string",
+          "description": "The current membership status of the user (e.g., 'active', 'inactive')."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the user profile was first created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the user profile was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "role",
+        "membershipStatus",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "EmailAllowlistEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "EmailAllowlistEntry",
+      "type": "object",
+      "description": "Represents a single email address that is officially allowed to register and participate in voting sessions.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the EmailAllowlistEntry entity."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address allowed to register and vote.",
+          "format": "email"
+        },
+        "addedByUserId": {
+          "type": "string",
+          "description": "Reference to the UserProfile ID of the administrator who added this email to the allowlist. (Relationship: UserProfile 1:N EmailAllowlistEntry)"
+        },
+        "addedAt": {
+          "type": "string",
+          "description": "Timestamp when the email was added to the allowlist.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "email",
+        "addedByUserId",
+        "addedAt"
+      ]
+    },
+    "VotingSession": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "VotingSession",
+      "type": "object",
+      "description": "Manages the details, schedule, and lifecycle status of a single voting session, allowing admins to define its timeline and members to participate.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the VotingSession entity."
+        },
+        "title": {
+          "type": "string",
+          "description": "The title or name of the voting session."
+        },
+        "announcementTime": {
+          "type": "string",
+          "description": "The date and time when the projects for this session become visible to members.",
+          "format": "date-time"
+        },
+        "openTime": {
+          "type": "string",
+          "description": "The date and time when voting officially opens for this session.",
+          "format": "date-time"
+        },
+        "closeTime": {
+          "type": "string",
+          "description": "The date and time when voting officially closes for this session.",
+          "format": "date-time"
+        },
+        "status": {
+          "type": "string",
+          "description": "The current lifecycle status of the voting session (e.g., 'upcoming', 'announcement_open', 'voting_open', 'voting_closed', 'results_tallied', 'results_published')."
+        },
+        "createdByUserId": {
+          "type": "string",
+          "description": "Reference to the UserProfile ID of the administrator who created this session. (Relationship: UserProfile 1:N VotingSession)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the voting session was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the voting session was last updated.",
+          "format": "date-time"
+        },
+        "resultsPublishedAt": {
+          "type": "string",
+          "description": "The date and time when the final results for this session were published. This field is null until results are officially made public.",
+          "format": "date-time"
+        },
+        "totalBallotsCast": {
+          "type": "number",
+          "description": "The current total number of ballots submitted for this session. This count updates in real-time during the voting window and serves for live turnout display."
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "announcementTime",
+        "openTime",
+        "closeTime",
+        "status",
+        "createdByUserId",
+        "createdAt",
+        "updatedAt",
+        "totalBallotsCast"
+      ]
+    },
+    "Project": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Project",
+      "type": "object",
+      "description": "Represents a single project proposed for consideration within a voting session, including its details and associated assets.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Project entity."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Reference to the VotingSession ID this project belongs to. (Relationship: VotingSession 1:N Project)"
+        },
+        "title": {
+          "type": "string",
+          "description": "The title of the project."
+        },
+        "summary": {
+          "type": "string",
+          "description": "A brief summary or description of the project."
+        },
+        "budget": {
+          "type": "number",
+          "description": "The allocated budget for the project."
+        },
+        "assetUrl": {
+          "type": "string",
+          "description": "A URL pointing to additional assets or information related to the project.",
+          "format": "uri"
+        },
+        "createdByUserId": {
+          "type": "string",
+          "description": "Reference to the UserProfile ID of the administrator who added this project. (Relationship: UserProfile 1:N Project)"
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp when the project was created.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the project was last updated.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "sessionId",
+        "title",
+        "summary",
+        "budget",
+        "assetUrl",
+        "createdByUserId",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Ballot": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Ballot",
+      "type": "object",
+      "description": "Represents a member's submitted ranked vote for a specific voting session, which is final and immutable.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Ballot entity."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Reference to the VotingSession ID for which this ballot was cast. (Relationship: VotingSession 1:N Ballot)"
+        },
+        "submittedByUserId": {
+          "type": "string",
+          "description": "Reference to the UserProfile ID of the member who submitted this ballot. (Relationship: UserProfile 1:N Ballot)"
+        },
+        "rankedProjectIds": {
+          "type": "array",
+          "description": "An ordered array of Project IDs representing the member's ranked preferences, from most preferred to least preferred.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "submittedAt": {
+          "type": "string",
+          "description": "Timestamp when the ballot was submitted.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "sessionId",
+        "submittedByUserId",
+        "rankedProjectIds",
+        "submittedAt"
+      ]
+    },
+    "VotingResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "VotingResult",
+      "type": "object",
+      "description": "Stores the final, computed results for a specific voting session, including the winning project, overall ranking, and total ballot count.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the VotingResult entity. For a 1:1 relationship, this ID typically matches the associated sessionId."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Reference to the VotingSession ID for which these results apply. (Relationship: VotingSession 1:1 VotingResult)"
+        },
+        "winnerProjectId": {
+          "type": "string",
+          "description": "Reference to the Project ID that was determined as the winner of the session. (Relationship: Project 1:1 VotingResult)"
+        },
+        "rankedProjectIds": {
+          "type": "array",
+          "description": "An ordered array of Project IDs representing the final overall ranking of projects for the session, from highest ranked to lowest ranked.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "totalBallotsCount": {
+          "type": "number",
+          "description": "The final, total count of submitted ballots that were included in the tally calculation for this session."
+        },
+        "tallyComputationTimestamp": {
+          "type": "string",
+          "description": "Timestamp when the vote tally was computed.",
+          "format": "date-time"
+        },
+        "computedByUserId": {
+          "type": "string",
+          "description": "Reference to the UserProfile ID of the administrator who initiated the tally computation (e.g., dry run, manual trigger), or a system identifier if automated. (Relationship: UserProfile 1:N VotingResult - indicating which user computed the tally)."
+        }
+      },
+      "required": [
+        "id",
+        "sessionId",
+        "winnerProjectId",
+        "rankedProjectIds",
+        "totalBallotsCount",
+        "tallyComputationTimestamp"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/userProfiles/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "Stores user-specific data, including their role and membership status. `userId` matches the Firebase Authentication UID. Users can read and update their own profile; administrators can manage all profiles. No additional denormalization for authorization is needed as access is based on ownerId or admin role."
+        }
+      },
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "UserProfile",
+          "schema": {
+            "$ref": "#/backend/entities/UserProfile"
+          },
+          "description": "A dedicated top-level collection to flag administrative users. The mere existence of a document at `/roles_admin/{userId}` with a simple identifier (e.g., `true` or an empty object) grants administrative privileges to the corresponding user. This adheres to the DBAC principle 'Existence over Content'. Only other administrators can create or delete documents in this collection.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user designated as an administrator."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/emailAllowlist/{emailEntryId}",
+        "definition": {
+          "entityName": "EmailAllowlistEntry",
+          "schema": {
+            "$ref": "#/backend/entities/EmailAllowlistEntry"
+          },
+          "description": "Manages the list of email addresses permitted to register and vote. Each document represents an allowed email. For simplicity, `emailEntryId` can be the email address itself. Only administrators have write access; backend Cloud Functions can read for registration and ballot submission validation.",
+          "params": [
+            {
+              "name": "emailEntryId",
+              "description": "The unique identifier for the email allowlist entry, often the email address itself."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/votingSessions/{sessionId}",
+        "definition": {
+          "entityName": "VotingSession",
+          "schema": {
+            "$ref": "#/backend/entities/VotingSession"
+          },
+          "description": "The primary collection for managing all voting sessions, including their full details, schedule, and current status. This collection is primarily for administrative management and reporting, with comprehensive read/write access for administrators only. Publicly visible session data is handled by the segregated `/publicVotingSessions` collection.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "The unique ID of the voting session."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/votingSessions/{sessionId}/projects/{projectId}",
+        "definition": {
+          "entityName": "Project",
+          "schema": {
+            "$ref": "#/backend/entities/Project"
+          },
+          "description": "Contains projects submitted for a specific voting session. To ensure Authorization Independence and support QAPs, each project document denormalizes key session timeline and status fields (`sessionAnnouncementTime`, `sessionOpenTime`, `sessionCloseTime`, `sessionStatus`, `sessionTitle`) from its parent `VotingSession`. This allows members to read project details securely once the `sessionAnnouncementTime` has passed without requiring `get()` calls in security rules. Admins have full access.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "The unique ID of the parent voting session."
+            },
+            {
+              "name": "projectId",
+              "description": "The unique ID of the project."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/userProfiles/{userId}/ballots/{ballotId}",
+        "definition": {
+          "entityName": "Ballot",
+          "schema": {
+            "$ref": "#/backend/entities/Ballot"
+          },
+          "description": "Stores individual member ballots. This path-based ownership ensures that only the submitting user (`userId` matching `request.auth.uid`) can create or read their own ballot. To enable robust and atomic security rules without `get()` calls, each ballot denormalizes `sessionOpenTime`, `sessionCloseTime`, and `sessionStatus` from the relevant `VotingSession`. Creation is restricted to the active voting window and once per user per session (by setting `ballotId` to `sessionId`). Ballots are immutable after submission.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique ID of the user who submitted this ballot."
+            },
+            {
+              "name": "ballotId",
+              "description": "The unique ID of the ballot, which also serves as the sessionId to enforce one ballot per user per session."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/votingResults/{sessionId}",
+        "definition": {
+          "entityName": "VotingResult",
+          "schema": {
+            "$ref": "#/backend/entities/VotingResult"
+          },
+          "description": "Stores the final, computed results for a voting session. This is a top-level collection for direct lookup. To achieve Authorization Independence and support QAPs for public display, each document includes denormalized fields like `isSessionResultsPublished`, `resultsPublishedAt`, `sessionTitle`, and `winnerProjectTitle`. This allows public read access directly when `isSessionResultsPublished` is true, without requiring a `get()` call to the parent `VotingSession` document to check its status.",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "The unique ID of the voting session for which these results apply."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/publicVotingSessions/{sessionId}",
+        "definition": {
+          "entityName": "VotingSession",
+          "schema": {
+            "$ref": "#/backend/entities/VotingSession"
+          },
+          "description": "A segregated, denormalized collection specifically for `VotingSession` data that is publicly viewable after results have been published. This collection serves the 'Dernière assemblée' homepage section and any other public display needs. Documents here are fully public read-only. Key information like `title`, `winnerProjectTitle`, `resultsPublishedAt`, and `totalBallotsCount` (denormalized from `VotingSession` and `VotingResult`) are directly present. This structure ensures QAPs are met by providing a collection where all documents share the same security posture (public read).",
+          "params": [
+            {
+              "name": "sessionId",
+              "description": "The unique ID of the public voting session."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The recommended Firestore structure prioritizes Authorization Independence, Structural Segregation, and adherence to QAPs to create a secure, scalable, and debuggable system. The design avoids `get()` calls in security rules by denormalizing critical authorization context directly into documents, simplifying rule logic and enabling atomic operations.\n\n**Authorization Independence & Denormalization:**\n*   **Projects (`/votingSessions/{sessionId}/projects/{projectId}`):** Access to project details for members depends on the `VotingSession`'s announcement and voting times. To eliminate `get()` calls, each `Project` document denormalizes `sessionAnnouncementTime`, `sessionOpenTime`, `sessionCloseTime`, `sessionStatus`, and `sessionTitle` from its parent `VotingSession`. Security rules can then directly check `request.time` against `resource.data.sessionAnnouncementTime` (for viewing) or `sessionOpenTime`/`sessionCloseTime` without needing to fetch the parent session document.\n*   **Ballots (`/userProfiles/{userId}/ballots/{ballotId}`):** Ballot submission is restricted to the active voting window. Each `Ballot` document denormalizes `sessionOpenTime`, `sessionCloseTime`, and `sessionStatus` from the relevant `VotingSession`. This allows rules to validate the voting period (`request.time >= resource.data.sessionOpenTime && request.time <= resource.data.sessionCloseTime`) directly from the ballot document, ensuring atomicity and preventing reliance on external document fetches.\n*   **Voting Results (`/votingResults/{sessionId}`):** Public visibility of results depends on the parent `VotingSession` being in a 'published' state. The `VotingResult` document itself denormalizes `isSessionResultsPublished` (a boolean flag), `resultsPublishedAt`, `sessionTitle`, and `winnerProjectTitle`. This enables public read access rules to simply check `resource.data.isSessionResultsPublished == true`, without needing to fetch the `VotingSession` document.\n\n**Structural Segregation & QAPs (Queryable and Atomic Permissions):**\n*   **`PublicVotingSessions` (`/publicVotingSessions/{sessionId}`):** To address the 'Dernière assemblée' homepage requirement and support QAPs for public lists, a dedicated collection `/publicVotingSessions` is introduced. This collection contains only `VotingSession` documents that have reached the 'results_published' status, along with denormalized winner and tally information from `VotingResult`. All documents in this collection share the same security posture (public read-only). This allows the frontend to perform a secure and efficient `list` query (e.g., `db.collection('publicVotingSessions').orderBy('resultsPublishedAt', 'desc').limit(1)`) without security rules needing to filter based on status. This ensures that only published sessions are ever returned, and the rule does not inadvertently expose non-public data if a client bypassed filtering.\n*   **Admin Roles (`/roles_admin/{userId}`):** A distinct top-level collection `roles_admin` is used for DBAC, where the existence of a document signifies administrative privilege. This provides a clear and atomic check for admin access without needing custom claims or complex queries on `UserProfile` documents.\n*   **Email Allowlist (`/emailAllowlist/{emailEntryId}`):** This collection is segregated for admin-only management and backend validation, ensuring clear boundaries for sensitive access control data.\n\n**Overall, this structure provides:**\n*   **Simplified Security Rules:** Rules are concise and atomic, relying on fields directly within the requested document or the `roles_admin` collection, avoiding `get()` calls.\n*   **Scalability:** Eliminates cross-document lookups for authorization, which can become a bottleneck in `list` operations or during high write concurrency (transactions/batches).\n*   **Debuggability:** The explicit denormalization makes authorization intent clear within each document's schema, and structural segregation defines clear security boundaries for collections."
+  }
+}
