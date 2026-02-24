@@ -34,7 +34,7 @@ service cloud.firestore {
       allow write: if isAdminActive();
     }
 
-    // Projets
+    // Projets (Lecture pour membres actifs, écriture admin)
     match /projects/{projectId} {
       allow read: if isMemberActive();
       allow write: if isAdminActive();
@@ -45,24 +45,24 @@ service cloud.firestore {
       allow read: if isMemberActive();
       allow write: if isAdminActive();
 
-      match /votes/{proposalId} {
+      match /votes/{voteId} {
         allow read: if isMemberActive();
         allow write: if isAdminActive();
 
         // Bulletins de vote
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive();
-          allow list: if isAdminActive();
+          allow list: if isAdminActive() || isMemberActive();
           
           function isValidBallotRequest() {
-            let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(proposalId)).data;
+            let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data;
             return isMemberActive()
               && uid == request.auth.uid
               && vote.state == "open"
               && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
           }
 
-          allow create: if isValidBallotRequest() && !exists(request.path);
+          allow create: if isValidBallotRequest();
           allow update: if isValidBallotRequest();
           allow delete: if false;
         }

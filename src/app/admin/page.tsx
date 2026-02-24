@@ -95,7 +95,7 @@ function AdminContent() {
         endsAt: endsAt ? new Date(endsAt) : null,
       });
 
-      await addDoc(collection(db, 'assemblies', assemblyRef.id, 'votes'), {
+      const voteRef = await addDoc(collection(db, 'assemblies', assemblyRef.id, 'votes'), {
         assemblyId: assemblyRef.id,
         question: newVoteQuestion,
         projectIds: selectedProjectIds,
@@ -104,6 +104,11 @@ function AdminContent() {
         createdBy: user.uid,
         opensAt: startsAt ? new Date(startsAt) : null,
         closesAt: endsAt ? new Date(endsAt) : null,
+      });
+
+      // Lier immédiatement le vote à l'assemblée
+      await updateDoc(doc(db, 'assemblies', assemblyRef.id), {
+        activeVoteId: voteRef.id
       });
 
       toast({ title: "Session créée", description: "L'assemblée et le vote sont en brouillon." });
@@ -118,15 +123,19 @@ function AdminContent() {
 
   const updateSessionState = async (assemblyId: string, newState: 'open' | 'closed') => {
     try {
-      // 1. Récupérer explicitement les documents de vote dans la sous-collection
+      // 1. Récupérer les documents de vote
       const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
       const activeVoteId = votesSnap.docs[0]?.id;
 
-      // 2. Mettre à jour l'assemblée
+      if (!activeVoteId) {
+        toast({ variant: "destructive", title: "Erreur", description: "Aucun document de vote trouvé pour cette assemblée." });
+        return;
+      }
+
+      // 2. Mettre à jour l'assemblée avec l'activeVoteId explicite
       await updateDoc(doc(db, 'assemblies', assemblyId), { 
         state: newState,
-        ...(newState === 'open' && activeVoteId ? { activeVoteId } : {}),
-        ...(newState === 'closed' ? { activeVoteId: null } : {})
+        activeVoteId: newState === 'open' ? activeVoteId : null
       });
       
       // 3. Mettre à jour tous les votes de cette assemblée
