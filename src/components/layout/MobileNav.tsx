@@ -14,9 +14,9 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
   const pathname = usePathname();
   const { user } = useUser();
 
+  // Navigation simplifiée : Accueil et Dashboard uniquement pour les membres.
   const tabsLeft = [
     { label: 'Accueil', href: '/' },
-    { label: 'Projets', href: '/projects' },
   ];
 
   const tabsRight = [
@@ -24,7 +24,6 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
     { label: 'Compte', href: user ? '/account' : '/login' },
   ];
 
-  // Détection de l'état actif pour l'assemblée et ses sous-pages
   const isAssemblyActive = pathname === '/assembly' || pathname.startsWith('/assembly/');
 
   return (

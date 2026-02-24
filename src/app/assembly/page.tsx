@@ -181,9 +181,9 @@ function AssemblyDashboardContent() {
               <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
                 Projets soumis au vote ({activeProjects.length})
               </h3>
-              <Link href="/projects" className="text-[10px] uppercase font-bold text-primary hover:underline">
-                Voir tout
-              </Link>
+              <span className="text-[10px] uppercase font-bold text-muted-foreground italic">
+                {activeVote.state === 'open' ? "Scrutin actif" : "Scrutin clos"}
+              </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {activeProjects.map((project) => (
@@ -197,7 +197,7 @@ function AssemblyDashboardContent() {
                   </p>
                   <div className="pt-2">
                      <span className="text-[10px] font-bold uppercase tracking-widest text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                       En savoir plus <ChevronRight className="h-3 w-3" />
+                       Informations dans le scrutin <ChevronRight className="h-3 w-3" />
                      </span>
                   </div>
                 </div>
@@ -207,19 +207,7 @@ function AssemblyDashboardContent() {
         </>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-8 border-t border-border">
-        <Link href="/projects" className="group">
-          <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
-            <div className="w-12 h-12 bg-blue-50 text-blue-600 flex items-center justify-center">
-              <LayoutGrid className="h-6 w-6" />
-            </div>
-            <div className="space-y-2">
-              <h3 className="text-xl font-bold">Projets</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Consultez le détail des propositions soumises.</p>
-            </div>
-          </div>
-        </Link>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-8 border-t border-border">
         <Link href="/account" className="group">
           <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
             <div className="w-12 h-12 bg-gray-100 text-gray-600 flex items-center justify-center">
@@ -240,7 +228,7 @@ function AssemblyDashboardContent() {
               </div>
               <div className="space-y-2">
                 <h3 className="text-xl font-bold">Administration</h3>
-                <p className="text-sm text-muted-foreground">Gérer les sessions, les membres et les émargements.</p>
+                <p className="text-sm text-muted-foreground">Gérer les sessions, les membres et les projets.</p>
               </div>
             </div>
           </Link>
