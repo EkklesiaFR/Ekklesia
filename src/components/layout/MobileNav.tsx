@@ -14,9 +14,9 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
   const pathname = usePathname();
   const { user } = useUser();
 
-  // Navigation simplifiée : Accueil et Dashboard uniquement pour les membres.
   const tabsLeft = [
     { label: 'Accueil', href: '/' },
+    { label: 'Projets', href: '/projects' },
   ];
 
   const tabsRight = [
@@ -31,7 +31,7 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
       {/* Côté Gauche */}
       <div className="flex flex-1 justify-around items-center h-full">
         {tabsLeft.map((tab) => {
-          const isActive = pathname === tab.href || (tab.href !== '/' && pathname.startsWith(tab.href));
+          const isActive = pathname === tab.href;
           return (
             <Link
               key={tab.label}
