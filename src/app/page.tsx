@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -8,6 +9,10 @@ import { ArrowRight } from 'lucide-react';
 import { VotingSession, Project } from '@/types';
 import Image from 'next/image';
 import { ProjectDetailModal } from '@/components/voting/ProjectDetailModal';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, orderBy, limit } from 'firebase/firestore';
+import { format } from 'date-fns';
+import { fr } from 'date-fns/locale';
 
 // Mock current session with detailed fields
 const MOCK_SESSION: VotingSession = {
@@ -53,9 +58,22 @@ const MOCK_SESSION: VotingSession = {
 };
 
 export default function Home() {
+  const db = useFirestore();
   const [session, setSession] = useState<VotingSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+
+  // Query for the last published session
+  const lastSessionQuery = useMemoFirebase(() => {
+    return query(
+      collection(db, 'publicVotingSessions'),
+      orderBy('resultsPublishedAt', 'desc'),
+      limit(1)
+    );
+  }, [db]);
+
+  const { data: lastSessions, isLoading: isLastSessionLoading } = useCollection(lastSessionQuery);
+  const lastPublishedSession = lastSessions?.[0];
 
   useEffect(() => {
     setSession(MOCK_SESSION);
@@ -82,10 +100,7 @@ export default function Home() {
 
   const getStatusText = (s: VotingSession) => {
     const now = new Date();
-    // 1. Status precedence
     if (s.isResultsPublished || s.status === 'published') return "Résultats publiés";
-    
-    // 2. Derive from timestamps
     if (now < s.votingOpensAt) return "Vote à venir";
     if (now > s.votingClosesAt) return "Vote clos";
     return "Vote ouvert";
@@ -136,6 +151,29 @@ export default function Home() {
             </Button>
           </Link>
         </section>
+
+        {/* Last Assembly Section (Only if published session exists) */}
+        {!isLastSessionLoading && lastPublishedSession && (
+          <section className="space-y-8 py-12 border-b border-border">
+            <h3 className="text-xs uppercase tracking-[0.2em] font-bold text-muted-foreground">
+              Dernière assemblée
+            </h3>
+            <div className="space-y-2">
+              <p className="text-3xl font-bold tracking-tight">
+                Projet retenu : {lastPublishedSession.winnerProjectTitle}
+              </p>
+              <p className="text-lg text-muted-foreground">
+                {lastPublishedSession.resultsPublishedAt && format(new Date(lastPublishedSession.resultsPublishedAt), 'MMMM yyyy', { locale: fr })} — {lastPublishedSession.totalBallotsCount} bulletins
+              </p>
+            </div>
+            <Link 
+              href="/results" 
+              className="inline-block text-xs uppercase tracking-[0.2em] font-black text-[#7DC092] hover:text-[#7DC092]/80 transition-colors"
+            >
+              Voir le procès-verbal
+            </Link>
+          </section>
+        )}
 
         {/* Projects Section */}
         <section className="space-y-16">
