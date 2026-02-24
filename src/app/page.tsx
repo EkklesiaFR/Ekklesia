@@ -16,7 +16,7 @@ export default function Home() {
       <div className="space-y-24 animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-20">
         <section className="space-y-12">
           <div className="space-y-4">
-            <span className="text-xs uppercase tracking-[0.3em] font-bold text-muted-foreground block">
+            <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground block">
               Assemblée Ekklesia
             </span>
             <h1 className="text-5xl md:text-7xl font-bold leading-[1.1] tracking-tight text-black">
@@ -56,19 +56,19 @@ export default function Home() {
 
         <section className="grid grid-cols-1 md:grid-cols-3 gap-12 border-t border-border pt-16">
           <div className="space-y-4">
-            <h3 className="text-lg font-bold uppercase tracking-widest">Transparence</h3>
+            <h3 className="text-xs font-bold uppercase tracking-widest">Transparence</h3>
             <p className="text-muted-foreground text-sm leading-relaxed">
               Consultez les projets et les budgets en toute clarté avant chaque session de vote.
             </p>
           </div>
           <div className="space-y-4">
-            <h3 className="text-lg font-bold uppercase tracking-widest">Démocratie</h3>
+            <h3 className="text-xs font-bold uppercase tracking-widest">Démocratie</h3>
             <p className="text-muted-foreground text-sm leading-relaxed">
               Un système de vote préférentiel pour garantir que chaque voix compte réellement.
             </p>
           </div>
           <div className="space-y-4">
-            <h3 className="text-lg font-bold uppercase tracking-widest">Engagement</h3>
+            <h3 className="text-xs font-bold uppercase tracking-widest">Engagement</h3>
             <p className="text-muted-foreground text-sm leading-relaxed">
               Participez activement aux décisions qui façonnent l'avenir de notre communauté.
             </p>
