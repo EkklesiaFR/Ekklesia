@@ -1,11 +1,10 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
     /**
      * EKKLESIA VOTE SECURITY RULES
-     * Version: 1.1 - Public Access for Homepage Data
+     * Version: 1.2 - Robust Public Access & Profile Security
      */
 
     // --- HELPER FUNCTIONS ---
@@ -25,16 +24,26 @@ service cloud.firestore {
     // --- COLLECTION RULES ---
 
     /**
+     * @description Public session data: Read-only for everyone (including unauthenticated).
+     * This is required for the homepage "Derniers projets financés" section.
+     */
+    match /publicVotingSessions/{sessionId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    /**
      * @description User profiles: Users manage their own data; Admins view all.
-     * Supports both /userProfiles and /users paths for consistency.
      */
     match /userProfiles/{userId} {
-      allow get, create, update: if isOwner(userId);
+      allow get: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId);
       allow list, delete: if isAdmin();
     }
     
     match /users/{userId} {
-      allow get, create, update: if isOwner(userId);
+      allow get: if isOwner(userId) || isAdmin();
+      allow create, update: if isOwner(userId);
       allow list, delete: if isAdmin();
     }
 
@@ -81,20 +90,11 @@ service cloud.firestore {
     }
 
     /**
-     * @description Voting results: Immutable from the client (managed by Admin SDK).
+     * @description Voting results: Immutable from the client.
      */
     match /votingResults/{sessionId} {
       allow get, list: if isSignedIn();
       allow write: if false; 
-    }
-
-    /**
-     * @description Public session data: Read-only for everyone (including unauthenticated).
-     * This is required for the homepage "Derniers projets financés" section.
-     */
-    match /publicVotingSessions/{sessionId} {
-      allow get, list: if true;
-      allow write: if isAdmin();
     }
   }
 }
