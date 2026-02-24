@@ -4,6 +4,7 @@
 import Link from 'next/link';
 import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 
 export function Header({ 
   role, 
@@ -12,6 +13,8 @@ export function Header({
   role?: string; 
   statusText?: string 
 }) {
+  const isVoteOpen = statusText === "Vote ouvert";
+
   return (
     <header className="w-full border-b border-border bg-background py-4">
       <div className="mx-auto max-w-[900px] flex items-center justify-between px-6">
@@ -20,7 +23,10 @@ export function Header({
             Ekklesia
           </Link>
           {statusText && (
-            <span className="text-xs uppercase tracking-widest text-muted-foreground pt-1 border-l pl-6 border-border">
+            <span className={cn(
+              "text-sm font-medium pt-0.5 border-l pl-6 border-border",
+              isVoteOpen ? "text-primary" : "text-muted-foreground"
+            )}>
               {statusText}
             </span>
           )}

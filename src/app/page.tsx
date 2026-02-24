@@ -81,10 +81,18 @@ export default function Home() {
     return () => clearInterval(timer);
   }, []);
 
+  const getStatusText = (s: VotingSession) => {
+    const now = new Date();
+    if (s.isResultsPublished) return "Résultats publiés";
+    if (now < s.votingOpensAt) return "Vote à venir";
+    if (now > s.votingClosesAt) return "Vote clos";
+    return "Vote ouvert";
+  };
+
   if (!session) return null;
 
   return (
-    <MainLayout role="member" statusText={session.status === 'open' ? 'Scrutin en cours' : 'Annonce'}>
+    <MainLayout role="member" statusText={getStatusText(session)}>
       <div className="space-y-24 animate-in fade-in slide-in-from-bottom-4 duration-1000">
         {/* Hero Section */}
         <section className="space-y-8">
@@ -103,31 +111,29 @@ export default function Home() {
         </section>
 
         {/* Typographic Counters */}
-        {session.status === 'open' && (
-          <section className="border-y border-border py-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-12">
-            <div className="flex flex-col md:flex-row gap-12 md:gap-16">
-              <div className="space-y-1">
-                <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Participation</p>
-                <p className="text-3xl font-bold">
-                  <span className="text-primary">142</span> bulletins déposés
-                </p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Échéance</p>
-                <p className="text-3xl font-bold">
-                  Clôture dans <span className="text-primary">{timeLeft}</span>
-                </p>
-              </div>
+        <section className="border-y border-border py-12 flex flex-col md:flex-row items-start md:items-center justify-between gap-12">
+          <div className="flex flex-col md:flex-row gap-12 md:gap-16">
+            <div className="space-y-1">
+              <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Participation</p>
+              <p className="text-3xl font-bold">
+                <span className="text-primary">142</span> bulletins déposés
+              </p>
             </div>
-            
-            <Link href="/vote">
-              <Button size="lg" className="bg-black hover:bg-black/90 text-white rounded-none px-10 py-8 text-lg flex items-center gap-3 transition-all hover:gap-5">
-                Exprimer mon choix
-                <ArrowRight className="h-5 w-5" />
-              </Button>
-            </Link>
-          </section>
-        )}
+            <div className="space-y-1">
+              <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Échéance</p>
+              <p className="text-3xl font-bold">
+                Clôture dans <span className="text-primary">{timeLeft}</span>
+              </p>
+            </div>
+          </div>
+          
+          <Link href="/vote">
+            <Button size="lg" className="bg-black hover:bg-black/90 text-white rounded-none px-10 py-8 text-lg flex items-center gap-3 transition-all hover:gap-5">
+              Exprimer mon choix
+              <ArrowRight className="h-5 w-5" />
+            </Button>
+          </Link>
+        </section>
 
         {/* Projects Section */}
         <section className="space-y-16">

@@ -55,7 +55,7 @@ export default function VotePage() {
 
   if (hasVoted) {
     return (
-      <MainLayout role="member" statusText="Merci">
+      <MainLayout role="member" statusText="Vote ouvert">
         <div className="flex flex-col items-center justify-center py-24 space-y-8 text-center">
           <CheckCircle className="h-16 w-16 text-primary" />
           <div className="space-y-4">
@@ -75,7 +75,7 @@ export default function VotePage() {
   }
 
   return (
-    <MainLayout role="member" statusText="Bulletin de vote">
+    <MainLayout role="member" statusText="Vote ouvert">
       <div className="space-y-12">
         <div className="space-y-6">
           <Link href="/" className="text-sm flex items-center gap-2 hover:text-primary transition-colors">

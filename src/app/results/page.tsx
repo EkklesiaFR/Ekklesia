@@ -28,7 +28,7 @@ export default function ResultsPage() {
   const winner = MOCK_PROJECTS.find(p => p.id === MOCK_RESULTS.winnerId);
 
   return (
-    <MainLayout role="member" statusText="Proclamation des Résultats">
+    <MainLayout role="member" statusText="Résultats publiés">
       <div className="space-y-20 animate-in fade-in duration-500">
         <header className="text-center space-y-6">
           <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center mb-8">
