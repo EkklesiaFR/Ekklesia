@@ -13,6 +13,17 @@ export interface Project {
   summary: string;
   description?: string;
   budget: string;
+  imageUrl?: string;
+}
+
+export interface Assembly {
+  id: string;
+  title: string;
+  state: 'draft' | 'open' | 'closed';
+  createdAt: any;
+  createdBy: string;
+  startsAt?: any;
+  endsAt?: any;
 }
 
 export interface Vote {
@@ -20,9 +31,11 @@ export interface Vote {
   assemblyId: string;
   question: string;
   projectIds: string[];
-  state: 'open' | 'closed';
-  opensAt: any;
-  closesAt: any;
+  state: 'draft' | 'open' | 'closed';
+  opensAt?: any;
+  closesAt?: any;
+  createdAt?: any;
+  createdBy?: string;
 }
 
 export interface Ballot {
