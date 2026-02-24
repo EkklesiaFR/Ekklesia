@@ -102,7 +102,7 @@ export default function Home() {
             </span>
             <h1 className="text-5xl md:text-7xl font-bold leading-[1.1] tracking-tight text-balance">
               1 voix. 1 communauté.<br />
-              Assemblée — Printemps 2024
+              Des milliers de projets financer.
             </h1>
           </div>
           <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed max-w-2xl font-medium">
