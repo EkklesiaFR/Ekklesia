@@ -11,7 +11,7 @@ import { collection, query, where, orderBy, limit } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 
-// Mock current session for initial state display (until real data is fetched)
+// Mock current session for initial state display
 const MOCK_CURRENT_SESSION: VotingSession = {
   id: 'session-2024-03',
   title: 'Session de Printemps 2024',
@@ -28,7 +28,7 @@ export default function Home() {
   const [session, setSession] = useState<VotingSession | null>(null);
   const [timeLeft, setTimeLeft] = useState<string>('');
 
-  // Query for the latest published session - accessible to everyone via publicVotingSessions
+  // Query for the latest published session - accessible publicly
   const lastPublishedSessionQuery = useMemoFirebase(() => {
     return query(
       collection(db, 'publicVotingSessions'),
@@ -39,7 +39,7 @@ export default function Home() {
   }, [db]);
 
   const { data: publishedSessions, isLoading: isPublishedLoading } = useCollection(lastPublishedSessionQuery);
-  const lastPublishedSession = publishedSessions?.[0] as VotingSession | undefined;
+  const lastPublishedSession = publishedSessions?.[0] as any | undefined;
 
   useEffect(() => {
     setSession(MOCK_CURRENT_SESSION);
@@ -69,6 +69,16 @@ export default function Home() {
     if (now < s.votingOpensAt) return "Vote à venir";
     if (now > s.votingClosesAt) return "Vote clos";
     return "Vote ouvert";
+  };
+
+  const formatDate = (date: any) => {
+    if (!date) return '';
+    try {
+      const d = date.toDate ? date.toDate() : new Date(date);
+      return format(d, 'MMMM yyyy', { locale: fr });
+    } catch (e) {
+      return '';
+    }
   };
 
   if (!session) return null;
@@ -144,18 +154,18 @@ export default function Home() {
                       </div>
                       <div className="space-y-4">
                         <div className="space-y-1">
-                          <p className="text-[10px] uppercase tracking-widest font-bold text-[#7DC092]">Lauréat — {lastPublishedSession.title}</p>
+                          <p className="text-[10px] uppercase tracking-widest font-bold text-[#7DC092]"> Lauréat — {lastPublishedSession.title}</p>
                           <h3 className="text-2xl font-bold">{lastPublishedSession.winnerProjectTitle}</h3>
                         </div>
                         <p className="text-muted-foreground leading-relaxed max-w-xl">
-                          Ce projet a été plébiscité par la communauté lors de la session de {format(new Date(lastPublishedSession.resultsPublishedAt || lastPublishedSession.votingClosesAt), 'MMMM yyyy', { locale: fr })}.
+                          Ce projet a été plébiscité par la communauté lors de la session de {formatDate(lastPublishedSession.resultsPublishedAt || lastPublishedSession.votingClosesAt)}.
                         </p>
                       </div>
                     </div>
                   </div>
                 )}
 
-                {/* Other Rankings or Project List Fallback */}
+                {/* Other Rankings */}
                 <div className="divide-y divide-border">
                   {(lastPublishedSession.rankingSummary || lastPublishedSession.projects || []).slice(0, 5).map((item: any, i: number) => {
                     const isWinner = i === 0 && lastPublishedSession.winnerProjectTitle === (item.title || item.projectId);

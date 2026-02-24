@@ -4,7 +4,7 @@ service cloud.firestore {
 
     /**
      * EKKLESIA VOTE SECURITY RULES
-     * Version: 1.4 - Fixed Public Access
+     * Version: 1.5 - Enhanced Public Access
      */
 
     // --- HELPER FUNCTIONS ---
@@ -24,11 +24,10 @@ service cloud.firestore {
     // --- COLLECTION RULES ---
 
     /**
-     * @description Données de session publiques : Lecture autorisée pour TOUS (même non-authentifiés).
-     * Indispensable pour la section "Derniers projets financés" sur la page d'accueil.
+     * @description Données de session publiques : Lecture autorisée pour TOUS.
      */
     match /publicVotingSessions/{sessionId} {
-      allow read: if true;
+      allow get, list: if true;
       allow write: if isAdmin();
     }
 
@@ -48,8 +47,7 @@ service cloud.firestore {
     }
 
     /**
-     * @description Vote sécurisé : Un seul bulletin par session et par utilisateur, création uniquement.
-     * Applique le motif d'ID de document {sessionId}_{userId}.
+     * @description Vote sécurisé : Un seul bulletin par session et par utilisateur.
      */
     match /ballots/{ballotId} {
       allow get: if isSignedIn() && (isOwner(resource.data.userId) || isAdmin());
@@ -57,7 +55,7 @@ service cloud.firestore {
       allow create: if isSignedIn()
         && request.auth.uid == request.resource.data.userId
         && ballotId == request.resource.data.sessionId + "_" + request.auth.uid;
-      allow update, delete: if false; // Les votes sont définitifs
+      allow update, delete: if false; 
     }
 
     /**
