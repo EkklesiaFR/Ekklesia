@@ -19,7 +19,7 @@ export function MainLayout({
       <main className="flex-grow mx-auto max-w-[900px] w-full px-6 py-16 mb-16 md:mb-0">
         {children}
       </main>
-      <footer className="mx-auto max-w-[900px] w-full px-6 py-12 border-t border-border mt-12 text-xs text-muted-foreground uppercase tracking-widest text-center mb-16 md:mb-0">
+      <footer className="mx-auto max-w-[900px] w-full px-6 py-12 border-t border-border mt-12 text-xs text-muted-foreground uppercase tracking-widest text-center mb-24 md:mb-0">
         © 2024 Assemblée Ekklesia — Plateforme de Vote
       </footer>
       <MobileNav isVoteOpen={isVoteOpen} />

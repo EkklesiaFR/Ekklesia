@@ -48,7 +48,7 @@ export function Header({
           )}
         </div>
         
-        <div className="flex items-center gap-8">
+        <div className="hidden md:flex items-center gap-8">
           {!isUserLoading && user ? (
             <div className="flex items-center gap-8">
               <span className="text-[13px] font-medium text-black font-body">
