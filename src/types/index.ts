@@ -33,9 +33,13 @@ export interface VotingSession {
   announcementAt: Date;
   votingOpensAt: Date;
   votingClosesAt: Date;
+  resultsPublishedAt?: Date;
   isResultsPublished: boolean;
-  projects: Project[];
+  projects?: Project[];
   status: 'upcoming' | 'announcing' | 'open' | 'closed' | 'published';
+  winnerProjectTitle?: string;
+  totalBallotsCount?: number;
+  rankingSummary?: { projectId: string; title: string; budget: string; rank: number }[];
 }
 
 export interface Ballot {
