@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collectionGroup, query, where, limit, collection } from 'firebase/firestore';
-import Link from 'link';
+import Link from 'next/link';
 import { 
   LayoutGrid, 
   User, 
