@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState } from 'react';
@@ -116,13 +115,13 @@ export default function Home() {
             <div className="space-y-1">
               <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Participation</p>
               <p className="text-3xl font-bold">
-                <span className="text-primary">142</span> bulletins déposés
+                <span className="text-[#7DC092]">142</span> bulletins déposés
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-sm uppercase tracking-widest font-bold text-muted-foreground">Échéance</p>
               <p className="text-3xl font-bold">
-                Clôture dans <span className="text-primary">{timeLeft}</span>
+                Clôture dans <span className="text-[#7DC092]">{timeLeft}</span>
               </p>
             </div>
           </div>
@@ -139,7 +138,7 @@ export default function Home() {
         <section className="space-y-16">
           <div className="space-y-4">
             <h3 className="text-3xl font-bold tracking-tight">Projets soumis au vote</h3>
-            <div className="h-1 w-20 bg-primary"></div>
+            <div className="h-1 w-20 bg-[#7DC092]"></div>
           </div>
           
           <div className="grid gap-24">
@@ -163,7 +162,7 @@ export default function Home() {
                     <span className="inline-block px-3 py-1 bg-secondary text-[10px] uppercase tracking-widest font-black border border-border">
                       Budget : {project.budget}
                     </span>
-                    <h4 className="text-4xl font-bold tracking-tight group-hover:text-primary transition-colors">{project.title}</h4>
+                    <h4 className="text-4xl font-bold tracking-tight group-hover:text-[#7DC092] transition-colors">{project.title}</h4>
                   </div>
                   <p className="text-lg text-muted-foreground leading-relaxed">
                     {project.summary}
@@ -173,7 +172,7 @@ export default function Home() {
                     <ul className="grid grid-cols-1 gap-3">
                       {project.keyFeatures.map((feat, i) => (
                         <li key={i} className="text-sm flex items-center gap-3 font-medium">
-                          <span className="w-4 h-[1px] bg-primary"></span>
+                          <span className="w-4 h-[1px] bg-[#7DC092]"></span>
                           {feat}
                         </li>
                       ))}
