@@ -1,4 +1,3 @@
-
 'use client';
 
 import Link from 'next/link';
@@ -25,12 +24,11 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
     { label: 'Compte', href: user ? '/account' : '/login' },
   ];
 
-  const isAssemblyActive = pathname === '/assembly';
+  // Actif sur /assembly et ses sous-pages
+  const isAssemblyActive = pathname === '/assembly' || pathname.startsWith('/assembly/');
 
   // --- VARIANTES DE STYLE ---
-  // Sobre: Fond blanc, bordure noire, discret.
   const styleSobre = "bg-white border-2 border-black text-black shadow-sm";
-  // Punchy: Fond vert primaire, texte blanc, ressort fortement.
   const stylePunchy = "bg-[#7DC092] border-none text-white shadow-md shadow-[#7DC092]/20";
 
   // Switcher ici pour changer de style
@@ -46,6 +44,7 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
             <Link
               key={tab.label}
               href={tab.href}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
                 "flex flex-col items-center justify-center px-1 py-1 transition-colors",
                 "text-[10px] uppercase tracking-[0.1em] font-bold font-body",
@@ -62,13 +61,15 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
       <div className="relative -mt-8 flex flex-col items-center">
         <Link
           href="/assembly"
+          aria-label="Accéder à l'Assemblée"
+          aria-current={isAssemblyActive ? 'page' : undefined}
           className={cn(
             "flex items-center justify-center w-14 h-14 rounded-full transition-all duration-300 active:scale-95",
             isAssemblyActive ? "scale-110 -translate-y-1" : "hover:-translate-y-1",
             activeStyle
           )}
         >
-          <Landmark className={cn("h-6 w-6", isAssemblyActive && "animate-pulse")} />
+          <Landmark className="h-6 w-6" />
         </Link>
         <span className={cn(
           "mt-1 text-[10px] uppercase tracking-[0.1em] font-black font-body",
@@ -88,6 +89,7 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
             <Link
               key={tab.label}
               href={isDisabled ? '#' : tab.href}
+              aria-current={isActive ? 'page' : undefined}
               className={cn(
                 "flex flex-col items-center justify-center px-1 py-1 transition-colors",
                 "text-[10px] uppercase tracking-[0.1em] font-bold font-body",
