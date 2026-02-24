@@ -9,7 +9,8 @@ import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useUser } from '@/firebase';
+import { useUser, useFirestore, errorEmitter, FirestorePermissionError } from '@/firebase';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 const MOCK_PROJECTS = [
   {
@@ -37,10 +38,14 @@ const MOCK_PROJECTS = [
 
 export default function VotePage() {
   const { user, isUserLoading } = useUser();
+  const db = useFirestore();
   const router = useRouter();
   const [rankedIds, setRankedIds] = useState<string[]>(MOCK_PROJECTS.map(p => p.id));
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
+
+  // For the demo, we use a fixed session ID matching the mock session on the homepage
+  const sessionId = 'session-2024-03';
 
   useEffect(() => {
     if (!isUserLoading && !user) {
@@ -52,18 +57,39 @@ export default function VotePage() {
     }
   }, [user, isUserLoading, router]);
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!user) return;
     setIsSubmitting(true);
-    // Simulate server processing
-    await new Promise(resolve => setTimeout(resolve, 1500));
     
-    setIsSubmitting(false);
-    setHasVoted(true);
-    toast({
-      title: "Vote enregistré",
-      description: "Votre bulletin a été déposé avec succès dans l'urne numérique.",
-    });
+    // Pattern: {sessionId}_{userId}
+    const ballotId = `${sessionId}_${user.uid}`;
+    const ballotRef = doc(db, 'ballots', ballotId);
+    
+    const ballotData = {
+      sessionId,
+      userId: user.uid,
+      ranking: rankedIds,
+      createdAt: serverTimestamp(),
+    };
+
+    setDoc(ballotRef, ballotData)
+      .then(() => {
+        setHasVoted(true);
+        setIsSubmitting(false);
+        toast({
+          title: "Vote enregistré",
+          description: "Votre bulletin a été déposé avec succès dans l'urne numérique.",
+        });
+      })
+      .catch(async (error) => {
+        setIsSubmitting(false);
+        const permissionError = new FirestorePermissionError({
+          path: ballotRef.path,
+          operation: 'create',
+          requestResourceData: ballotData,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
   };
 
   if (isUserLoading || !user) {

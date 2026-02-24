@@ -42,8 +42,8 @@ export interface Ballot {
   id: string;
   sessionId: string;
   userId: string;
-  rankedProjectIds: string[]; // Order matters
-  submittedAt: Date;
+  ranking: string[]; // Order matters
+  createdAt: Date;
 }
 
 export interface TallyResult {
