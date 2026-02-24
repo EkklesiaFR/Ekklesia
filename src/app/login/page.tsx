@@ -1,3 +1,4 @@
+
 'use client';
 
 import { MainLayout } from '@/components/layout/MainLayout';
@@ -9,34 +10,25 @@ import { useEffect, useState } from 'react';
 import { LogIn } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { doc, getDoc } from 'firebase/firestore';
-import { signOut, getRedirectResult } from 'firebase/auth';
-
-const ALLOWLIST_ENABLED = false;
+import { getRedirectResult } from 'firebase/auth';
 
 export default function LoginPage() {
   const auth = useAuth();
   const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isChecking, setIsChecking] = useState(false);
 
-  // Handle result from Google Redirect login
   useEffect(() => {
     const handleRedirectResult = async () => {
       try {
-        const result = await getRedirectResult(auth);
-        if (result) {
-          console.log('Successfully identified via redirect');
-        }
+        await getRedirectResult(auth);
       } catch (error: any) {
-        console.error('Google redirect result error:', error);
-        
-        // Don't show toast for user cancellation errors to avoid noise
         if (error.code !== 'auth/redirect-cancelled-by-user') {
           toast({
             variant: "destructive",
             title: "Erreur d'identification",
-            description: `Détails : [${error.code}] ${error.message}`,
+            description: "Impossible de finaliser la connexion Google.",
           });
         }
       }
@@ -46,63 +38,38 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isUserLoading && user) {
-      const checkAllowlist = async () => {
-        const email = user.email?.toLowerCase();
-        if (!email) {
-          await signOut(auth);
-          return;
-        }
-
-        if (!ALLOWLIST_ENABLED) {
-          // Check anyway for logging purposes if disabled
-          const allowlistRef = doc(db, 'emailAllowlist', email);
-          try {
-            const allowlistSnap = await getDoc(allowlistRef);
-            if (!allowlistSnap.exists()) {
-              console.log(`[ALLOWLIST BYPASS] User ${email} would have been rejected. Collection: emailAllowlist`);
-            }
-          } catch (e) {
-            console.error('[ALLOWLIST LOG ERROR]', e);
+      const verifyAccess = async () => {
+        setIsChecking(true);
+        try {
+          const memberRef = doc(db, 'members', user.uid);
+          const memberSnap = await getDoc(memberRef);
+          
+          if (memberSnap.exists() && memberSnap.data().status === 'active') {
+            router.push('/');
+          } else {
+            router.push('/access-denied');
           }
-          router.push('/');
-          return;
-        }
-        
-        const allowlistRef = doc(db, 'emailAllowlist', email);
-        const allowlistSnap = await getDoc(allowlistRef);
-        
-        if (allowlistSnap.exists()) {
-          router.push('/');
-        } else {
-          await signOut(auth);
-          toast({
-            variant: "destructive",
-            title: "Accès refusé",
-            description: "Accès réservé aux membres invités (bêta).",
-          });
+        } catch (e) {
+          console.error('[ACCESS CHECK ERROR]', e);
+          router.push('/access-denied');
+        } finally {
+          setIsChecking(false);
         }
       };
       
-      checkAllowlist();
+      verifyAccess();
     }
-  }, [user, isUserLoading, router, auth, db]);
+  }, [user, isUserLoading, router, db]);
 
   const handleGoogleSignIn = async () => {
-    setIsSubmitting(true);
     try {
       await signInWithGoogle(auth);
     } catch (error: any) {
-      console.error('Google Sign-In failed:', error);
-      
-      const errorCode = error?.code || 'auth/unknown-error';
-      const errorMessage = error?.message || "Une erreur est survenue lors de l'identification.";
-
       toast({
         variant: "destructive",
-        title: "Erreur d'identification",
-        description: `Détails : [${errorCode}] ${errorMessage}`,
+        title: "Erreur",
+        description: "La connexion a échoué.",
       });
-      setIsSubmitting(false);
     }
   };
 
@@ -110,30 +77,30 @@ export default function LoginPage() {
     <MainLayout statusText="Identification">
       <div className="flex flex-col items-center justify-center py-24 space-y-12 animate-in fade-in duration-700">
         <header className="space-y-4 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-black">Accès à l'assemblée</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-black">Ekklesia Vote</h1>
           <p className="text-muted-foreground max-w-sm mx-auto">
-            Identifiez-vous pour participer aux débats et exprimer votre vote.
+            Accès réservé aux membres de l'assemblée.
           </p>
         </header>
 
         <div className="w-full max-w-sm space-y-6">
           <Button
             onClick={handleGoogleSignIn}
-            disabled={isSubmitting || isUserLoading}
+            disabled={isChecking || isUserLoading}
             className="w-full h-14 bg-white hover:bg-secondary text-black border border-border rounded-none font-bold flex items-center justify-center gap-3 transition-all"
           >
-            {isSubmitting && !auth.currentUser ? (
+            {isChecking ? (
               "Vérification..."
             ) : (
               <>
                 <LogIn className="h-5 w-5" />
-                Continuer avec Google
+                Se connecter avec Google
               </>
             )}
           </Button>
 
           <p className="text-[10px] uppercase tracking-widest text-center text-muted-foreground leading-relaxed">
-            Seuls les membres figurant sur la liste d'émargement officielle peuvent accéder aux sessions de vote.
+            Votre compte doit être activé par un administrateur pour accéder aux votes.
           </p>
         </div>
       </div>
