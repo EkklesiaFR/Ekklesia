@@ -52,7 +52,7 @@ function AssemblyDashboardContent() {
   }, [db, activeVote]);
   const { data: ballots } = useCollection<Ballot>(ballotsQuery);
 
-  // 4. Calcul des résultats (Schulze) pour l'affichage de la tendance ou du gagnant
+  // 4. Calcul des résultats (Schulze)
   const results = (ballots && activeProjects.length > 0) 
     ? computeSchulzeResults(activeProjects.map(p => p.id), ballots)
     : null;
@@ -75,9 +75,9 @@ function AssemblyDashboardContent() {
           <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground block">
             Espace Membre
           </span>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight">Une voix, une communauté.</h1>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-black">Une voix, une communauté.</h1>
         </div>
-        <p className="text-xl text-muted-foreground max-w-2xl">Bienvenue dans votre interface de participation citoyenne.</p>
+        <p className="text-xl text-muted-foreground max-w-2xl font-medium">Bienvenue dans votre interface de participation citoyenne.</p>
       </header>
 
       {!activeVote ? (
@@ -88,56 +88,49 @@ function AssemblyDashboardContent() {
           <div className="space-y-2">
             <h2 className="text-2xl font-bold">Aucune session active</h2>
             <p className="text-muted-foreground max-w-md mx-auto">
-              Il n'y a pas de session de vote ouverte ou récemment clôturée pour le moment.
+              Il n'y a pas de session de vote ouverte pour le moment.
             </p>
           </div>
-          {isAdmin ? (
-            <Link href="/admin" className="inline-block pt-4">
-              <Button className="rounded-none h-12 px-8 font-bold uppercase tracking-widest text-xs gap-2">
-                <PlusCircle className="h-4 w-4" />
-                Créer une session
-              </Button>
-            </Link>
-          ) : (
-            <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground pt-4">
-              Revenez plus tard
-            </p>
-          )}
+          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground pt-4">
+            Revenez plus tard
+          </p>
         </section>
       ) : (
         <>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div className="border border-border p-8 bg-white space-y-8">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
-                  <Activity className="h-3 w-3" />
-                  Scrutin en cours
-                </h3>
-                {activeVote.state === 'open' ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Ouvert</span>
-                    <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
-                  </div>
-                ) : (
-                  <span className="text-[10px] font-bold text-muted-foreground px-2 py-1 bg-secondary uppercase">CLOS</span>
-                )}
-              </div>
-              
-              <div className="space-y-4">
-                <p className="text-2xl font-bold leading-tight">{activeVote.question}</p>
-                
-                <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-2 font-medium">
-                    <Users className="h-4 w-4 text-primary" />
-                    <strong>{ballots?.length || 0}</strong> bulletins déposés
-                  </span>
-                  
-                  {activeVote.closesAt && activeVote.state === 'open' && (
-                    <span className="flex items-center gap-2 font-medium">
-                      <Clock className="h-4 w-4 text-primary" />
-                      Clôture {formatDistanceToNow(new Date(activeVote.closesAt.seconds * 1000), { addSuffix: true, locale: fr })}
-                    </span>
+            <div className="border border-border p-8 bg-white space-y-8 flex flex-col justify-between">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
+                    <Activity className="h-3 w-3" />
+                    Scrutin en cours
+                  </h3>
+                  {activeVote.state === 'open' ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Ouvert</span>
+                      <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-bold text-muted-foreground px-2 py-1 bg-secondary uppercase">CLOS</span>
                   )}
+                </div>
+                
+                <div className="space-y-4">
+                  <p className="text-2xl font-bold leading-tight">{activeVote.question}</p>
+                  
+                  <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-2 font-medium">
+                      <Users className="h-4 w-4 text-primary" />
+                      <strong>{ballots?.length || 0}</strong> bulletins déposés
+                    </span>
+                    
+                    {activeVote.closesAt && activeVote.state === 'open' && (
+                      <span className="flex items-center gap-2 font-medium">
+                        <Clock className="h-4 w-4 text-primary" />
+                        Clôture {formatDistanceToNow(new Date(activeVote.closesAt.seconds * 1000), { addSuffix: true, locale: fr })}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -159,12 +152,12 @@ function AssemblyDashboardContent() {
                 <div className="space-y-4">
                   {winnerProject ? (
                     <div className="space-y-2">
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Projet en tête</p>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-primary">En tête</p>
                       <p className="text-2xl font-bold leading-tight">{winnerProject.title}</p>
-                      <p className="text-sm text-gray-400 italic">Méthode de Schulze (Condorcet)</p>
+                      <p className="text-xs text-gray-400 italic">Calculé via la méthode de Schulze</p>
                     </div>
                   ) : (
-                    <p className="text-sm text-gray-400 italic">Calcul des résultats en cours...</p>
+                    <p className="text-sm text-gray-400 italic">En attente des premiers bulletins...</p>
                   )}
                 </div>
               </div>
@@ -179,27 +172,19 @@ function AssemblyDashboardContent() {
           <section className="space-y-8">
             <div className="flex items-center justify-between border-b border-border pb-4">
               <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
-                Projets soumis au vote ({activeProjects.length})
+                Projets soumis ({activeProjects.length})
               </h3>
-              <span className="text-[10px] uppercase font-bold text-muted-foreground italic">
-                {activeVote.state === 'open' ? "Scrutin actif" : "Scrutin clos"}
-              </span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {activeProjects.map((project) => (
-                <div key={project.id} className="group border border-border p-6 bg-white space-y-4 hover:border-black transition-all cursor-default">
+                <div key={project.id} className="group border border-border p-6 bg-white space-y-4 hover:border-black transition-all">
                   <div className="space-y-1">
-                    <h4 className="font-bold text-lg group-hover:text-primary transition-colors">{project.title}</h4>
+                    <h4 className="font-bold text-lg">{project.title}</h4>
                     <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{project.budget}</p>
                   </div>
-                  <p className="text-sm text-muted-foreground line-clamp-3 leading-relaxed">
+                  <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
                     {project.summary}
                   </p>
-                  <div className="pt-2">
-                     <span className="text-[10px] font-bold uppercase tracking-widest text-primary opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                       Informations dans le scrutin <ChevronRight className="h-3 w-3" />
-                     </span>
-                  </div>
                 </div>
               ))}
             </div>
@@ -207,28 +192,40 @@ function AssemblyDashboardContent() {
         </>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-8 border-t border-border">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-8 border-t border-border">
+        <Link href="/projects" className="group">
+          <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
+            <div className="w-12 h-12 bg-secondary text-black flex items-center justify-center">
+              <LayoutGrid className="h-6 w-6" />
+            </div>
+            <div className="space-y-2">
+              <h3 className="text-xl font-bold">Les Projets</h3>
+              <p className="text-sm text-muted-foreground leading-relaxed">Consultez l'ensemble des initiatives citoyennes déposées.</p>
+            </div>
+          </div>
+        </Link>
+
         <Link href="/account" className="group">
           <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
-            <div className="w-12 h-12 bg-gray-100 text-gray-600 flex items-center justify-center">
+            <div className="w-12 h-12 bg-secondary text-black flex items-center justify-center">
               <User className="h-6 w-6" />
             </div>
             <div className="space-y-2">
               <h3 className="text-xl font-bold">Mon Compte</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">Gérez vos informations et votre statut de membre.</p>
+              <p className="text-sm text-muted-foreground leading-relaxed">Gérez vos informations et votre statut de membre actif.</p>
             </div>
           </div>
         </Link>
 
         {isAdmin && (
-          <Link href="/admin" className="group">
+          <Link href="/admin" className="group lg:col-span-1">
             <div className="h-full border border-dashed border-primary p-8 bg-primary/5 hover:bg-primary/10 transition-all space-y-6">
               <div className="w-12 h-12 bg-primary text-white flex items-center justify-center">
                 <Settings className="h-6 w-6" />
               </div>
               <div className="space-y-2">
                 <h3 className="text-xl font-bold">Administration</h3>
-                <p className="text-sm text-muted-foreground">Gérer les sessions, les membres et les projets.</p>
+                <p className="text-sm text-muted-foreground">Outils de gestion des sessions, des membres et des projets.</p>
               </div>
             </div>
           </Link>
