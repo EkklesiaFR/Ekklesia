@@ -5,7 +5,7 @@ service cloud.firestore {
 
     /**
      * EKKLESIA VOTE SECURITY RULES
-     * Version: 1.6 - Public Results Access Fixed
+     * Version: 1.7 - Explicit Public Access for Homepage Results
      */
 
     // --- HELPER FUNCTIONS ---
@@ -29,7 +29,7 @@ service cloud.firestore {
      * Crucial pour l'affichage de la page d'accueil sans connexion.
      */
     match /publicVotingSessions/{sessionId} {
-      allow get, list: if true;
+      allow read: if true;
       allow write: if isAdmin();
     }
 
