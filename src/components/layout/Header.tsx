@@ -1,10 +1,11 @@
-
 "use client";
 
 import Link from 'next/link';
-import { LogOut } from 'lucide-react';
+import { LogOut, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { useUser, useAuth } from '@/firebase';
+import { signOut } from 'firebase/auth';
 
 export function Header({ 
   role, 
@@ -13,7 +14,13 @@ export function Header({
   role?: string; 
   statusText?: string 
 }) {
+  const { user, isUserLoading } = useUser();
+  const auth = useAuth();
   const isVoteOpen = statusText === "Vote ouvert";
+
+  const handleLogout = () => {
+    signOut(auth);
+  };
 
   return (
     <header className="w-full border-b border-border bg-background py-4">
@@ -33,15 +40,35 @@ export function Header({
         </div>
         
         <div className="flex items-center gap-6">
-          {role === 'admin' && (
-            <Link href="/admin" className="text-sm font-medium hover:underline">
-              Administration
+          {!isUserLoading && user ? (
+            <>
+              {role === 'admin' && (
+                <Link href="/admin" className="text-sm font-medium hover:underline">
+                  Administration
+                </Link>
+              )}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleLogout}
+                className="h-auto p-0 text-sm font-medium hover:bg-transparent flex items-center gap-2"
+              >
+                <span>Déconnexion</span>
+                <LogOut className="h-3 w-3" />
+              </Button>
+            </>
+          ) : !isUserLoading && (
+            <Link href="/login">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className="h-auto p-0 text-sm font-medium hover:bg-transparent flex items-center gap-2"
+              >
+                <span>Connexion</span>
+                <LogIn className="h-3 w-3" />
+              </Button>
             </Link>
           )}
-          <Button variant="ghost" size="sm" className="h-auto p-0 text-sm font-medium hover:bg-transparent flex items-center gap-2">
-            <span>Déconnexion</span>
-            <LogOut className="h-3 w-3" />
-          </Button>
         </div>
       </div>
     </header>
