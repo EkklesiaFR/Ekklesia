@@ -85,9 +85,6 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { computeSchulzeResults } from '@/lib/tally';
 
-/**
- * AdminContent contient TOUTE la logique de la page d'administration.
- */
 function AdminContent() {
   const { user } = useUser();
   const db = useFirestore();
@@ -106,7 +103,6 @@ function AdminContent() {
   const [newVoteQuestion, setNewVoteQuestion] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
 
-  // Requêtes Firestore isolées
   const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
   const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
 
@@ -221,6 +217,7 @@ function AdminContent() {
       const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
 
+      // Mise à jour atomique du vote et de l'assemblée
       batch.update(voteRef, {
         results: {
           winnerId: results.winnerId,
@@ -231,6 +228,8 @@ function AdminContent() {
         ballotCount: ballots.length,
         state: 'locked',
         lockedAt: serverTimestamp(),
+        closedAt: serverTimestamp(),
+        publishedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
 
@@ -254,9 +253,6 @@ function AdminContent() {
     }
   };
 
-  /**
-   * Forcer le recalcul du compteur (Backfill admin)
-   */
   const handleRecalculateBallots = async (assemblyId: string, voteId: string) => {
     setIsSubmitting(true);
     try {

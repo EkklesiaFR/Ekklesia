@@ -58,21 +58,22 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
         
-        // Seul l'admin actif peut modifier la structure ou clôturer
-        allow update: if isAdminActive() 
-          || (isMemberActive()
-              && resource.data.state == "open"
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ballotCount', 'updatedAt'])
-              && request.resource.data.ballotCount == (resource.data.ballotCount == null ? 1 : resource.data.ballotCount + 1)
-              && !exists(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid))
-              && existsAfter(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid)));
+        // Whitelisting strict des champs modifiables pour l'admin et le membre
+        allow update: if (isAdminActive() 
+                        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'results', 'closedAt', 'updatedAt', 'publishedAt', 'lockedAt', 'ballotCount', 'eligibleCount', 'openedAt']))
+                      || (isMemberActive()
+                          && resource.data.state == "open"
+                          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ballotCount', 'updatedAt'])
+                          && request.resource.data.ballotCount == (resource.data.ballotCount == null ? 1 : resource.data.ballotCount + 1)
+                          && !exists(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid))
+                          && existsAfter(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid)));
 
         allow create: if isAdminActive();
         allow delete: if isAdminActive();
 
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive();
-          allow list: if isAdminActive();
+          allow list: if isAdminActive(); // Secret du scrutin : seuls les admins actifs listent pour le tally
 
           function isValidBallotRequest() {
             let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data;
