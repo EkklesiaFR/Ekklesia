@@ -13,13 +13,37 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
 
-function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: number, eligibleCount?: number }) {
-  if (eligibleCount === undefined || eligibleCount === null || eligibleCount === 0) {
+function ParticipationPanel({ 
+  ballotCount, 
+  eligibleCount, 
+  isLoading 
+}: { 
+  ballotCount?: number; 
+  eligibleCount?: number;
+  isLoading?: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
+        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Calcul du quorum…</p>
+      </div>
+    );
+  }
+
+  if (eligibleCount === undefined || eligibleCount === null) {
     return (
       <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
         <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Quorum en calcul…</p>
         <p className="text-[9px] text-muted-foreground italic leading-tight">Le quorum doit être calculé par un administrateur à l'ouverture.</p>
         <p className="text-[8px] text-muted-foreground/30 font-mono mt-2 uppercase">Bulletins reçus : {ballotCount ?? 0}</p>
+      </div>
+    );
+  }
+
+  if (eligibleCount === 0) {
+    return (
+      <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
+        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Aucun membre éligible</p>
       </div>
     );
   }

@@ -23,13 +23,37 @@ import { Progress } from '@/components/ui/progress';
 import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
 import { useEffect } from 'react';
 
-function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: number; eligibleCount?: number }) {
-  if (eligibleCount === undefined || eligibleCount === null || eligibleCount === 0) {
+function ParticipationPanel({ 
+  ballotCount, 
+  eligibleCount, 
+  isLoading 
+}: { 
+  ballotCount?: number; 
+  eligibleCount?: number;
+  isLoading?: boolean;
+}) {
+  if (isLoading) {
+    return (
+      <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
+        <p className="text-[10px] uppercase font-bold text-muted-foreground">Calcul du quorum…</p>
+      </div>
+    );
+  }
+
+  if (eligibleCount === undefined || eligibleCount === null) {
     return (
       <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
         <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum en calcul…</p>
         <p className="text-[9px] text-muted-foreground mt-1 italic">Le quorum doit être calculé par un administrateur à l'ouverture.</p>
         <p className="text-[8px] text-muted-foreground/50 mt-2 font-mono">Bulletins: {ballotCount ?? "—"}</p>
+      </div>
+    );
+  }
+
+  if (eligibleCount === 0) {
+    return (
+      <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
+        <p className="text-[10px] uppercase font-bold text-muted-foreground">Aucun membre éligible</p>
       </div>
     );
   }
@@ -109,7 +133,7 @@ function AssemblyDashboardContent() {
     }
   }, [activeVote]);
 
-  if (isAssemblyLoading || isVoteLoading) {
+  if (isAssemblyLoading || (activeAssembly && isVoteLoading)) {
     return (
       <div className="flex flex-col items-center justify-center py-24 space-y-4">
         <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
@@ -185,7 +209,8 @@ function AssemblyDashboardContent() {
             ) : (
               <ParticipationPanel 
                 ballotCount={activeVote?.ballotCount} 
-                eligibleCount={activeVote?.eligibleCount} 
+                eligibleCount={activeVote?.eligibleCount}
+                isLoading={isVoteLoading}
               />
             )}
             <Link href="/projects" className="block pt-4">
