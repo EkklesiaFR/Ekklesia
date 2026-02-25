@@ -14,37 +14,48 @@ import { useState, useEffect, useRef } from 'react';
 
 /**
  * Composant pour afficher le PV détaillé d'une assemblée.
- * Implémente une logique de cache pour éviter les disparitions de données au refresh.
+ * Implémente une logique de cache ISOLÉ par assemblyId pour éviter les disparitions de données.
  */
 function AssemblyVotesPV({ assembly, projects }: { assembly: Assembly; projects: Project[] }) {
   const db = useFirestore();
   const [cachedVotes, setCachedVotes] = useState<Vote[]>([]);
   const hasLoadedOnce = useRef(false);
+  const lastAssemblyId = useRef<string | null>(null);
   
+  // RESET DU CACHE si on change d'assemblée
+  if (lastAssemblyId.current !== assembly.id) {
+    console.log(`[ARCHIVES] Assembly changed from ${lastAssemblyId.current} to ${assembly.id}. Resetting cache.`);
+    setCachedVotes([]);
+    hasLoadedOnce.current = false;
+    lastAssemblyId.current = assembly.id;
+  }
+
   // Requête stable pour les votes de cette assemblée
   const votesQuery = useMemoFirebase(() => {
+    const path = `assemblies/${assembly.id}/votes`;
+    console.log(`[ARCHIVES] Preparing query for path: ${path}`);
     return query(
       collection(db, 'assemblies', assembly.id, 'votes'),
       orderBy('updatedAt', 'desc'),
-      limit(20)
+      limit(50)
     );
   }, [db, assembly.id]);
   
   const { data: fetchedVotes, isLoading } = useCollection<Vote>(votesQuery);
 
-  // Mise à jour du cache uniquement quand on reçoit des données valides
+  // Mise à jour du cache uniquement quand on reçoit des données valides pour la MÊME assembly
   useEffect(() => {
     if (fetchedVotes && fetchedVotes.length > 0) {
       setCachedVotes(fetchedVotes);
       hasLoadedOnce.current = true;
-      console.log(`[ARCHIVES] [PV] Cached ${fetchedVotes.length} votes for ${assembly.id}`);
+      console.log(`[ARCHIVES] [PV] Cache updated for ${assembly.id}: ${fetchedVotes.length} votes.`);
     }
   }, [fetchedVotes, assembly.id]);
 
-  // Détermination des votes à afficher (priorité au fetch, fallback au cache)
+  // Détermination des votes à afficher (priorité au fetch, fallback au cache de la MÊME assembly)
   const allVotes = fetchedVotes || cachedVotes;
   const closedVotes = allVotes
-    ?.filter(v => v.results || v.state === 'locked' || v.state === 'closed')
+    ?.filter(v => (v.results || v.state === 'locked' || v.state === 'closed'))
     .sort((a, b) => {
       const dateA = a.results?.computedAt?.seconds || a.updatedAt?.seconds || 0;
       const dateB = b.results?.computedAt?.seconds || b.updatedAt?.seconds || 0;
@@ -141,11 +152,11 @@ function AssemblyVotesPV({ assembly, projects }: { assembly: Assembly; projects:
 function ResultsContent() {
   const db = useFirestore();
   const [selectedAssemblyId, setSelectedAssemblyId] = useState<string | null>(null);
-  const assembliesLoaded = useRef(false);
+  const assembliesLoadedOnce = useRef(false);
 
-  // Requête stable pour toutes les assemblées
+  // Requête stable pour toutes les assemblées accessibles
   const assembliesQuery = useMemoFirebase(() => 
-    query(collection(db, 'assemblies'), orderBy('updatedAt', 'desc'), limit(50)), 
+    query(collection(db, 'assemblies'), orderBy('createdAt', 'desc'), limit(50)), 
   [db]);
   const { data: assemblies, isLoading: isAsmLoading } = useCollection<Assembly>(assembliesQuery);
 
@@ -153,12 +164,13 @@ function ResultsContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(100)), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // Sélection automatique de la dernière assemblée au premier chargement
+  // SÉLECTION STABLE de l'assemblée par défaut (ne change plus après le premier load)
   useEffect(() => {
-    if (!isAsmLoading && assemblies && assemblies.length > 0 && !assembliesLoaded.current) {
+    if (!isAsmLoading && assemblies && assemblies.length > 0 && !assembliesLoadedOnce.current) {
+      // On prend la première de la liste de manière stable
       setSelectedAssemblyId(assemblies[0].id);
-      assembliesLoaded.current = true;
-      console.log(`[ARCHIVES] Auto-selected latest assembly: ${assemblies[0].id}`);
+      assembliesLoadedOnce.current = true;
+      console.log(`[ARCHIVES] Initial stable assembly selected: ${assemblies[0].id}`);
     }
   }, [assemblies, isAsmLoading]);
 
@@ -212,7 +224,7 @@ function ResultsContent() {
                       </Badge>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
-                        {assembly.updatedAt?.seconds ? format(new Date(assembly.updatedAt.seconds * 1000), 'dd MMMM yyyy', { locale: fr }) : 'Date inconnue'}
+                        {assembly.createdAt?.seconds ? format(new Date(assembly.createdAt.seconds * 1000), 'dd MMMM yyyy', { locale: fr }) : 'Date inconnue'}
                       </span>
                     </div>
                     <h3 className="text-2xl font-bold">{assembly.title}</h3>
