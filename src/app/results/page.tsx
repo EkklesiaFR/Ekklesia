@@ -2,51 +2,74 @@
 
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, orderBy, doc, limit } from 'firebase/firestore';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, query, orderBy, limit } from 'firebase/firestore';
 import { Assembly, Vote, Project } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { FileText, PieChart, Trophy, Calendar, ChevronRight, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /**
  * Composant pour afficher le PV détaillé d'une assemblée.
- * Recherche tous les votes clôturés (ayant des résultats) pour cette assemblée.
+ * Implémente une logique de cache pour éviter les disparitions de données au refresh.
  */
 function AssemblyVotesPV({ assembly, projects }: { assembly: Assembly; projects: Project[] }) {
   const db = useFirestore();
+  const [cachedVotes, setCachedVotes] = useState<Vote[]>([]);
+  const hasLoadedOnce = useRef(false);
   
-  // Requête stable pour les votes de cette assemblée ayant des résultats
+  // Requête stable pour les votes de cette assemblée
   const votesQuery = useMemoFirebase(() => {
     return query(
       collection(db, 'assemblies', assembly.id, 'votes'),
       orderBy('updatedAt', 'desc'),
-      limit(10)
+      limit(20)
     );
   }, [db, assembly.id]);
   
-  const { data: allVotes, isLoading } = useCollection<Vote>(votesQuery);
+  const { data: fetchedVotes, isLoading } = useCollection<Vote>(votesQuery);
 
-  // Filtrage côté client pour garantir la stabilité même si les index Firestore sont en cours
-  const closedVotes = allVotes?.filter(v => v.results || v.state === 'locked' || v.state === 'closed') || [];
-
+  // Mise à jour du cache uniquement quand on reçoit des données valides
   useEffect(() => {
-    if (!isLoading) {
-      console.log(`[PV] Assembly ${assembly.id}: fetched ${allVotes?.length || 0} votes, ${closedVotes.length} with results.`);
+    if (fetchedVotes && fetchedVotes.length > 0) {
+      setCachedVotes(fetchedVotes);
+      hasLoadedOnce.current = true;
+      console.log(`[ARCHIVES] [PV] Cached ${fetchedVotes.length} votes for ${assembly.id}`);
     }
-  }, [allVotes, closedVotes, isLoading, assembly.id]);
+  }, [fetchedVotes, assembly.id]);
 
-  if (isLoading && !allVotes) {
-    return <div className="h-24 flex items-center justify-center border border-dashed border-border mt-4"><Loader2 className="h-4 w-4 animate-spin" /></div>;
+  // Détermination des votes à afficher (priorité au fetch, fallback au cache)
+  const allVotes = fetchedVotes || cachedVotes;
+  const closedVotes = allVotes
+    ?.filter(v => v.results || v.state === 'locked' || v.state === 'closed')
+    .sort((a, b) => {
+      const dateA = a.results?.computedAt?.seconds || a.updatedAt?.seconds || 0;
+      const dateB = b.results?.computedAt?.seconds || b.updatedAt?.seconds || 0;
+      return dateB - dateA;
+    }) || [];
+
+  if (isLoading && !hasLoadedOnce.current) {
+    return (
+      <div className="h-32 flex flex-col items-center justify-center border border-dashed border-border mt-4 space-y-2">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Récupération des scrutins...</p>
+      </div>
+    );
   }
 
-  if (closedVotes.length === 0) return null;
+  if (!isLoading && closedVotes.length === 0) {
+    return (
+      <div className="p-12 text-center border border-dashed border-border mt-4 bg-secondary/5">
+        <p className="text-xs text-muted-foreground italic">Aucun procès-verbal publié pour cette session.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="px-8 pb-12 pt-4 border-t border-border animate-in slide-in-from-top-2 duration-300 space-y-12">
+    <div className="px-8 pb-12 pt-4 border-t border-border animate-in slide-in-from-top-2 duration-300 space-y-12 bg-white">
       {closedVotes.map((vote) => {
         const results = vote.results;
         if (!results) return null;
@@ -118,23 +141,26 @@ function AssemblyVotesPV({ assembly, projects }: { assembly: Assembly; projects:
 function ResultsContent() {
   const db = useFirestore();
   const [selectedAssemblyId, setSelectedAssemblyId] = useState<string | null>(null);
+  const assembliesLoaded = useRef(false);
 
-  // Requête stable pour toutes les assemblées, triées par date (on ne filtre plus par state=locked car instable)
+  // Requête stable pour toutes les assemblées
   const assembliesQuery = useMemoFirebase(() => 
     query(collection(db, 'assemblies'), orderBy('updatedAt', 'desc'), limit(50)), 
   [db]);
-  const { data: assemblies, isLoading: isAsmLoading, error: asmError } = useCollection<Assembly>(assembliesQuery);
+  const { data: assemblies, isLoading: isAsmLoading } = useCollection<Assembly>(assembliesQuery);
 
-  // Charger les projets pour les libellés
+  // Charger les projets pour les libellés (global pour éviter N requêtes)
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(100)), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
+  // Sélection automatique de la dernière assemblée au premier chargement
   useEffect(() => {
-    if (!isAsmLoading) {
-      console.log(`[ARCHIVES] Assemblies loaded: ${assemblies?.length || 0}`);
-      if (asmError) console.error("[ARCHIVES] Query Error:", asmError);
+    if (!isAsmLoading && assemblies && assemblies.length > 0 && !assembliesLoaded.current) {
+      setSelectedAssemblyId(assemblies[0].id);
+      assembliesLoaded.current = true;
+      console.log(`[ARCHIVES] Auto-selected latest assembly: ${assemblies[0].id}`);
     }
-  }, [assemblies, isAsmLoading, asmError]);
+  }, [assemblies, isAsmLoading]);
 
   if (isAsmLoading && !assemblies) {
     return (
@@ -178,8 +204,11 @@ function ResultsContent() {
                 >
                   <div className="space-y-2 text-left">
                     <div className="flex items-center gap-3">
-                      <Badge className="bg-[#7DC092] rounded-none uppercase font-bold text-[9px] tracking-widest">
-                        {assembly.state === 'locked' ? 'Clos' : 'Historique'}
+                      <Badge className={cn(
+                        "rounded-none uppercase font-bold text-[9px] tracking-widest",
+                        assembly.state === 'locked' ? "bg-black text-white" : "bg-[#7DC092] text-white"
+                      )}>
+                        {assembly.state === 'locked' ? 'Archives' : 'Session Active'}
                       </Badge>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
