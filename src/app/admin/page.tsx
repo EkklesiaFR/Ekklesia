@@ -3,7 +3,7 @@
 
 export const dynamic = 'force-dynamic';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -82,7 +82,8 @@ import {
   CheckCircle2,
   RefreshCw,
   FileText,
-  PieChart
+  PieChart,
+  Lock
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
@@ -108,6 +109,7 @@ function AssemblySessionRow({
   isSubmitting: boolean;
   isUserActiveAdmin: boolean;
 }) {
+  const { user } = useUser();
   const db = useFirestore();
   const voteRef = useMemoFirebase(() => {
     if (!assembly.activeVoteId) return null;
@@ -115,6 +117,18 @@ function AssemblySessionRow({
   }, [db, assembly.id, assembly.activeVoteId]);
 
   const { data: vote, isLoading } = useDoc<Vote>(voteRef);
+
+  useEffect(() => {
+    if (vote) {
+      console.log("[SESSION ROW] loaded", { 
+        assemblyId: assembly.id, 
+        activeVoteId: assembly.activeVoteId, 
+        voteState: vote.state, 
+        ballotCount: vote.ballotCount, 
+        eligibleCount: vote.eligibleCount 
+      });
+    }
+  }, [vote, assembly.id, assembly.activeVoteId]);
 
   const getStatusBadge = (state: string) => {
     switch (state) {
@@ -126,6 +140,17 @@ function AssemblySessionRow({
     }
   };
 
+  const handleCloseClick = () => {
+    if (!vote || !user) return;
+    console.log("[CLOSE CLICK]", { 
+      assemblyId: assembly.id, 
+      voteId: vote.id, 
+      voteState: vote.state, 
+      uid: user.uid 
+    });
+    onTally(assembly.id, vote.id);
+  };
+
   return (
     <div className="group border border-border p-8 bg-white hover:border-black transition-all flex flex-col md:flex-row md:items-center justify-between gap-8">
       <div className="space-y-4">
@@ -133,15 +158,17 @@ function AssemblySessionRow({
         <div className="space-y-1">
           <h3 className="text-2xl font-bold">{assembly.title}</h3>
           <div className="flex items-center gap-6 mt-2">
-            {isLoading ? (
+            {!assembly.activeVoteId ? (
+              <p className="text-[10px] uppercase font-bold text-destructive">Scrutin non configuré</p>
+            ) : isLoading ? (
               <p className="text-[10px] uppercase font-bold text-muted-foreground animate-pulse">Chargement du scrutin...</p>
             ) : vote ? (
               <>
-                <p className="text-[10px] uppercase font-bold text-muted-foreground">{vote.ballotCount || 0} bulletins</p>
-                <p className="text-[10px] uppercase font-bold text-primary">{vote.eligibleCount || 0} éligibles</p>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground">{vote.ballotCount ?? 0} bulletins</p>
+                <p className="text-[10px] uppercase font-bold text-primary">{vote.eligibleCount ?? 0} éligibles</p>
               </>
             ) : (
-              <p className="text-[10px] uppercase font-bold text-muted-foreground">— Aucun scrutin actif —</p>
+              <p className="text-[10px] uppercase font-bold text-muted-foreground">— Inconnu —</p>
             )}
           </div>
         </div>
@@ -150,7 +177,7 @@ function AssemblySessionRow({
         {assembly.state === 'draft' && (
           <Button onClick={() => onUpdateState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] h-10 px-6 uppercase font-bold text-[10px]">Ouvrir</Button>
         )}
-        {assembly.state === 'open' && (
+        {(assembly.state === 'open' || (vote && vote.state === 'open')) && (
           <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
             {!isUserActiveAdmin ? (
               <div className="px-4 py-2 bg-destructive/5 text-destructive text-[9px] uppercase font-bold border border-destructive/10">
@@ -158,8 +185,21 @@ function AssemblySessionRow({
               </div>
             ) : (
               <>
-                <Button variant="ghost" size="icon" onClick={() => vote && onRecalculate(assembly.id, vote.id)} disabled={isSubmitting}><RefreshCw className={isSubmitting ? "animate-spin" : ""} /></Button>
-                <Button onClick={() => vote && onTally(assembly.id, vote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white h-10 px-6 uppercase font-bold text-[10px]">Clôturer</Button>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => vote && onRecalculate(assembly.id, vote.id)} 
+                  disabled={isSubmitting || !vote}
+                >
+                  <RefreshCw className={isSubmitting ? "animate-spin" : ""} />
+                </Button>
+                <Button 
+                  onClick={handleCloseClick} 
+                  disabled={isSubmitting || !vote || vote.state !== 'open'} 
+                  className="rounded-none bg-black text-white h-10 px-6 uppercase font-bold text-[10px]"
+                >
+                  Clôturer
+                </Button>
               </>
             )}
           </div>
@@ -272,7 +312,7 @@ function AdminContent() {
   const membersQuery = useMemoFirebase(() => {
     return query(collection(db, 'members'), limit(150));
   }, [db]);
-  const { data: members, error: membersError } = useCollection<MemberProfile>(membersQuery);
+  const { data: members } = useCollection<MemberProfile>(membersQuery);
 
   const filteredMembers = members?.filter(m => {
     const matchStatus = statusFilter === 'all' || m.status === statusFilter;
@@ -307,7 +347,6 @@ function AdminContent() {
     }
 
     const results = computeSchulzeResults(voteData.projectIds, ballots);
-
     const assemblyRef = doc(db, 'assemblies', assemblyId);
 
     try {
@@ -327,12 +366,7 @@ function AdminContent() {
         updatedAt: serverTimestamp()
       });
       console.log(`[CLOSE] Vote update OK`);
-    } catch (e: any) {
-      console.error(`[CLOSE] Vote update FAILED:`, e.code, e.message);
-      throw e;
-    }
 
-    try {
       console.log(`[CLOSE] Attempting Assembly update...`);
       await updateDoc(assemblyRef, {
         state: 'locked',
@@ -340,7 +374,7 @@ function AdminContent() {
       });
       console.log(`[CLOSE] Assembly update OK`);
     } catch (e: any) {
-      console.error(`[CLOSE] Assembly update FAILED:`, e.code, e.message);
+      console.error(`[CLOSE] Update FAILED:`, e.code, e.message);
       throw e;
     }
 
@@ -392,17 +426,22 @@ function AdminContent() {
       const q = query(collectionGroup(db, 'votes'), where('state', '==', 'open'));
       const snapshot = await getDocs(q);
 
+      console.log(`[BULK CLOSE] Found ${snapshot.size} open votes`);
+
       for (const voteDoc of snapshot.docs) {
         const voteId = voteDoc.id;
         const assemblyId = voteDoc.ref.parent.parent!.id;
 
         try {
+          console.log(`[BULK CLOSE] Closing ${assemblyId} / ${voteId}`);
           const result = await performVoteTally(assemblyId, voteId);
           if (!result.skipped) {
             successCount++;
+            console.log(`[BULK CLOSE] Done ${assemblyId} / ${voteId}, winnerId: ${result.winnerId}`);
           }
         } catch (e: any) {
           failCount++;
+          console.error(`[BULK CLOSE] Failed ${assemblyId} / ${voteId}`, e.code, e.message);
         }
       }
 
