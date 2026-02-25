@@ -16,7 +16,8 @@ import {
   collectionGroup,
   deleteDoc,
   getDocs,
-  writeBatch
+  writeBatch,
+  getDoc
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -92,7 +93,7 @@ function AdminContent() {
       // Create Assembly
       const assemblyRef = doc(collection(db, 'assemblies'));
       
-      // Create Vote doc reference first to have its ID
+      // Create Vote doc reference
       const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
 
       batch.set(assemblyRef, {
@@ -102,7 +103,7 @@ function AdminContent() {
         createdBy: user.uid,
         startsAt: startsAt ? new Date(startsAt) : null,
         endsAt: endsAt ? new Date(endsAt) : null,
-        activeVoteId: voteRef.id, // Direct link on creation
+        activeVoteId: voteRef.id, // Linked immediately
       });
 
       batch.set(voteRef, {
@@ -113,8 +114,6 @@ function AdminContent() {
         state: 'draft',
         createdAt: serverTimestamp(),
         createdBy: user.uid,
-        opensAt: startsAt ? new Date(startsAt) : null,
-        closesAt: endsAt ? new Date(endsAt) : null,
       });
 
       await batch.commit();
@@ -131,20 +130,39 @@ function AdminContent() {
 
   const updateSessionState = async (assemblyId: string, newState: 'open' | 'closed') => {
     try {
-      // 1. Find the vote doc in the sub-collection
+      setIsSubmitting(true);
+      const assemblyRef = doc(db, 'assemblies', assemblyId);
+      
+      // 1. Chercher le document de vote existant dans la sous-collection
       const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
+      let voteId: string;
+      let voteRef;
+      let currentProjectIds: string[] = [];
+
       if (votesSnap.empty) {
-        toast({ variant: "destructive", title: "Erreur", description: "Aucun document de vote trouvé pour cette assemblée." });
+        // Fallback: créer un vote si inexistant (ne devrait pas arriver avec handleCreateSession sécurisé)
+        voteRef = doc(collection(db, 'assemblies', assemblyId, 'votes'));
+        voteId = voteRef.id;
+      } else {
+        const voteDoc = votesSnap.docs[0];
+        voteId = voteDoc.id;
+        voteRef = voteDoc.ref;
+        currentProjectIds = voteDoc.data().projectIds || [];
+      }
+
+      // 2. Validation si on veut ouvrir
+      if (newState === 'open' && currentProjectIds.length < 2) {
+        toast({ 
+          variant: "destructive", 
+          title: "Scrutin incomplet", 
+          description: "Ajoutez au moins 2 projets au scrutin avant de l'ouvrir." 
+        });
         return;
       }
 
-      const voteDoc = votesSnap.docs[0];
-      const voteId = voteDoc.id;
-
       const batch = writeBatch(db);
 
-      // 2. Update assembly with explicit activeVoteId and state
-      const assemblyRef = doc(db, 'assemblies', assemblyId);
+      // 3. Mise à jour ATOMIQUE de l'assemblée et du vote
       batch.update(assemblyRef, { 
         state: newState,
         activeVoteId: newState === 'open' ? voteId : null,
@@ -152,18 +170,27 @@ function AdminContent() {
         openedAt: newState === 'open' ? serverTimestamp() : null
       });
       
-      // 3. Update linked vote doc state
-      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       batch.update(voteRef, { 
         state: newState,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        opensAt: newState === 'open' ? serverTimestamp() : null
       });
 
       await batch.commit();
+
+      // Double vérification post-commit
+      const verifySnap = await getDoc(assemblyRef);
+      if (newState === 'open' && !verifySnap.data()?.activeVoteId) {
+        console.error("CRITICAL: activeVoteId is null on open assembly", assemblyId);
+        toast({ variant: "destructive", title: "Erreur critique", description: "Liaison du vote échouée. Veuillez réessayer." });
+        return;
+      }
       
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'fermée'}` });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Erreur", description: "Action impossible." });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -335,13 +362,24 @@ function AdminContent() {
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     {assembly.state === 'draft' && (
-                      <Button onClick={() => updateSessionState(assembly.id, 'open')} className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        <Play className="h-3.5 w-3.5" /> Ouvrir le vote
+                      <Button 
+                        onClick={() => updateSessionState(assembly.id, 'open')} 
+                        disabled={isSubmitting}
+                        className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
+                      >
+                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                        Ouvrir le vote
                       </Button>
                     )}
                     {assembly.state === 'open' && (
-                      <Button onClick={() => updateSessionState(assembly.id, 'closed')} variant="outline" className="rounded-none border-black hover:bg-black hover:text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        <Square className="h-3.5 w-3.5" /> Clôturer
+                      <Button 
+                        onClick={() => updateSessionState(assembly.id, 'closed')} 
+                        variant="outline" 
+                        disabled={isSubmitting}
+                        className="rounded-none border-black hover:bg-black hover:text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
+                      >
+                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
+                        Clôturer
                       </Button>
                     )}
                     {assembly.state === 'closed' && (

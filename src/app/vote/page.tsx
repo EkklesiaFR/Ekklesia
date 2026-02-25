@@ -11,26 +11,26 @@ import Link from 'next/link';
 import { Project, Vote, Assembly, Ballot } from '@/types';
 import { VoteModule } from '@/components/vote/VoteModule';
 
-// FLAG DEBUG
-const DEBUG_VOTE = false;
+// FLAG DEBUG - Passer à false en production
+const DEBUG_VOTE = true;
 
 function VoteGate() {
   const { user } = useUser();
   const db = useFirestore();
 
-  // 1. Trouver l'assemblée ouverte (Source de vérité)
+  // 1. Trouver l'assemblée ouverte (Source de vérité absolue)
   const activeAssemblyQuery = useMemoFirebase(() => {
     return query(collection(db, 'assemblies'), where('state', '==', 'open'), limit(1));
   }, [db]);
-  const { data: assemblies, isLoading: isAssemblyLoading, error: assemblyError } = useCollection<Assembly>(activeAssemblyQuery);
+  const { data: assemblies, isLoading: isAssemblyLoading } = useCollection<Assembly>(activeAssemblyQuery);
   const activeAssembly = assemblies?.[0];
 
-  // 2. Charger le vote spécifique via activeVoteId
+  // 2. Charger le vote spécifique via activeVoteId stocké sur l'assemblée
   const voteRef = useMemoFirebase(() => {
     if (!activeAssembly?.activeVoteId) return null;
     return doc(db, 'assemblies', activeAssembly.id, 'votes', activeAssembly.activeVoteId);
   }, [db, activeAssembly]);
-  const { data: activeVote, isLoading: isVoteLoading, error: voteError } = useDoc<Vote>(voteRef);
+  const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
   // 3. Charger les projets associés
   const projectsQuery = useMemoFirebase(() => {
@@ -38,7 +38,7 @@ function VoteGate() {
   }, [db]);
   const { data: allProjects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
 
-  // Filtrage des projets autorisés pour ce vote
+  // Filtrage des projets autorisés pour ce scrutin
   const voteProjects = allProjects?.filter(p => activeVote?.projectIds?.includes(p.id)) || [];
 
   // 4. Charger le bulletin de l'utilisateur
@@ -61,6 +61,7 @@ function VoteGate() {
     );
   }
 
+  // Panneau de diagnostic
   const debugPanel = DEBUG_VOTE && (
     <div className="fixed bottom-20 left-4 right-4 z-[100] bg-black text-white p-6 text-[10px] font-mono border-t-4 border-primary shadow-2xl space-y-2 opacity-90 hover:opacity-100 transition-opacity">
       <div className="flex items-center gap-2 text-primary font-bold mb-2">
@@ -69,8 +70,8 @@ function VoteGate() {
       <p>Assembly ID: {activeAssembly?.id || 'null'}</p>
       <p>Assembly State: {activeAssembly?.state || 'null'}</p>
       <p>activeVoteId: {activeAssembly?.activeVoteId || 'null'}</p>
-      <p>Vote Doc Found: {activeVote ? 'YES' : 'NO'}</p>
-      <p>Vote Doc State: {activeVote?.state || 'null'}</p>
+      <p>Vote Doc Found: {activeVote ? 'OUI' : 'NON'}</p>
+      <p>Vote State: {activeVote?.state || 'null'}</p>
       <p>Project IDs in Vote: {activeVote?.projectIds?.length || 0}</p>
       <p>Resolved Projects: {voteProjects.length}</p>
     </div>
@@ -80,7 +81,7 @@ function VoteGate() {
     return (
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-8">
-          <h1 className="text-4xl font-bold tracking-tight">Aucun vote ouvert</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-black">Aucun vote ouvert</h1>
           <p className="text-muted-foreground max-w-sm mx-auto">Il n'y a pas d'assemblée active pour le moment.</p>
           <Link href="/assembly">
             <Button variant="outline" className="rounded-none h-14 px-8 uppercase font-bold text-xs tracking-widest gap-2">
@@ -93,14 +94,14 @@ function VoteGate() {
     );
   }
 
-  // Cas où l'assemblée est ouverte mais le vote n'est pas lié ou introuvable
+  // Cas critique : assemblée ouverte mais activeVoteId manquant
   if (!activeAssembly.activeVoteId || !activeVote) {
     return (
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
           <h1 className="text-2xl font-bold text-destructive">Scrutin non configuré</h1>
-          <p className="text-muted-foreground">L'assemblée est ouverte mais le document de vote est introuvable ou mal lié.</p>
-          <p className="text-xs text-muted-foreground font-mono">activeVoteId: {activeAssembly.activeVoteId || 'null'}</p>
+          <p className="text-muted-foreground">L'assemblée est ouverte mais le lien vers le vote est corrompu ou manquant.</p>
+          <p className="text-[10px] font-mono p-4 bg-secondary">activeVoteId: {activeAssembly.activeVoteId || 'null'}</p>
         </div>
         {debugPanel}
       </>
