@@ -80,7 +80,8 @@ import {
   Clock,
   RefreshCw,
   AlertTriangle,
-  Database
+  Database,
+  Wrench
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile } from '@/types';
@@ -96,6 +97,7 @@ function AdminContent() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isRepairing, setIsRepairing] = useState(false);
   const [selectedMember, setSelectedMember] = useState<MemberProfile | null>(null);
   
   // Promotion to Admin confirmation
@@ -122,7 +124,7 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // MEMBRES: Requête sur la collection 'members'
+  // MEMBRES: Requête simplifiée sur la collection 'members'
   const membersQuery = useMemoFirebase(() => {
     return query(collection(db, 'members'), limit(100));
   }, [db]);
@@ -180,6 +182,53 @@ function AdminContent() {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer la session." });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleRepairMembers = async () => {
+    setIsRepairing(true);
+    try {
+      const snapshot = await getDocs(collection(db, 'members'));
+      const batch = writeBatch(db);
+      let fixedCount = 0;
+      let okCount = 0;
+
+      snapshot.docs.forEach(memberDoc => {
+        const data = memberDoc.data();
+        const needsRepair = !data.email || !data.status || !data.role || !data.id || data.displayName === undefined;
+
+        if (needsRepair) {
+          batch.update(memberDoc.ref, {
+            id: memberDoc.id,
+            email: data.email || "",
+            displayName: data.displayName || "",
+            status: data.status || "pending",
+            role: data.role || "member",
+            lastLoginAt: data.lastLoginAt || null,
+            updatedAt: serverTimestamp()
+          });
+          fixedCount++;
+        } else {
+          okCount++;
+        }
+      });
+
+      if (fixedCount > 0) {
+        await batch.commit();
+      }
+
+      toast({ 
+        title: "Réparation terminée", 
+        description: `${fixedCount} profils corrigés, ${okCount} déjà conformes.` 
+      });
+    } catch (e: any) {
+      toast({ 
+        variant: "destructive", 
+        title: "Erreur de réparation", 
+        description: e.message 
+      });
+    } finally {
+      setIsRepairing(false);
     }
   };
 
@@ -415,7 +464,19 @@ function AdminContent() {
               <span className="text-muted-foreground">|</span>
               <span>Docs chargés : <code className="bg-white px-1">{members?.length || 0}</code></span>
             </div>
-            {isMembersLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+            <div className="flex items-center gap-4">
+              <Button 
+                onClick={handleRepairMembers} 
+                disabled={isRepairing} 
+                variant="outline" 
+                size="sm"
+                className="h-8 rounded-none border-primary text-primary uppercase font-bold text-[10px] gap-2"
+              >
+                {isRepairing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
+                Réparer les profils
+              </Button>
+              {isMembersLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+            </div>
           </div>
 
           {/* Error Message */}
