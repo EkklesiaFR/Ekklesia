@@ -17,6 +17,7 @@ import {
   updateDoc, 
   collectionGroup,
   getDocs,
+  getDoc,
   writeBatch,
   limit,
   where,
@@ -174,6 +175,7 @@ function AdminContent() {
 
   /**
    * Clôturer le scrutin (Dépouillement & Publication)
+   * Utilise getDoc comme source de vérité pour l'idempotence.
    */
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
     console.log(`[CLOSE] Initiation`, { 
@@ -194,9 +196,21 @@ function AdminContent() {
     setIsSubmitting(true);
     
     try {
-      const voteDoc = allVotes?.find(v => v.id === voteId);
-      if (!voteDoc || voteDoc.state !== 'open') {
-        throw new Error("Le scrutin n'est pas ouvert ou est déjà clôturé.");
+      // Source de vérité : on lit le document de vote directement
+      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
+      const voteSnap = await getDoc(voteRef);
+      
+      if (!voteSnap.exists()) {
+        throw new Error("Le scrutin n'existe pas.");
+      }
+      
+      const voteData = voteSnap.data() as Vote;
+      
+      // Idempotence : si le vote n'est plus ouvert, on s'arrête
+      if (voteData.state !== 'open') {
+        console.warn(`[CLOSE] Scrutin déjà clôturé ou non ouvert (state: ${voteData.state})`);
+        toast({ title: "Déjà clôturé", description: "Ce scrutin a déjà été traité." });
+        return;
       }
 
       console.log(`[CLOSE] Fetching ballots...`);
@@ -210,11 +224,10 @@ function AdminContent() {
       }
 
       // Calcul Schulze
-      const results = computeSchulzeResults(voteDoc.projectIds, ballots);
+      const results = computeSchulzeResults(voteData.projectIds, ballots);
       console.log(`[CLOSE] Results computed`, results);
 
       const batch = writeBatch(db);
-      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
 
       // Mise à jour atomique du vote et de l'assemblée
