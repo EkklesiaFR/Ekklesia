@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
@@ -8,7 +7,7 @@ import { Trophy, Users, BarChart3, ChevronRight, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import { useEffect } from 'react';
 
