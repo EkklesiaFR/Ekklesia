@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -55,7 +55,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/components/table/Table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -78,8 +78,10 @@ import {
   UserCheck,
   Ban,
   Clock,
-  UserX,
-  RefreshCw
+  RefreshCw,
+  AlertTriangle,
+  Database,
+  Info
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile } from '@/types';
@@ -87,6 +89,7 @@ import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import Image from 'next/image';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 function AdminContent() {
   const { user } = useUser();
@@ -99,7 +102,7 @@ function AdminContent() {
   // Promotion to Admin confirmation
   const [confirmAdminPromote, setConfirmAdminPromote] = useState<string | null>(null);
 
-  // Filters for members
+  // Filters for members (local only to not break the diagnostic query)
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
@@ -120,10 +123,18 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), orderBy('createdAt', 'desc')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
+  // MEMBRES: Requête sur la collection racine "members" sans filtre where pour diagnostic
   const membersQuery = useMemoFirebase(() => {
     return query(collection(db, 'members'), orderBy('createdAt', 'desc'), limit(100));
   }, [db]);
-  const { data: members } = useCollection<MemberProfile>(membersQuery);
+  const { data: members, error: membersError, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
+
+  // Log error if any
+  useEffect(() => {
+    if (membersError) {
+      console.error("[Admin Members Query Error]", membersError);
+    }
+  }, [membersError]);
 
   const filteredMembers = members?.filter(m => {
     const matchStatus = statusFilter === 'all' || m.status === statusFilter;
@@ -404,6 +415,30 @@ function AdminContent() {
         </TabsContent>
 
         <TabsContent value="members" className="py-12 space-y-8">
+          {/* Debug Info */}
+          <div className="p-4 bg-secondary/5 border border-border flex items-center justify-between">
+            <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest">
+              <Database className="h-3 w-3 text-primary" />
+              <span>Collection : <code className="bg-white px-1">members</code></span>
+              <span className="text-muted-foreground">|</span>
+              <span>Docs chargés : <code className="bg-white px-1">{members?.length || 0}</code></span>
+            </div>
+            {isMembersLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+          </div>
+
+          {/* Error Message */}
+          {membersError && (
+            <Alert variant="destructive" className="rounded-none">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Erreur de lecture Firestore</AlertTitle>
+              <AlertDescription className="font-mono text-[10px] mt-2">
+                {String(membersError)}
+                <br />
+                Vérifiez les règles de sécurité ou si la collection "members" existe.
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="flex flex-col md:flex-row gap-6 items-center justify-between border-b border-border pb-6">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Users className="h-5 w-5" />
@@ -434,90 +469,102 @@ function AdminContent() {
             </div>
           </div>
 
-          <div className="border border-border bg-white overflow-hidden">
-            <Table>
-              <TableHeader className="bg-secondary/20">
-                <TableRow>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Email</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Nom</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest hidden md:table-cell">Connexion</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions rapides</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredMembers?.map((member) => (
-                  <TableRow key={member.id} className="hover:bg-secondary/5">
-                    <TableCell className="font-medium text-sm">{member.email}</TableCell>
-                    <TableCell className="text-sm">{member.displayName || '-'}</TableCell>
-                    <TableCell>{getStatusBadge(member.status)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px] gap-1">
-                        {member.role === 'admin' ? <Shield className="h-3 w-3" /> : null}
-                        {member.role}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-[10px] text-muted-foreground hidden md:table-cell">
-                      {member.lastLoginAt?.seconds ? format(new Date(member.lastLoginAt.seconds * 1000), 'dd/MM HH:mm') : 'Jamais'}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {member.status !== 'active' && (
-                          <Button 
-                            variant="outline" 
-                            size="sm" 
-                            onClick={() => updateMemberStatus(member.id, 'active')}
-                            className="h-8 px-3 rounded-none border-green-200 text-green-600 hover:bg-green-50 hover:text-green-700 text-[10px] font-bold uppercase"
-                          >
-                            <UserCheck className="h-3 w-3 mr-1" /> Activer
-                          </Button>
-                        )}
-                        
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="rounded-none w-56">
-                            <DropdownMenuLabel className="text-[10px] uppercase font-bold">Fiche détaillée</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={() => setSelectedMember(member)} className="text-xs">
-                              <Eye className="h-3.5 w-3.5 mr-2" /> Voir les informations
-                            </DropdownMenuItem>
-                            
-                            <DropdownMenuSeparator />
-                            <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Statut</DropdownMenuLabel>
-                            <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">
-                              <UserCheck className="h-3.5 w-3.5 mr-2" /> Activer le compte
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs text-orange-600">
-                              <RefreshCw className="h-3.5 w-3.5 mr-2" /> Remettre en attente
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">
-                              <Ban className="h-3.5 w-3.5 mr-2" /> Bloquer l'accès
-                            </DropdownMenuItem>
-                            
-                            <DropdownMenuSeparator />
-                            <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Rôle</DropdownMenuLabel>
-                            {member.role === 'member' ? (
-                              <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold text-primary">
-                                <Shield className="h-3.5 w-3.5 mr-2" /> Promouvoir Admin
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'member')} className="text-xs">
-                                <Users className="h-3.5 w-3.5 mr-2" /> Rétrograder Membre
-                              </DropdownMenuItem>
-                            )}
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </TableCell>
+          {filteredMembers && filteredMembers.length > 0 ? (
+            <div className="border border-border bg-white overflow-hidden">
+              <Table>
+                <TableHeader className="bg-secondary/20">
+                  <TableRow>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Email</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Nom</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest hidden md:table-cell">Connexion</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions rapides</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                </TableHeader>
+                <TableBody>
+                  {filteredMembers?.map((member) => (
+                    <TableRow key={member.id} className="hover:bg-secondary/5">
+                      <TableCell className="font-medium text-sm">{member.email}</TableCell>
+                      <TableCell className="text-sm">{member.displayName || '-'}</TableCell>
+                      <TableCell>{getStatusBadge(member.status)}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px] gap-1">
+                          {member.role === 'admin' ? <Shield className="h-3 w-3" /> : null}
+                          {member.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-[10px] text-muted-foreground hidden md:table-cell">
+                        {member.lastLoginAt?.seconds ? format(new Date(member.lastLoginAt.seconds * 1000), 'dd/MM HH:mm') : 'Jamais'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {member.status !== 'active' && (
+                            <Button 
+                              variant="outline" 
+                              size="sm" 
+                              onClick={() => updateMemberStatus(member.id, 'active')}
+                              className="h-8 px-3 rounded-none border-green-200 text-green-600 hover:bg-green-50 hover:text-green-700 text-[10px] font-bold uppercase"
+                            >
+                              <UserCheck className="h-3 w-3 mr-1" /> Activer
+                            </Button>
+                          )}
+                          
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-8 w-8">
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" className="rounded-none w-56">
+                              <DropdownMenuLabel className="text-[10px] uppercase font-bold">Fiche détaillée</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => setSelectedMember(member)} className="text-xs">
+                                <Eye className="h-3.5 w-3.5 mr-2" /> Voir les informations
+                              </DropdownMenuItem>
+                              
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Statut</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">
+                                <UserCheck className="h-3.5 w-3.5 mr-2" /> Activer le compte
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs text-orange-600">
+                                <RefreshCw className="h-3.5 w-3.5 mr-2" /> Remettre en attente
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">
+                                <Ban className="h-3.5 w-3.5 mr-2" /> Bloquer l'accès
+                              </DropdownMenuItem>
+                              
+                              <DropdownMenuSeparator />
+                              <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Rôle</DropdownMenuLabel>
+                              {member.role === 'member' ? (
+                                <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold text-primary">
+                                  <Shield className="h-3.5 w-3.5 mr-2" /> Promouvoir Admin
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'member')} className="text-xs">
+                                  <Users className="h-3.5 w-3.5 mr-2" /> Rétrograder Membre
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : !isMembersLoading && (
+            <div className="py-24 text-center border border-dashed border-border bg-secondary/5 space-y-4">
+              <Users className="h-8 w-8 text-muted-foreground mx-auto" />
+              <div className="space-y-1">
+                <p className="font-bold text-sm uppercase tracking-widest text-muted-foreground">Aucun membre trouvé</p>
+                <p className="text-xs text-muted-foreground italic">
+                  Si vous attendez des résultats, vérifiez que la collection "members" contient bien des documents.
+                </p>
+              </div>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
 
