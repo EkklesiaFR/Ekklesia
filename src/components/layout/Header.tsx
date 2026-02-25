@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useUser, useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 export function Header({ 
   role, 
@@ -17,9 +18,9 @@ export function Header({
   isVoteOpen?: boolean;
 }) {
   const { user, isUserLoading } = useUser();
+  const { member } = useAuthStatus();
   const auth = useAuth();
   
-  // Utilise la prop isVoteOpen fournie par MainLayout ou fallback sur le texte
   const isVoteOpen = isVoteOpenProp ?? (statusText === "Vote ouvert");
 
   const handleLogout = () => {
@@ -54,14 +55,14 @@ export function Header({
         <div className="hidden md:flex items-center gap-8">
           {!isUserLoading && user ? (
             <div className="flex items-center gap-8">
-              <span className="text-[13px] font-medium text-black font-body">
-                Membre : {getDisplayName()}
-              </span>
-              {role === 'admin' && (
-                <Link href="/admin" className="text-[13px] font-medium hover:text-[#7DC092] transition-colors font-body">
-                  Administration
-                </Link>
-              )}
+              <div className="flex flex-col items-end">
+                <span className="text-[13px] font-medium text-black font-body">
+                  Compte : {getDisplayName()}
+                </span>
+                <span className="text-[9px] text-muted-foreground font-mono uppercase tracking-tighter">
+                  role={member?.role || 'none'} — status={member?.status || 'none'}
+                </span>
+              </div>
               <Button 
                 variant="ghost" 
                 size="sm" 

@@ -89,10 +89,6 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { computeSchulzeResults } from '@/lib/tally';
 
-/**
- * Composant pour afficher les résultats d'une assemblée spécifique
- * Lit le vote directement depuis Firestore via doc(db, 'assemblies', id, 'votes', voteId)
- */
 function AssemblyResultItem({ assembly, projects }: { assembly: Assembly; projects: Project[] }) {
   const db = useFirestore();
   const voteRef = useMemoFirebase(() => {
@@ -214,10 +210,6 @@ function AdminContent() {
   const pendingCount = members?.filter(m => m.status === 'pending').length || 0;
   const openSessionsCount = assemblies?.filter(a => a.state === 'open').length || 0;
 
-  /**
-   * Logique atomique de clôture d'un scrutin unique.
-   * Utilise getDoc comme source de vérité directe.
-   */
   const performVoteTally = async (assemblyId: string, voteId: string) => {
     const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
     const voteSnap = await getDoc(voteRef);
@@ -267,10 +259,20 @@ function AdminContent() {
   };
 
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    console.log(`[CLOSE] Initiation`, { assemblyId, voteId, uid: user?.uid, isAdmin, memberStatus: member?.status });
+    console.log(`[CLOSE] Initiation`, { 
+      assemblyId, 
+      voteId, 
+      uid: user?.uid, 
+      isAdmin, 
+      memberStatus: member?.status 
+    });
     
     if (!isAdmin || member?.status !== 'active') {
-      toast({ variant: "destructive", title: "Accès refusé", description: "Votre compte admin doit être 'actif' pour clôturer." });
+      toast({ 
+        variant: "destructive", 
+        title: "Accès refusé", 
+        description: "Votre compte admin doit être 'actif' pour clôturer." 
+      });
       return;
     }
 
@@ -293,7 +295,17 @@ function AdminContent() {
   };
 
   const bulkCloseOpenVotes = async () => {
-    if (!isAdmin || member?.status !== 'active') return;
+    console.log(`[BULK CLOSE] Initiation`, { uid: user?.uid, isAdmin, memberStatus: member?.status });
+    
+    if (!isAdmin || member?.status !== 'active') {
+      toast({ 
+        variant: "destructive", 
+        title: "Accès refusé", 
+        description: "Votre compte admin doit être 'actif' pour la clôture groupée." 
+      });
+      return;
+    }
+
     setIsBulkSubmitting(true);
     let successCount = 0;
     let failCount = 0;
@@ -301,6 +313,7 @@ function AdminContent() {
     try {
       const q = query(collectionGroup(db, 'votes'), where('state', '==', 'open'));
       const snapshot = await getDocs(q);
+      console.log(`[BULK CLOSE] Found ${snapshot.size} open votes`);
 
       for (const voteDoc of snapshot.docs) {
         const voteData = voteDoc.data() as Vote;
@@ -308,9 +321,14 @@ function AdminContent() {
         const voteId = voteDoc.id;
 
         try {
+          console.log(`[BULK CLOSE] Closing {assemblyId: ${assemblyId}, voteId: ${voteId}}`);
           const result = await performVoteTally(assemblyId, voteId);
-          if (!result.skipped) successCount++;
+          if (!result.skipped) {
+            console.log(`[BULK CLOSE] Done {assemblyId: ${assemblyId}, voteId: ${voteId}, ballots: ${result.ballotCount}}`);
+            successCount++;
+          }
         } catch (e: any) {
+          console.error(`[BULK CLOSE] Failed {assemblyId: ${assemblyId}, voteId: ${voteId}, message: ${e.message}}`);
           failCount++;
         }
       }
@@ -487,6 +505,8 @@ function AdminContent() {
     }
   };
 
+  const isUserActiveAdmin = isAdmin && member?.status === 'active';
+
   return (
     <div className="space-y-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -542,25 +562,31 @@ function AdminContent() {
         <TabsContent value="sessions" className="py-12 space-y-6">
           {openSessionsCount > 0 && (
             <div className="flex justify-end mb-8">
-              <AlertDialog open={isConfirmBulkOpen} onOpenChange={setIsConfirmBulkOpen}>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" className="rounded-none h-10 px-6 font-bold uppercase tracking-widest text-[10px] gap-2">
-                    <ShieldAlert className="h-3.5 w-3.5" /> Clôturer tout ({openSessionsCount})
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent className="rounded-none">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="uppercase font-black">Confirmation</AlertDialogTitle>
-                    <AlertDialogDescription>Clôturer toutes les sessions ouvertes ? Action irréversible.</AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
-                    <AlertDialogAction onClick={bulkCloseOpenVotes} disabled={isBulkSubmitting} className="rounded-none bg-destructive">
-                      {isBulkSubmitting ? <Loader2 className="animate-spin" /> : "Oui, tout clôturer"}
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              {!isUserActiveAdmin ? (
+                <div className="p-4 bg-destructive/10 border border-destructive/20 text-destructive text-[10px] uppercase font-bold text-center w-full md:w-auto">
+                  Accès admin requis (role=admin, status=active) pour clôturer
+                </div>
+              ) : (
+                <AlertDialog open={isConfirmBulkOpen} onOpenChange={setIsConfirmBulkOpen}>
+                  <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="rounded-none h-10 px-6 font-bold uppercase tracking-widest text-[10px] gap-2">
+                      <ShieldAlert className="h-3.5 w-3.5" /> Clôturer tout ({openSessionsCount})
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent className="rounded-none">
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="uppercase font-black">Confirmation</AlertDialogTitle>
+                      <AlertDialogDescription>Clôturer toutes les sessions ouvertes ? Action irréversible.</AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
+                      <AlertDialogAction onClick={bulkCloseOpenVotes} disabled={isBulkSubmitting} className="rounded-none bg-destructive">
+                        {isBulkSubmitting ? <Loader2 className="animate-spin" /> : "Oui, tout clôturer"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              )}
             </div>
           )}
 
@@ -584,9 +610,17 @@ function AdminContent() {
                       <Button onClick={() => updateSessionState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] h-10 px-6 uppercase font-bold text-[10px]">Ouvrir</Button>
                     )}
                     {assembly.state === 'open' && (
-                      <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={() => sessionVote && handleRecalculateBallots(assembly.id, sessionVote.id)} disabled={isSubmitting}><RefreshCw className={isSubmitting ? "animate-spin" : ""} /></Button>
-                        <Button onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white h-10 px-6 uppercase font-bold text-[10px]">Clôturer</Button>
+                      <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+                        {!isUserActiveAdmin ? (
+                          <div className="px-4 py-2 bg-destructive/5 text-destructive text-[9px] uppercase font-bold border border-destructive/10">
+                            Admin Active requis
+                          </div>
+                        ) : (
+                          <>
+                            <Button variant="ghost" size="icon" onClick={() => sessionVote && handleRecalculateBallots(assembly.id, sessionVote.id)} disabled={isSubmitting}><RefreshCw className={isSubmitting ? "animate-spin" : ""} /></Button>
+                            <Button onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white h-10 px-6 uppercase font-bold text-[10px]">Clôturer</Button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
