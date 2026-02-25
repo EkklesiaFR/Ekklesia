@@ -177,15 +177,20 @@ function AdminContent() {
   };
 
   /**
-   * Clôturer le scrutin (Tally & Publish)
-   * Utilise activeVoteId de l'assemblée comme source de vérité.
+   * Clôturer le scrutin (Dépouillement & Publication)
    */
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    console.log("[CLOSE] Initiation", { assemblyId, voteId, isAdmin, memberStatus: member?.status });
+    console.log(`[CLOSE] Initiation`, { 
+      assemblyId, 
+      voteId, 
+      uid: user?.uid, 
+      isAdmin, 
+      memberStatus: member?.status 
+    });
     
     if (!isAdmin || member?.status !== 'active') {
-      console.error("[CLOSE] Accès refusé : Le compte admin doit être 'actif'.");
-      toast({ variant: "destructive", title: "Accès refusé", description: "Votre compte administrateur doit être 'actif' pour clôturer." });
+      console.error("[CLOSE] Exception: Access Denied. L'admin doit être 'actif'.");
+      toast({ variant: "destructive", title: "Accès refusé", description: "Votre compte admin doit être 'actif' pour clôturer." });
       return;
     }
 
@@ -193,30 +198,27 @@ function AdminContent() {
     setIsSubmitting(true);
     
     try {
-      const targetAssembly = assemblies?.find(a => a.id === assemblyId);
-      const targetVoteId = targetAssembly?.activeVoteId || voteId;
-      
-      console.log(`[CLOSE] Fetching ballots for vote: ${targetVoteId} in assembly: ${assemblyId}`);
+      const voteDoc = allVotes?.find(v => v.id === voteId);
+      if (!voteDoc || voteDoc.state !== 'open') {
+        throw new Error("Le scrutin n'est pas ouvert ou est déjà clôturé.");
+      }
 
-      const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', targetVoteId, 'ballots');
+      console.log(`[CLOSE] Fetching ballots...`);
+      const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
       const ballotsSnap = await getDocs(ballotsRef);
       const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
-      
       console.log(`[CLOSE] Ballots fetched: ${ballots.length}`);
 
       if (ballots.length === 0) {
-        throw new Error("Impossible de clôturer un scrutin sans aucun bulletin déposé.");
+        throw new Error("Impossible de clôturer sans aucun bulletin.");
       }
-
-      const voteDoc = allVotes?.find(v => v.id === targetVoteId);
-      if (!voteDoc) throw new Error("Document de vote introuvable.");
 
       // Calcul Schulze
       const results = computeSchulzeResults(voteDoc.projectIds, ballots);
-      console.log("[CLOSE] Results computed", results);
+      console.log(`[CLOSE] Results computed`, results);
 
       const batch = writeBatch(db);
-      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', targetVoteId);
+      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
 
       batch.update(voteRef, {
@@ -238,10 +240,10 @@ function AdminContent() {
       });
 
       await batch.commit();
-      console.log("[CLOSE] Success - Scrutin publié");
-      toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés avec succès." });
+      console.log(`[CLOSE] Success - Scrutin publié`);
+      toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés." });
     } catch (e: any) {
-      console.error("[CLOSE] Exception:", e.code || "unknown", e.message);
+      console.error(`[CLOSE] Exception: ${e.code || 'UNKNOWN'} ${e.message}`);
       toast({ 
         variant: "destructive", 
         title: "Erreur de clôture", 
@@ -331,13 +333,12 @@ function AdminContent() {
       let fixedCount = 0;
       snapshot.docs.forEach(memberDoc => {
         const data = memberDoc.data();
-        // Standardisation stricte sur "status" et suppression de "statut"
         if (!data.id || !data.email || !data.status || data.statut) {
           batch.update(memberDoc.ref, { 
             id: memberDoc.id, 
             email: data.email || "", 
             status: data.status || data.statut || "pending", 
-            statut: deleteField(), // Suppression du champ obsolète
+            statut: deleteField(),
             role: data.role || "member", 
             updatedAt: serverTimestamp() 
           });

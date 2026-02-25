@@ -57,15 +57,18 @@ service cloud.firestore {
 
       match /votes/{voteId} {
         allow read: if isMemberActive();
-        allow write: if isAdminActive();
+        
+        // Seul l'admin actif peut modifier la structure ou clôturer
+        allow update: if isAdminActive() 
+          || (isMemberActive()
+              && resource.data.state == "open"
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ballotCount', 'updatedAt'])
+              && request.resource.data.ballotCount == (resource.data.ballotCount == null ? 1 : resource.data.ballotCount + 1)
+              && !exists(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid))
+              && existsAfter(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid)));
 
-        // Règle spécifique pour l'incrémentation du compteur par les membres
-        allow update: if isMemberActive()
-          && resource.data.state == "open"
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ballotCount', 'updatedAt'])
-          && request.resource.data.ballotCount == (resource.data.ballotCount == null ? 1 : resource.data.ballotCount + 1)
-          && !exists(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid))
-          && existsAfter(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid));
+        allow create: if isAdminActive();
+        allow delete: if isAdminActive();
 
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive();

@@ -21,20 +21,18 @@ interface VoteModuleProps {
 }
 
 function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: number, eligibleCount?: number }) {
-  if (eligibleCount === undefined || eligibleCount === null) {
+  if (eligibleCount === undefined || eligibleCount === null || eligibleCount === 0) {
     return (
       <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
         <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Suffrage non défini</p>
         <p className="text-[9px] text-muted-foreground italic leading-tight">Le quorum doit être calculé par un administrateur à l'ouverture.</p>
-        <p className="text-[8px] font-mono text-muted-foreground/50 mt-2">RAW: {ballotCount ?? "—"} / NULL</p>
       </div>
     );
   }
 
   const voters = ballotCount ?? 0;
-  const participationRate = eligibleCount > 0 ? Math.round((voters / eligibleCount) * 100) : 0;
+  const participationRate = Math.round((voters / eligibleCount) * 100);
   const abstentionCount = Math.max(0, eligibleCount - voters);
-  const abstentionRate = eligibleCount > 0 ? Math.round((abstentionCount / eligibleCount) * 100) : 0;
 
   return (
     <div className="space-y-12">
@@ -43,7 +41,7 @@ function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: numb
           <PieChart className="h-4 w-4 text-primary" /> Participation
         </h2>
         <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          {ballotCount ?? "—"} bulletins reçus
+          {voters} bulletins reçus
         </div>
       </header>
 
@@ -51,7 +49,7 @@ function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: numb
         <div className="space-y-4">
           <div className="flex justify-between items-end">
             <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Taux</span>
-            <span className="text-lg font-black">{eligibleCount > 0 ? `${participationRate}%` : "—"}</span>
+            <span className="text-lg font-black">{participationRate}%</span>
           </div>
           <Progress value={participationRate} className="h-2 rounded-none" />
         </div>
@@ -78,16 +76,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
   const [currentRanking, setCurrentRanking] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Log de diagnostic temporaire
-  useEffect(() => {
-    console.log("vote fields (VoteModule)", { 
-      ballotCount: vote.ballotCount, 
-      eligibleCount: vote.eligibleCount, 
-      voteId: vote.id,
-      state: vote.state
-    });
-  }, [vote]);
-
   useEffect(() => {
     if (userBallot?.ranking) {
       setCurrentRanking(userBallot.ranking);
@@ -107,6 +95,8 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
       const ballotSnap = await getDoc(userBallotRef);
       const isNewBallot = !ballotSnap.exists();
       
+      console.log(`[VOTE] Submit. First vote: ${isNewBallot}`);
+      
       const batch = writeBatch(db);
       
       batch.set(userBallotRef, {
@@ -125,7 +115,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
       await batch.commit();
       toast({ title: "Vote enregistré", description: "Votre classement a été pris en compte." });
     } catch (e: any) {
-      console.error("Vote submission error:", e);
+      console.error("[VOTE] Submission error:", e.code, e.message);
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de sauvegarder votre vote." });
     } finally {
       setIsSaving(false);
