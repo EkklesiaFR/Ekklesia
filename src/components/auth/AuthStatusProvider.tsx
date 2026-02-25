@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useUser, useFirestore } from '@/firebase';
-import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc, serverTimestamp, getDoc, updateDoc } from 'firebase/firestore';
 import { MemberProfile } from '@/types';
 
 interface AuthStatusContextType {
@@ -41,7 +41,42 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
     const memberRef = doc(db, 'members', uid);
     
-    // Subscribe to member document
+    // 1. Logic for automatic profile creation and login updates
+    const syncProfile = async () => {
+      try {
+        const docSnap = await getDoc(memberRef);
+        
+        if (docSnap.exists()) {
+          // Existing user: Update last login and basic info only
+          // This avoids overwriting role or status
+          await updateDoc(memberRef, {
+            email: user.email,
+            displayName: user.displayName || '',
+            lastLoginAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        } else {
+          // New user: Create profile with defaults
+          await setDoc(memberRef, {
+            email: user.email,
+            displayName: user.displayName || '',
+            status: 'pending',
+            role: 'member',
+            createdAt: serverTimestamp(),
+            lastLoginAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+          });
+        }
+      } catch (error: any) {
+        if (process.env.NODE_ENV !== "production") {
+          console.error("[AuthStatus] Sync Error:", error.code, error.message);
+        }
+      }
+    };
+
+    syncProfile();
+
+    // 2. Real-time subscription to member document
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -51,43 +86,23 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           displayName: data.displayName || user.displayName || '',
           status: data.status || 'pending',
           role: data.role || 'member',
-          joinedAt: data.joinedAt || null,
+          joinedAt: data.createdAt || null,
           lastLoginAt: data.lastLoginAt || null,
+          createdAt: data.createdAt || null,
         } as MemberProfile;
         
         setMember(profile);
-
-        // Update last login timestamp and basic info if doc exists
-        setDoc(memberRef, {
-          email: user.email,
-          displayName: user.displayName,
-          lastLoginAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-
       } else {
-        // Doc doesn't exist yet - maybe new user
         setMember(null);
-        
-        // Auto-create pending member doc if it doesn't exist to show in admin
-        setDoc(memberRef, {
-          email: user.email,
-          displayName: user.displayName,
-          status: 'pending',
-          role: 'member',
-          joinedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-          lastLoginAt: serverTimestamp()
-        }, { merge: true });
       }
       setIsMemberLoading(false);
 
       if (process.env.NODE_ENV !== "production") {
-        console.log("[AuthStatus] Update:", { uid, status: docSnap.data()?.status, exists: docSnap.exists() });
+        console.log("[AuthStatus] Data Received:", { uid, status: docSnap.data()?.status, exists: docSnap.exists() });
       }
     }, (error) => {
       if (process.env.NODE_ENV !== "production") {
-        console.error("[AuthStatus] Error:", error.code, error.message);
+        console.error("[AuthStatus] Snapshot Error:", error.code, error.message);
       }
       setMember(null);
       setIsMemberLoading(false);

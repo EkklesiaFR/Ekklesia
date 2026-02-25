@@ -1,37 +1,47 @@
-
 {
   "entities": {
     "UserProfile": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "UserProfile",
       "type": "object",
-      "description": "Represents a user of the Ekklesia Vote application, storing their role and membership status. This entity does not store authentication credentials, which are handled by an external system.",
+      "description": "Represents a member of the Ekklesia assembly.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the UserProfile entity."
+          "description": "Unique identifier (UID) for the user."
         },
         "email": {
           "type": "string",
-          "description": "The user's email address, used for login and allowlist enforcement.",
+          "description": "The user's email address.",
           "format": "email"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "The user's display name."
         },
         "role": {
           "type": "string",
-          "description": "The role assigned to the user (e.g., 'admin', 'member'), determining their application permissions."
+          "description": "The role assigned to the user.",
+          "enum": ["admin", "member"]
         },
-        "membershipStatus": {
+        "status": {
           "type": "string",
-          "description": "The current membership status of the user (e.g., 'active', 'inactive')."
+          "description": "The current membership status.",
+          "enum": ["active", "pending", "blocked"]
         },
         "createdAt": {
           "type": "string",
-          "description": "Timestamp when the user profile was first created.",
+          "description": "Timestamp when the profile was created.",
           "format": "date-time"
         },
         "updatedAt": {
           "type": "string",
-          "description": "Timestamp when the user profile was last updated.",
+          "description": "Timestamp when the profile was last updated.",
+          "format": "date-time"
+        },
+        "lastLoginAt": {
+          "type": "string",
+          "description": "Timestamp of the user's last login.",
           "format": "date-time"
         }
       },
@@ -39,9 +49,10 @@
         "id",
         "email",
         "role",
-        "membershipStatus",
+        "status",
         "createdAt",
-        "updatedAt"
+        "updatedAt",
+        "lastLoginAt"
       ]
     },
     "EmailAllowlistEntry": {
@@ -61,7 +72,7 @@
         },
         "addedByUserId": {
           "type": "string",
-          "description": "Reference to the UserProfile ID of the administrator who added this email to the allowlist. (Relationship: UserProfile 1:N EmailAllowlistEntry)"
+          "description": "Reference to the UserProfile ID of the administrator who added this email."
         },
         "addedAt": {
           "type": "string",
@@ -80,85 +91,51 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "VotingSession",
       "type": "object",
-      "description": "Manages the details, schedule, and lifecycle status of a single voting session, allowing admins to define its timeline and members to participate.",
+      "description": "Manages the details, schedule, and lifecycle status of a single voting session.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the VotingSession entity."
+          "description": "Unique identifier for the VotingSession."
         },
         "title": {
           "type": "string",
           "description": "The title or name of the voting session."
         },
-        "announcementTime": {
+        "state": {
           "type": "string",
-          "description": "The date and time when the projects for this session become visible to members.",
-          "format": "date-time"
+          "description": "The current lifecycle status (e.g., 'draft', 'open', 'closed')."
         },
-        "openTime": {
+        "activeVoteId": {
           "type": "string",
-          "description": "The date and time when voting officially opens for this session.",
-          "format": "date-time"
-        },
-        "closeTime": {
-          "type": "string",
-          "description": "The date and time when voting officially closes for this session.",
-          "format": "date-time"
-        },
-        "status": {
-          "type": "string",
-          "description": "The current lifecycle status of the voting session (e.g., 'upcoming', 'announcing', 'open', 'closed', 'published')."
-        },
-        "createdByUserId": {
-          "type": "string",
-          "description": "Reference to the UserProfile ID of the administrator who created this session. (Relationship: UserProfile 1:N VotingSession)"
+          "description": "Reference to the currently active vote document."
         },
         "createdAt": {
           "type": "string",
-          "description": "Timestamp when the voting session was created.",
+          "description": "Timestamp when the session was created.",
           "format": "date-time"
         },
         "updatedAt": {
           "type": "string",
-          "description": "Timestamp when the voting session was last updated.",
+          "description": "Timestamp when the session was last updated.",
           "format": "date-time"
-        },
-        "resultsPublishedAt": {
-          "type": "string",
-          "description": "The date and time when the final results for this session were published. This field is null until results are officially made public.",
-          "format": "date-time"
-        },
-        "totalBallotsCast": {
-          "type": "number",
-          "description": "The current total number of ballots submitted for this session. This count updates in real-time during the voting window and serves for live turnout display."
         }
       },
       "required": [
         "id",
         "title",
-        "announcementTime",
-        "openTime",
-        "closeTime",
-        "status",
-        "createdByUserId",
-        "createdAt",
-        "updatedAt",
-        "totalBallotsCast"
+        "state",
+        "createdAt"
       ]
     },
     "Project": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Project",
       "type": "object",
-      "description": "Represents a single project proposed for consideration within a voting session, including its details and associated assets.",
+      "description": "Represents a single project proposed for consideration within a voting session.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the Project entity."
-        },
-        "sessionId": {
-          "type": "string",
-          "description": "Reference to the VotingSession ID this project belongs to. (Relationship: VotingSession 1:N Project)"
+          "description": "Unique identifier for the Project."
         },
         "title": {
           "type": "string",
@@ -166,159 +143,86 @@
         },
         "summary": {
           "type": "string",
-          "description": "A brief summary or description of the project."
+          "description": "A brief summary of the project."
         },
         "budget": {
-          "type": "number",
+          "type": "string",
           "description": "The allocated budget for the project."
         },
-        "assetUrl": {
+        "status": {
           "type": "string",
-          "description": "A URL pointing to additional assets or information related to the project.",
-          "format": "uri"
+          "description": "Status of the project (e.g., 'candidate', 'elected')."
         },
-        "createdByUserId": {
+        "imageUrl": {
           "type": "string",
-          "description": "Reference to the UserProfile ID of the administrator who added this project. (Relationship: UserProfile 1:N Project)"
+          "description": "URL to a project image.",
+          "format": "uri"
         },
         "createdAt": {
           "type": "string",
           "description": "Timestamp when the project was created.",
           "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the project was last updated.",
-          "format": "date-time"
         }
       },
       "required": [
         "id",
-        "sessionId",
         "title",
         "summary",
         "budget",
-        "assetUrl",
-        "createdByUserId",
-        "createdAt",
-        "updatedAt"
+        "status",
+        "createdAt"
       ]
     },
     "Ballot": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Ballot",
       "type": "object",
-      "description": "Represents a member's submitted ranked vote for a specific voting session, using a composite ID {sessionId}_{userId} to enforce uniqueness.",
+      "description": "Represents a member's submitted ranked vote.",
       "properties": {
         "id": {
           "type": "string",
-          "description": "Unique identifier for the Ballot entity, following the pattern {sessionId}_{userId}."
-        },
-        "sessionId": {
-          "type": "string",
-          "description": "Reference to the VotingSession ID for which this ballot was cast."
-        },
-        "userId": {
-          "type": "string",
-          "description": "Reference to the User UID of the member who submitted this ballot."
+          "description": "Unique identifier (user UID)."
         },
         "ranking": {
           "type": "array",
-          "description": "An ordered array of Project IDs representing the member's ranked preferences, from most preferred to least preferred.",
+          "description": "An ordered array of Project IDs.",
           "items": {
             "type": "string"
           }
         },
-        "createdAt": {
+        "castAt": {
           "type": "string",
-          "description": "Timestamp when the ballot was submitted.",
+          "description": "Timestamp when the ballot was first cast.",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "description": "Timestamp when the ballot was last updated.",
           "format": "date-time"
         }
       },
       "required": [
         "id",
-        "sessionId",
-        "userId",
         "ranking",
-        "createdAt"
-      ]
-    },
-    "VotingResult": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "VotingResult",
-      "type": "object",
-      "description": "Stores the final, computed results for a specific voting session, including the winning project, overall ranking, and total ballot count.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the VotingResult entity. For a 1:1 relationship, this ID typically matches the associated sessionId."
-        },
-        "sessionId": {
-          "type": "string",
-          "description": "Reference to the VotingSession ID for which these results apply. (Relationship: VotingSession 1:1 VotingResult)"
-        },
-        "winnerProjectId": {
-          "type": "string",
-          "description": "Reference to the Project ID that was determined as the winner of the session. (Relationship: Project 1:1 VotingResult)"
-        },
-        "rankedProjectIds": {
-          "type": "array",
-          "description": "An ordered array of Project IDs representing the final overall ranking of projects for the session, from highest ranked to lowest ranked.",
-          "items": {
-            "type": "string"
-          }
-        },
-        "totalBallotsCount": {
-          "type": "number",
-          "description": "The final, total count of submitted ballots that were included in the tally calculation for this session."
-        },
-        "tallyComputationTimestamp": {
-          "type": "string",
-          "description": "Timestamp when the vote tally was computed.",
-          "format": "date-time"
-        },
-        "computedByUserId": {
-          "type": "string",
-          "description": "Reference to the UserProfile ID of the administrator who initiated the tally computation (e.g., dry run, manual trigger), or a system identifier if automated. (Relationship: UserProfile 1:N VotingResult - indicating which user computed the tally)."
-        }
-      },
-      "required": [
-        "id",
-        "sessionId",
-        "winnerProjectId",
-        "rankedProjectIds",
-        "totalBallotsCount",
-        "tallyComputationTimestamp"
+        "updatedAt"
       ]
     }
   },
   "auth": {
     "providers": [
-      "password",
-      "anonymous",
       "google.com"
     ]
   },
   "firestore": {
     "structure": [
       {
-        "path": "/userProfiles/{userId}",
+        "path": "/members/{userId}",
         "definition": {
           "entityName": "UserProfile",
           "schema": {
             "$ref": "#/backend/entities/UserProfile"
           },
-          "description": "Stores user-specific data, including their role and membership status."
-        }
-      },
-      {
-        "path": "/roles_admin/{userId}",
-        "definition": {
-          "entityName": "UserProfile",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "A dedicated top-level collection to flag administrative users."
+          "description": "Stores member-specific data, including their role and membership status."
         }
       },
       {
@@ -332,7 +236,7 @@
         }
       },
       {
-        "path": "/votingSessions/{sessionId}",
+        "path": "/assemblies/{assemblyId}",
         "definition": {
           "entityName": "VotingSession",
           "schema": {
@@ -342,46 +246,36 @@
         }
       },
       {
-        "path": "/votingSessions/{sessionId}/projects/{projectId}",
-        "definition": {
-          "entityName": "Project",
-          "schema": {
-            "$ref": "#/backend/entities/Project"
-          },
-          "description": "Contains projects submitted for a specific voting session."
-        }
-      },
-      {
-        "path": "/ballots/{ballotId}",
-        "definition": {
-          "entityName": "Ballot",
-          "schema": {
-            "$ref": "#/backend/entities/Ballot"
-          },
-          "description": "Stores individual member ballots. Uses composite IDs {sessionId}_{userId} to enforce the one-ballot-per-user-per-session rule at the database level."
-        }
-      },
-      {
-        "path": "/votingResults/{sessionId}",
-        "definition": {
-          "entityName": "VotingResult",
-          "schema": {
-            "$ref": "#/backend/entities/VotingResult"
-          },
-          "description": "Stores the final, computed results for a voting session."
-        }
-      },
-      {
-        "path": "/publicVotingSessions/{sessionId}",
+        "path": "/assemblies/{assemblyId}/votes/{voteId}",
         "definition": {
           "entityName": "VotingSession",
           "schema": {
             "$ref": "#/backend/entities/VotingSession"
           },
-          "description": "A segregated, denormalized collection specifically for VotingSession data that is publicly viewable."
+          "description": "Contains specific vote configurations for an assembly."
+        }
+      },
+      {
+        "path": "/assemblies/{assemblyId}/votes/{voteId}/ballots/{userId}",
+        "definition": {
+          "entityName": "Ballot",
+          "schema": {
+            "$ref": "#/backend/entities/Ballot"
+          },
+          "description": "Stores individual member ballots for a specific vote."
+        }
+      },
+      {
+        "path": "/projects/{projectId}",
+        "definition": {
+          "entityName": "Project",
+          "schema": {
+            "$ref": "#/backend/entities/Project"
+          },
+          "description": "Contains projects submitted for the assembly."
         }
       }
     ],
-    "reasoning": "The Firestore structure uses a flat /ballots collection with composite IDs to enforce data integrity and simplify security rules. By using {sessionId}_{userId} as the document ID, we natively prevent duplicate votes per session while allowing rules to remain concise and non-blocking."
+    "reasoning": "The Firestore structure uses a hierarchical approach for votes and ballots within assemblies to maintain clear session boundaries and security scoping."
   }
 }
