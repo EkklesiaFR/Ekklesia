@@ -41,30 +41,41 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
     const memberRef = doc(db, 'members', uid);
     
-    // 1. Logic for automatic profile creation and login updates
+    // Logic for automatic profile creation and login updates
     const syncProfile = async () => {
       try {
         const docSnap = await getDoc(memberRef);
         
         if (docSnap.exists()) {
           // Existing user: Update last login and basic info only
+          // We do not overwrite role, status, or joinedAt
           await updateDoc(memberRef, {
-            email: user.email,
+            email: user.email || '',
             displayName: user.displayName || '',
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
+          
+          if (process.env.NODE_ENV !== "production") {
+            console.log("[AuthStatus] Profile updated for:", uid);
+          }
         } else {
           // New user: Create profile with default 'pending' status
           await setDoc(memberRef, {
-            email: user.email,
+            id: uid,
+            email: user.email || '',
             displayName: user.displayName || '',
             status: 'pending',
             role: 'member',
+            joinedAt: serverTimestamp(),
             createdAt: serverTimestamp(),
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
+          
+          if (process.env.NODE_ENV !== "production") {
+            console.log("[AuthStatus] New profile created for:", uid);
+          }
         }
       } catch (error: any) {
         if (process.env.NODE_ENV !== "production") {
@@ -73,9 +84,10 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    // Trigger sync
     syncProfile();
 
-    // 2. Real-time subscription to member document
+    // Real-time subscription to member document
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -85,20 +97,20 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           displayName: data.displayName || user.displayName || '',
           status: data.status || 'pending',
           role: data.role || 'member',
-          joinedAt: data.createdAt || null,
+          joinedAt: data.joinedAt || data.createdAt || null,
           lastLoginAt: data.lastLoginAt || null,
           createdAt: data.createdAt || null,
         } as MemberProfile;
         
         setMember(profile);
+        
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[AuthStatus] Member resolved:", { uid, status: profile.status, role: profile.role });
+        }
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
-
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[AuthStatus] Member data resolved:", { uid, status: docSnap.data()?.status });
-      }
     }, (error) => {
       if (process.env.NODE_ENV !== "production") {
         console.error("[AuthStatus] Snapshot Error:", error.code, error.message);

@@ -15,7 +15,8 @@ import {
   collectionGroup,
   getDocs,
   writeBatch,
-  limit
+  limit,
+  orderBy
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -79,8 +80,7 @@ import {
   Clock,
   RefreshCw,
   AlertTriangle,
-  Database,
-  Info
+  Database
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile } from '@/types';
@@ -101,7 +101,7 @@ function AdminContent() {
   // Promotion to Admin confirmation
   const [confirmAdminPromote, setConfirmAdminPromote] = useState<string | null>(null);
 
-  // Filters for members (local only)
+  // Filters for members
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
@@ -122,19 +122,11 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // MEMBRES: Requête simplifiée sans orderBy pour s'assurer de voir TOUS les documents
-  // (Firestore exclut les docs n'ayant pas le champ utilisé dans un orderBy)
+  // MEMBRES: Requête sur la collection 'members'
   const membersQuery = useMemoFirebase(() => {
     return query(collection(db, 'members'), limit(100));
   }, [db]);
   const { data: members, error: membersError, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
-
-  // Log error if any
-  useEffect(() => {
-    if (membersError) {
-      console.error("[Admin Members Query Error]", membersError);
-    }
-  }, [membersError]);
 
   const filteredMembers = members?.filter(m => {
     const matchStatus = statusFilter === 'all' || m.status === statusFilter;
@@ -478,7 +470,7 @@ function AdminContent() {
                     <TableHead className="text-[10px] font-black uppercase tracking-widest">Nom</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest hidden md:table-cell">Connexion</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest hidden md:table-cell">Inscrit le</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions rapides</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -500,7 +492,7 @@ function AdminContent() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-[10px] text-muted-foreground hidden md:table-cell">
-                        {member.lastLoginAt?.seconds ? format(new Date(member.lastLoginAt.seconds * 1000), 'dd/MM HH:mm') : 'Jamais'}
+                        {member.joinedAt?.seconds ? format(new Date(member.joinedAt.seconds * 1000), 'dd/MM/yyyy') : '-'}
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
