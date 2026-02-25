@@ -24,24 +24,28 @@ service cloud.firestore {
       return isMemberActive(assemblyId) && getMemberData(assemblyId).role == "admin";
     }
 
-    // LEGACY: Support for root members collection during migration
+    // PROTECTION DES ANCIENNES DONNÉES (LEGACY)
+    // Seul le propriétaire peut lire son ancien profil pour diagnostic/migration
     match /members/{uid} {
-      allow get: if isOwner(uid) || (isSignedIn() && exists(/databases/$(database)/documents/assemblies/default-assembly/members/$(request.auth.uid)) && get(/databases/$(database)/documents/assemblies/default-assembly/members/$(request.auth.uid)).data.role == "admin");
+      allow get: if isOwner(uid);
       allow list: if false; 
+      allow write: if false; // Verrouillage définitif de la racine
     }
 
     match /assemblies/{assemblyId} {
-      allow read: if isSignedIn(); // Allow reading assembly metadata to find the right one
+      allow read: if isSignedIn();
       allow write: if isAdminActive(assemblyId);
 
       match /members/{uid} {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
         allow list: if isAdminActive(assemblyId);
         
+        // Un utilisateur ne peut que se créer en tant que membre en attente
         allow create: if isOwner(uid) 
           && request.resource.data.status == "pending" 
           && request.resource.data.role == "member";
           
+        // Seuls les admins peuvent changer les rôles et statuts
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
               && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
