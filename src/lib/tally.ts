@@ -70,7 +70,11 @@ export function computeSchulzeResults(projectIds: string[], ballots: { ranking: 
 
   return {
     winnerId: sorted[0]?.id || null,
-    ranking: sorted.map((s, idx) => ({ id: s.id, rank: idx + 1 })),
+    ranking: sorted.map((s, idx) => ({ 
+      id: s.id, 
+      rank: idx + 1,
+      score: s.wins 
+    })),
     total: ballots.length
   };
 }

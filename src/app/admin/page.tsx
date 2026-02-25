@@ -400,7 +400,8 @@ function AdminContent() {
           return {
             optionId: r.id,
             label: p?.title || r.id,
-            rank: r.rank
+            rank: r.rank,
+            score: (r as any).score || r.rank
           };
         }),
         publishedBy: user?.uid || 'system'
@@ -857,4 +858,3 @@ export default function AdminPage() {
     </RequireActiveMember>
   );
 }
-
