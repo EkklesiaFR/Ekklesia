@@ -8,7 +8,6 @@ import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebas
 import { 
   collection, 
   query, 
-  orderBy, 
   addDoc, 
   serverTimestamp, 
   doc, 
@@ -55,7 +54,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/table/Table';
+} from '@/components/ui/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -102,7 +101,7 @@ function AdminContent() {
   // Promotion to Admin confirmation
   const [confirmAdminPromote, setConfirmAdminPromote] = useState<string | null>(null);
 
-  // Filters for members (local only to not break the diagnostic query)
+  // Filters for members (local only)
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
@@ -114,18 +113,19 @@ function AdminContent() {
   const [endsAt, setEndsAt] = useState('');
 
   // 1. Data Fetching
-  const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies'), orderBy('createdAt', 'desc')), [db]);
+  const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
   const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
 
   const votesQuery = useMemoFirebase(() => query(collectionGroup(db, 'votes')), [db]);
   const { data: allVotes } = useCollection<Vote>(votesQuery);
 
-  const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), orderBy('createdAt', 'desc')), [db]);
+  const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // MEMBRES: Requête sur la collection racine "members" sans filtre where pour diagnostic
+  // MEMBRES: Requête simplifiée sans orderBy pour s'assurer de voir TOUS les documents
+  // (Firestore exclut les docs n'ayant pas le champ utilisé dans un orderBy)
   const membersQuery = useMemoFirebase(() => {
-    return query(collection(db, 'members'), orderBy('createdAt', 'desc'), limit(100));
+    return query(collection(db, 'members'), limit(100));
   }, [db]);
   const { data: members, error: membersError, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
 
@@ -474,7 +474,7 @@ function AdminContent() {
               <Table>
                 <TableHeader className="bg-secondary/20">
                   <TableRow>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Email</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Email / ID</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest">Nom</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
                     <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
@@ -485,13 +485,18 @@ function AdminContent() {
                 <TableBody>
                   {filteredMembers?.map((member) => (
                     <TableRow key={member.id} className="hover:bg-secondary/5">
-                      <TableCell className="font-medium text-sm">{member.email}</TableCell>
+                      <TableCell className="font-medium text-sm">
+                        <div className="flex flex-col">
+                          <span>{member.email || member.id}</span>
+                          {!member.email && <span className="text-[9px] text-muted-foreground uppercase">(ID uniquement)</span>}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-sm">{member.displayName || '-'}</TableCell>
                       <TableCell>{getStatusBadge(member.status)}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px] gap-1">
                           {member.role === 'admin' ? <Shield className="h-3 w-3" /> : null}
-                          {member.role}
+                          {member.role || 'member'}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-[10px] text-muted-foreground hidden md:table-cell">
@@ -536,7 +541,7 @@ function AdminContent() {
                               
                               <DropdownMenuSeparator />
                               <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Rôle</DropdownMenuLabel>
-                              {member.role === 'member' ? (
+                              {member.role === 'member' || !member.role ? (
                                 <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold text-primary">
                                   <Shield className="h-3.5 w-3.5 mr-2" /> Promouvoir Admin
                                 </DropdownMenuItem>
@@ -584,14 +589,14 @@ function AdminContent() {
                 <p className="font-medium">{selectedMember?.displayName || 'Non renseigné'}</p>
               </div>
               <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email</p>
-                <p className="font-medium text-sm">{selectedMember?.email}</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email / ID</p>
+                <p className="font-medium text-sm truncate">{selectedMember?.email || selectedMember?.id}</p>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-8">
               <div className="space-y-1">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rôle actuel</p>
-                <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{selectedMember?.role}</Badge>
+                <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{selectedMember?.role || 'member'}</Badge>
               </div>
               <div className="space-y-1">
                 <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Statut</p>
