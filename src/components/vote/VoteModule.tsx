@@ -13,13 +13,6 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
 
-interface VoteModuleProps {
-  vote: Vote;
-  projects: Project[];
-  userBallot: Ballot | null;
-  assemblyId: string;
-}
-
 function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: number, eligibleCount?: number }) {
   if (eligibleCount === undefined || eligibleCount === null || eligibleCount === 0) {
     return (
@@ -38,9 +31,12 @@ function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: numb
   return (
     <div className="space-y-12">
       <header className="flex items-center justify-between border-b border-border pb-6">
-        <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
-          <PieChart className="h-4 w-4 text-primary" /> Participation
-        </h2>
+        <div className="space-y-1">
+          <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
+            <PieChart className="h-4 w-4 text-primary" /> Participation
+          </h2>
+          <p className="text-[8px] uppercase font-bold text-muted-foreground">Suffrage défini : {eligibleCount}</p>
+        </div>
         <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
           {voters} bulletins reçus
         </div>

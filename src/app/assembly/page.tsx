@@ -28,7 +28,7 @@ function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: numb
     return (
       <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
         <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum en calcul…</p>
-        <p className="text-[9px] text-muted-foreground mt-1 italic">Vérifiez l'ouverture du scrutin (Admin)</p>
+        <p className="text-[9px] text-muted-foreground mt-1 italic">Le quorum doit être calculé par un administrateur à l'ouverture.</p>
         <p className="text-[8px] text-muted-foreground/50 mt-2 font-mono">Bulletins: {ballotCount ?? "—"}</p>
       </div>
     );
@@ -45,9 +45,12 @@ function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: numb
         <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
           <PieChart className="h-3 w-3 text-primary" /> Participation
         </h3>
-        <span className="text-[10px] font-bold text-primary uppercase tracking-wider">
-          {eligibleCount > 0 ? `${participationRate}%` : "—"}
-        </span>
+        <div className="flex flex-col items-end">
+          <span className="text-[10px] font-bold text-primary uppercase tracking-wider">
+            {eligibleCount > 0 ? `${participationRate}%` : "—"}
+          </span>
+          <span className="text-[8px] uppercase font-bold text-muted-foreground">Suffrage défini : {eligibleCount}</span>
+        </div>
       </div>
       
       <div className="space-y-4">
@@ -89,12 +92,12 @@ function AssemblyDashboardContent() {
   }, [db, activeAssembly]);
   const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
-  // 3. Charger les projets pour l'affichage (Utilisé pour les titres des résultats)
+  // 3. Charger les projets pour l'affichage
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
-  // Log de diagnostic temporaire
+  // Log de diagnostic
   useEffect(() => {
     if (activeVote) {
       console.log("vote fields (Dashboard)", { 
@@ -161,7 +164,7 @@ function AssemblyDashboardContent() {
             </Link>
           </div>
 
-          {/* PANNEAU DROIT : PARTICIPATION OU TRENDS (ADMIN) */}
+          {/* PANNEAU DROIT : PARTICIPATION */}
           <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
             {showAdminTrends ? (
               <AdminTrendsPanel 
