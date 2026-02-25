@@ -91,7 +91,6 @@ import { computeSchulzeResults } from '@/lib/tally';
 
 /**
  * Sous-composant pour afficher une ligne de session avec ses métriques temps réel.
- * Utilise assembly.activeVoteId pour charger le scrutin exact.
  */
 function AssemblySessionRow({ 
   assembly, 
@@ -350,35 +349,39 @@ function AdminContent() {
     const assemblyRef = doc(db, 'assemblies', assemblyId);
 
     try {
-      console.log(`[CLOSE] Attempting Vote update...`);
-      await updateDoc(voteRef, {
+      // Retour à un batch atomique unique pour la clôture
+      const batch = writeBatch(db);
+      const timestamp = serverTimestamp();
+
+      batch.update(voteRef, {
         results: {
           winnerId: results.winnerId,
           fullRanking: results.ranking,
-          computedAt: serverTimestamp(),
+          computedAt: timestamp,
           total: ballots.length
         },
         ballotCount: ballots.length,
         state: 'locked',
-        lockedAt: serverTimestamp(),
-        closedAt: serverTimestamp(),
-        publishedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
+        lockedAt: timestamp,
+        closedAt: timestamp,
+        publishedAt: timestamp,
+        updatedAt: timestamp
       });
-      console.log(`[CLOSE] Vote update OK`);
 
-      console.log(`[CLOSE] Attempting Assembly update...`);
-      await updateDoc(assemblyRef, {
+      batch.update(assemblyRef, {
         state: 'locked',
-        updatedAt: serverTimestamp()
+        updatedAt: timestamp
       });
-      console.log(`[CLOSE] Assembly update OK`);
+
+      console.log(`[CLOSE] Committing batch for ${assemblyId}/${voteId}...`);
+      await batch.commit();
+      console.log(`[CLOSE] Batch committed OK`);
+
+      return { winnerId: results.winnerId, ballotCount: ballots.length };
     } catch (e: any) {
-      console.error(`[CLOSE] Update FAILED:`, e.code, e.message);
+      console.error(`[CLOSE] Batch FAILED:`, e.code, e.message);
       throw e;
     }
-
-    return { winnerId: results.winnerId, ballotCount: ballots.length };
   };
 
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
@@ -426,22 +429,19 @@ function AdminContent() {
       const q = query(collectionGroup(db, 'votes'), where('state', '==', 'open'));
       const snapshot = await getDocs(q);
 
-      console.log(`[BULK CLOSE] Found ${snapshot.size} open votes`);
-
       for (const voteDoc of snapshot.docs) {
         const voteId = voteDoc.id;
+        // On récupère l'assemblyId depuis le chemin Firestore pour éviter toute dépendance aux données
         const assemblyId = voteDoc.ref.parent.parent!.id;
 
         try {
-          console.log(`[BULK CLOSE] Closing ${assemblyId} / ${voteId}`);
           const result = await performVoteTally(assemblyId, voteId);
           if (!result.skipped) {
             successCount++;
-            console.log(`[BULK CLOSE] Done ${assemblyId} / ${voteId}, winnerId: ${result.winnerId}`);
           }
         } catch (e: any) {
           failCount++;
-          console.error(`[BULK CLOSE] Failed ${assemblyId} / ${voteId}`, e.code, e.message);
+          console.error(`[BULK CLOSE] Failed ${assemblyId}/${voteId}`, e.code, e.message);
         }
       }
 

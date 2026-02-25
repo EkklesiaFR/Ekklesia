@@ -69,12 +69,8 @@ service cloud.firestore {
             );
         }
 
-        allow update: if isAdminActive() 
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'state', 'results', 'closedAt', 'updatedAt', 'publishedAt', 
-            'lockedAt', 'ballotCount', 'eligibleCount', 'openedAt'
-          ])
-          || isMemberTallyUpdate();
+        // Simplification pour l'admin et restauration du compteur pour les membres
+        allow update: if isAdminActive() || isMemberTallyUpdate();
 
         allow create: if isAdminActive();
         allow delete: if isAdminActive();
@@ -90,12 +86,12 @@ service cloud.firestore {
           allow create: if isMemberActive() 
             && uid == request.auth.uid 
             && isVoteOpen() 
-            && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
+            && request.resource.data.keys().hasAll(['ranking', 'castAt', 'updatedAt']);
             
           allow update: if isMemberActive() 
             && uid == request.auth.uid 
             && isVoteOpen() 
-            && request.resource.data.keys().hasOnly(['ranking', 'updatedAt']);
+            && request.resource.data.keys().hasAll(['ranking', 'updatedAt']);
 
           allow delete: if false;
         }
