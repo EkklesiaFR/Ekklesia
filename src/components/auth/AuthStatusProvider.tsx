@@ -2,13 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useUser, useFirestore } from '@/firebase';
-import { doc, onSnapshot } from 'firebase/firestore';
-
-interface MemberProfile {
-  status: 'active' | 'pending' | 'revoked';
-  role: 'admin' | 'member';
-  joinedAt?: any;
-}
+import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
+import { MemberProfile } from '@/types';
 
 interface AuthStatusContextType {
   member: MemberProfile | null;
@@ -33,7 +28,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const uid = user?.uid;
 
   useEffect(() => {
-    // Reset state immediately on UID change
+    // Immediate reset on UID change to avoid cross-account leaks
     setMember(null);
     setIsMemberLoading(true);
 
@@ -46,19 +41,50 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
     const memberRef = doc(db, 'members', uid);
     
-    // onSnapshot is the only place where we set isMemberLoading to false
+    // Subscribe to member document
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setMember({
+        const profile = {
+          id: docSnap.id,
+          email: data.email || user.email || '',
+          displayName: data.displayName || user.displayName || '',
           status: data.status || 'pending',
           role: data.role || 'member',
           joinedAt: data.joinedAt || null,
-        });
+          lastLoginAt: data.lastLoginAt || null,
+        } as MemberProfile;
+        
+        setMember(profile);
+
+        // Update last login timestamp and basic info if doc exists
+        setDoc(memberRef, {
+          email: user.email,
+          displayName: user.displayName,
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        }, { merge: true });
+
       } else {
+        // Doc doesn't exist yet - maybe new user
         setMember(null);
+        
+        // Auto-create pending member doc if it doesn't exist to show in admin
+        setDoc(memberRef, {
+          email: user.email,
+          displayName: user.displayName,
+          status: 'pending',
+          role: 'member',
+          joinedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp()
+        }, { merge: true });
       }
       setIsMemberLoading(false);
+
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[AuthStatus] Update:", { uid, status: docSnap.data()?.status, exists: docSnap.exists() });
+      }
     }, (error) => {
       if (process.env.NODE_ENV !== "production") {
         console.error("[AuthStatus] Error:", error.code, error.message);
@@ -68,7 +94,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [uid, isUserLoading, db]);
+  }, [uid, isUserLoading, db, user?.email, user?.displayName]);
 
   const isActiveMember = member?.status === 'active';
   const isAdmin = member?.role === 'admin' && isActiveMember;

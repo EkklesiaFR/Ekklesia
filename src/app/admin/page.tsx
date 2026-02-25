@@ -17,7 +17,9 @@ import {
   deleteDoc,
   getDocs,
   writeBatch,
-  getDoc
+  getDoc,
+  where,
+  limit
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -33,6 +35,29 @@ import {
 } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { 
+  Select, 
+  SelectContent, 
+  SelectItem, 
+  SelectTrigger, 
+  SelectValue 
+} from '@/components/ui/select';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { 
   Plus, 
   Calendar, 
   Play, 
@@ -42,10 +67,17 @@ import {
   Wand2,
   LayoutGrid,
   Loader2,
-  Trash2
+  Trash2,
+  Users,
+  MoreHorizontal,
+  Eye,
+  Shield,
+  UserCheck,
+  Ban,
+  Clock
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { Assembly, Vote, Project } from '@/types';
+import { Assembly, Vote, Project, MemberProfile } from '@/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
@@ -57,6 +89,11 @@ function AdminContent() {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<MemberProfile | null>(null);
+
+  // Filters for members
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
 
   // Form state
   const [newSessionTitle, setNewSessionTitle] = useState('');
@@ -75,6 +112,21 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), orderBy('createdAt', 'desc')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
+  // Members Query
+  const membersQuery = useMemoFirebase(() => {
+    let q = query(collection(db, 'members'), orderBy('joinedAt', 'desc'), limit(50));
+    // Firestore filters would require index, so we do client-side filtering or add index
+    // For MVP we do simple query
+    return q;
+  }, [db]);
+  const { data: members, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
+
+  const filteredMembers = members?.filter(m => {
+    const matchStatus = statusFilter === 'all' || m.status === statusFilter;
+    const matchRole = roleFilter === 'all' || m.role === roleFilter;
+    return matchStatus && matchRole;
+  });
+
   // 2. Actions
   const handleCreateSession = async () => {
     if (!newSessionTitle || !newVoteQuestion || selectedProjectIds.length < 2 || !user) {
@@ -89,11 +141,7 @@ function AdminContent() {
     setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
-
-      // Create Assembly
       const assemblyRef = doc(collection(db, 'assemblies'));
-      
-      // Create Vote doc reference
       const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
 
       batch.set(assemblyRef, {
@@ -103,7 +151,7 @@ function AdminContent() {
         createdBy: user.uid,
         startsAt: startsAt ? new Date(startsAt) : null,
         endsAt: endsAt ? new Date(endsAt) : null,
-        activeVoteId: voteRef.id, // Linked immediately
+        activeVoteId: voteRef.id,
       });
 
       batch.set(voteRef, {
@@ -132,40 +180,17 @@ function AdminContent() {
     try {
       setIsSubmitting(true);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
-      
-      // 1. Chercher le document de vote existant dans la sous-collection
       const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
-      let voteId: string;
-      let voteRef;
-      let currentProjectIds: string[] = [];
+      
+      if (votesSnap.empty) return;
 
-      if (votesSnap.empty) {
-        // Fallback: créer un vote si inexistant (ne devrait pas arriver avec handleCreateSession sécurisé)
-        voteRef = doc(collection(db, 'assemblies', assemblyId, 'votes'));
-        voteId = voteRef.id;
-      } else {
-        const voteDoc = votesSnap.docs[0];
-        voteId = voteDoc.id;
-        voteRef = voteDoc.ref;
-        currentProjectIds = voteDoc.data().projectIds || [];
-      }
-
-      // 2. Validation si on veut ouvrir
-      if (newState === 'open' && currentProjectIds.length < 2) {
-        toast({ 
-          variant: "destructive", 
-          title: "Scrutin incomplet", 
-          description: "Ajoutez au moins 2 projets au scrutin avant de l'ouvrir." 
-        });
-        return;
-      }
+      const voteDoc = votesSnap.docs[0];
+      const voteRef = voteDoc.ref;
 
       const batch = writeBatch(db);
-
-      // 3. Mise à jour ATOMIQUE de l'assemblée et du vote
       batch.update(assemblyRef, { 
         state: newState,
-        activeVoteId: newState === 'open' ? voteId : null,
+        activeVoteId: newState === 'open' ? voteDoc.id : null,
         updatedAt: serverTimestamp(),
         openedAt: newState === 'open' ? serverTimestamp() : null
       });
@@ -177,15 +202,6 @@ function AdminContent() {
       });
 
       await batch.commit();
-
-      // Double vérification post-commit
-      const verifySnap = await getDoc(assemblyRef);
-      if (newState === 'open' && !verifySnap.data()?.activeVoteId) {
-        console.error("CRITICAL: activeVoteId is null on open assembly", assemblyId);
-        toast({ variant: "destructive", title: "Erreur critique", description: "Liaison du vote échouée. Veuillez réessayer." });
-        return;
-      }
-      
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'fermée'}` });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Erreur", description: "Action impossible." });
@@ -194,78 +210,42 @@ function AdminContent() {
     }
   };
 
+  const updateMemberStatus = async (uid: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'members', uid), { status: newStatus, updatedAt: serverTimestamp() });
+      toast({ title: "Statut mis à jour" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier le statut." });
+    }
+  };
+
+  const updateMemberRole = async (uid: string, newRole: string) => {
+    try {
+      await updateDoc(doc(db, 'members', uid), { role: newRole, updatedAt: serverTimestamp() });
+      toast({ title: "Rôle mis à jour" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier le rôle." });
+    }
+  };
+
   const generateDemoProjects = async () => {
     if (!user) return;
-    
     setIsGenerating(true);
     const demoData = [
-      { 
-        title: "Pistes cyclables sécurisées", 
-        summary: "Aménagement de voies réservées aux vélos pour favoriser la mobilité douce.", 
-        longDescription: "Ce projet vise à créer un réseau continu de pistes cyclables protégées reliant le centre-ville aux quartiers périphériques.",
-        budget: "45 000 €",
-        imageUrl: PlaceHolderImages[4].imageUrl
-      },
-      { 
-        title: "Rénovation de l'école primaire", 
-        summary: "Isolation thermique et modernisation des salles de classe.", 
-        longDescription: "Un projet ambitieux pour réduire l'empreinte carbone de notre école tout en améliorant l'acoustique.",
-        budget: "120 000 €",
-        imageUrl: PlaceHolderImages[1].imageUrl
-      },
-      { 
-        title: "Festival des Arts de Rue", 
-        summary: "Organisation d'un événement annuel gratuit.", 
-        longDescription: "Un festival de 3 jours regroupant théâtre, cirque et musique.",
-        budget: "15 000 €",
-        imageUrl: PlaceHolderImages[3].imageUrl
-      },
-      { 
-        title: "Installation de panneaux solaires", 
-        summary: "Équiper les bâtiments publics de panneaux photovoltaïques.", 
-        longDescription: "Installation sur le toit de la mairie et du gymnase municipal.",
-        budget: "85 000 €",
-        imageUrl: PlaceHolderImages[2].imageUrl
-      },
-      { 
-        title: "Jardins partagés urbains", 
-        summary: "Transformation de terrains vagues en espaces de culture collective.", 
-        longDescription: "Création de trois zones de potagers partagés avec système de récupération d'eau.",
-        budget: "8 000 €",
-        imageUrl: PlaceHolderImages[0].imageUrl
-      }
+      { title: "Pistes cyclables sécurisées", summary: "Aménagement de voies réservées aux vélos.", budget: "45 000 €", imageUrl: PlaceHolderImages[4].imageUrl },
+      { title: "Rénovation de l'école primaire", summary: "Isolation thermique et modernisation.", budget: "120 000 €", imageUrl: PlaceHolderImages[1].imageUrl },
+      { title: "Festival des Arts de Rue", summary: "Organisation d'un événement annuel gratuit.", budget: "15 000 €", imageUrl: PlaceHolderImages[3].imageUrl },
+      { title: "Installation de panneaux solaires", summary: "Équiper les bâtiments publics.", budget: "85 000 €", imageUrl: PlaceHolderImages[2].imageUrl },
+      { title: "Jardins partagés urbains", summary: "Culture collective en ville.", budget: "8 000 €", imageUrl: PlaceHolderImages[0].imageUrl }
     ];
 
     try {
       for (const item of demoData) {
-        await addDoc(collection(db, 'projects'), {
-          ...item,
-          status: "candidate",
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-          ownerUid: user.uid,
-          ownerName: "Administration Ekklesia",
-        });
+        await addDoc(collection(db, 'projects'), { ...item, status: "candidate", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ownerUid: user.uid });
       }
-      toast({ title: "Projets générés", description: "5 projets de démonstration ajoutés." });
+      toast({ title: "Projets générés" });
     } catch (e) {
-      toast({ variant: "destructive", title: "Erreur", description: "Échec de la génération." });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const clearAllProjects = async () => {
-    if (!confirm("Voulez-vous vraiment supprimer TOUS les projets ?")) return;
-    setIsGenerating(true);
-    try {
-      const snap = await getDocs(collection(db, 'projects'));
-      for (const docSnap of snap.docs) {
-        await deleteDoc(doc(db, 'projects', docSnap.id));
-      }
-      toast({ title: "Projets supprimés" });
-    } catch (e) {
-      toast({ variant: "destructive", title: "Erreur lors de la suppression." });
+      toast({ variant: "destructive", title: "Erreur" });
     } finally {
       setIsGenerating(false);
     }
@@ -282,7 +262,10 @@ function AdminContent() {
   const getStatusBadge = (state: string) => {
     switch (state) {
       case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
+      case 'active': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Actif</Badge>;
       case 'closed': return <Badge variant="secondary">Clos</Badge>;
+      case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500">En attente</Badge>;
+      case 'blocked': return <Badge variant="destructive">Bloqué</Badge>;
       default: return <Badge variant="outline">Brouillon</Badge>;
     }
   };
@@ -339,6 +322,7 @@ function AdminContent() {
         <TabsList className="w-full justify-start rounded-none bg-transparent border-b border-border h-auto p-0 gap-8">
           <TabsTrigger value="sessions" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Sessions</TabsTrigger>
           <TabsTrigger value="projects" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Projets</TabsTrigger>
+          <TabsTrigger value="members" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Membres</TabsTrigger>
         </TabsList>
         
         <TabsContent value="sessions" className="py-12 space-y-6">
@@ -362,30 +346,16 @@ function AdminContent() {
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     {assembly.state === 'draft' && (
-                      <Button 
-                        onClick={() => updateSessionState(assembly.id, 'open')} 
-                        disabled={isSubmitting}
-                        className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
-                      >
+                      <Button onClick={() => updateSessionState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
                         {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
                         Ouvrir le vote
                       </Button>
                     )}
                     {assembly.state === 'open' && (
-                      <Button 
-                        onClick={() => updateSessionState(assembly.id, 'closed')} 
-                        variant="outline" 
-                        disabled={isSubmitting}
-                        className="rounded-none border-black hover:bg-black hover:text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
-                      >
+                      <Button onClick={() => updateSessionState(assembly.id, 'closed')} variant="outline" disabled={isSubmitting} className="rounded-none border-black hover:bg-black hover:text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
                         {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
                         Clôturer
                       </Button>
-                    )}
-                    {assembly.state === 'closed' && (
-                      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground bg-secondary px-4 py-2">
-                        <Archive className="h-3.5 w-3.5" /> Archivée
-                      </div>
                     )}
                   </div>
                 </div>
@@ -398,7 +368,6 @@ function AdminContent() {
           <div className="flex items-center justify-between border-b border-border pb-6">
             <h2 className="text-xl font-bold">Liste des Projets ({projects?.length || 0})</h2>
             <div className="flex gap-4">
-              <Button onClick={clearAllProjects} disabled={isGenerating || !projects || projects.length === 0} variant="ghost" className="rounded-none text-destructive uppercase font-bold text-xs">Vider</Button>
               <Button onClick={generateDemoProjects} disabled={isGenerating} variant="outline" className="rounded-none border-primary text-primary uppercase font-bold text-xs">Générer démo</Button>
             </div>
           </div>
@@ -407,13 +376,12 @@ function AdminContent() {
               <div key={project.id} className="border border-border p-6 bg-white hover:border-black transition-all flex items-center justify-between">
                 <div className="flex gap-6 items-center">
                   {project.imageUrl && (
-                    <div className="relative h-16 w-16 flex-shrink-0 overflow-hidden border">
+                    <div className="relative h-16 w-16 flex-shrink-0 border">
                       <Image src={project.imageUrl} alt="" fill className="object-cover grayscale" />
                     </div>
                   )}
                   <div className="space-y-1">
                     <h4 className="font-bold text-lg">{project.title}</h4>
-                    <p className="text-sm text-muted-foreground line-clamp-1">{project.summary}</p>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{project.budget}</p>
                   </div>
                 </div>
@@ -421,7 +389,146 @@ function AdminContent() {
             ))}
           </div>
         </TabsContent>
+
+        <TabsContent value="members" className="py-12 space-y-8">
+          <div className="flex flex-col md:flex-row gap-6 items-center justify-between border-b border-border pb-6">
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              <Users className="h-5 w-5" />
+              Gestion des Membres ({filteredMembers?.length || 0})
+            </h2>
+            <div className="flex gap-4 w-full md:w-auto">
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px] rounded-none">
+                  <SelectValue placeholder="Filtrer par statut" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les statuts</SelectItem>
+                  <SelectItem value="active">Actif</SelectItem>
+                  <SelectItem value="pending">En attente</SelectItem>
+                  <SelectItem value="blocked">Bloqué</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="w-[180px] rounded-none">
+                  <SelectValue placeholder="Filtrer par rôle" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Tous les rôles</SelectItem>
+                  <SelectItem value="member">Membre</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="border border-border bg-white overflow-hidden">
+            <Table>
+              <TableHeader className="bg-secondary/20">
+                <TableRow>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Email</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Nom</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest hidden md:table-cell">Connexion</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredMembers?.map((member) => (
+                  <TableRow key={member.id} className="hover:bg-secondary/10">
+                    <TableCell className="font-medium text-sm">{member.email}</TableCell>
+                    <TableCell className="text-sm">{member.displayName || '-'}</TableCell>
+                    <TableCell>{getStatusBadge(member.status)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">
+                        {member.role === 'admin' ? <Shield className="h-3 w-3 mr-1" /> : null}
+                        {member.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-[10px] text-muted-foreground hidden md:table-cell">
+                      {member.lastLoginAt?.seconds ? format(new Date(member.lastLoginAt.seconds * 1000), 'dd/MM HH:mm') : 'Jamais'}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-none w-48">
+                          <DropdownMenuLabel className="text-[10px] uppercase font-bold">Action Membre</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => setSelectedMember(member)} className="text-xs">
+                            <Eye className="h-3.5 w-3.5 mr-2" /> Voir la fiche
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel className="text-[10px] uppercase font-bold">Changer Statut</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">
+                            <UserCheck className="h-3.5 w-3.5 mr-2" /> Activer
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">
+                            <Ban className="h-3.5 w-3.5 mr-2" /> Bloquer
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuLabel className="text-[10px] uppercase font-bold">Changer Rôle</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'admin')} className="text-xs">
+                            <Shield className="h-3.5 w-3.5 mr-2" /> Passer Admin
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'member')} className="text-xs">
+                            Passer Membre
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </TabsContent>
       </Tabs>
+
+      {/* Member Profile Modal */}
+      <Dialog open={!!selectedMember} onOpenChange={(open) => !open && setSelectedMember(null)}>
+        <DialogContent className="max-w-md rounded-none p-12">
+          <DialogHeader className="space-y-6">
+            <div className="w-16 h-16 bg-secondary flex items-center justify-center border border-border">
+              <Users className="h-8 w-8 text-muted-foreground" />
+            </div>
+            <DialogTitle className="text-2xl font-bold tracking-tight">Fiche Membre</DialogTitle>
+          </DialogHeader>
+          <div className="py-8 space-y-6">
+            <div className="grid grid-cols-2 gap-8">
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nom complet</p>
+                <p className="font-medium">{selectedMember?.displayName || 'Non renseigné'}</p>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email</p>
+                <p className="font-medium text-sm">{selectedMember?.email}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-8">
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rôle actuel</p>
+                <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{selectedMember?.role}</Badge>
+              </div>
+              <div className="space-y-1">
+                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Statut</p>
+                {selectedMember && getStatusBadge(selectedMember.status)}
+              </div>
+            </div>
+            <div className="space-y-1 pt-4 border-t border-border">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Activités</p>
+              <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
+                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Inscrit le {selectedMember?.joinedAt?.seconds ? format(new Date(selectedMember.joinedAt.seconds * 1000), 'dd/MM/yyyy') : '-'}</span>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={() => setSelectedMember(null)} className="rounded-none h-12 w-full uppercase font-bold text-xs">Fermer</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

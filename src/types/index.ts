@@ -1,10 +1,16 @@
-export type MemberStatus = 'active' | 'pending' | 'revoked';
+export type MemberStatus = 'active' | 'pending' | 'blocked' | 'revoked';
 export type Role = 'admin' | 'member';
 
 export interface MemberProfile {
+  id: string;
+  email: string;
+  displayName?: string;
   status: MemberStatus;
   role: Role;
   joinedAt?: any;
+  lastLoginAt?: any;
+  createdAt?: any;
+  bio?: string;
 }
 
 export interface Project {
