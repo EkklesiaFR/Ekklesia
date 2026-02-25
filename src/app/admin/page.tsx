@@ -1,3 +1,4 @@
+
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -88,6 +89,85 @@ import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { computeSchulzeResults } from '@/lib/tally';
+
+/**
+ * Sous-composant pour afficher une ligne de session avec ses métriques temps réel
+ */
+function AssemblySessionRow({ 
+  assembly, 
+  onUpdateState, 
+  onRecalculate, 
+  onTally, 
+  isSubmitting,
+  isUserActiveAdmin 
+}: { 
+  assembly: Assembly;
+  onUpdateState: (id: string, state: 'open' | 'locked') => void;
+  onRecalculate: (aId: string, vId: string) => void;
+  onTally: (aId: string, vId: string) => void;
+  isSubmitting: boolean;
+  isUserActiveAdmin: boolean;
+}) {
+  const db = useFirestore();
+  const voteRef = useMemoFirebase(() => {
+    if (!assembly.activeVoteId) return null;
+    return doc(db, 'assemblies', assembly.id, 'votes', assembly.activeVoteId);
+  }, [db, assembly.id, assembly.activeVoteId]);
+
+  const { data: vote, isLoading } = useDoc<Vote>(voteRef);
+
+  const getStatusBadge = (state: string) => {
+    switch (state) {
+      case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
+      case 'locked': return <Badge variant="secondary">Verrouillé</Badge>;
+      case 'active': return <Badge className="bg-green-100 text-green-700 border-green-200">Actif</Badge>;
+      case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>;
+      default: return <Badge variant="outline">Brouillon</Badge>;
+    }
+  };
+
+  return (
+    <div className="group border border-border p-8 bg-white hover:border-black transition-all flex flex-col md:flex-row md:items-center justify-between gap-8">
+      <div className="space-y-4">
+        <div className="flex items-center gap-4">{getStatusBadge(assembly.state)}</div>
+        <div className="space-y-1">
+          <h3 className="text-2xl font-bold">{assembly.title}</h3>
+          <div className="flex items-center gap-6 mt-2">
+            {isLoading ? (
+              <p className="text-[10px] uppercase font-bold text-muted-foreground animate-pulse">Chargement du scrutin...</p>
+            ) : vote ? (
+              <>
+                <p className="text-[10px] uppercase font-bold text-muted-foreground">{vote.ballotCount || 0} bulletins</p>
+                <p className="text-[10px] uppercase font-bold text-primary">{vote.eligibleCount || 0} éligibles</p>
+              </>
+            ) : (
+              <p className="text-[10px] uppercase font-bold text-muted-foreground">— Aucun scrutin actif —</p>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3">
+        {assembly.state === 'draft' && (
+          <Button onClick={() => onUpdateState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] h-10 px-6 uppercase font-bold text-[10px]">Ouvrir</Button>
+        )}
+        {assembly.state === 'open' && (
+          <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
+            {!isUserActiveAdmin ? (
+              <div className="px-4 py-2 bg-destructive/5 text-destructive text-[9px] uppercase font-bold border border-destructive/10">
+                Admin Active requis
+              </div>
+            ) : (
+              <>
+                <Button variant="ghost" size="icon" onClick={() => vote && onRecalculate(assembly.id, vote.id)} disabled={isSubmitting}><RefreshCw className={isSubmitting ? "animate-spin" : ""} /></Button>
+                <Button onClick={() => vote && onTally(assembly.id, vote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white h-10 px-6 uppercase font-bold text-[10px]">Clôturer</Button>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function AssemblyResultItem({ assembly, projects }: { assembly: Assembly; projects: Project[] }) {
   const db = useFirestore();
@@ -186,9 +266,6 @@ function AdminContent() {
   const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
   const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
 
-  const votesQuery = useMemoFirebase(() => query(collectionGroup(db, 'votes')), [db]);
-  const { data: allVotes } = useCollection<Vote>(votesQuery);
-
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
@@ -271,16 +348,6 @@ function AdminContent() {
   };
 
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    console.log(`[CLOSE] Preflight:`, { 
-      uid: user?.uid, 
-      memberDocId: member?.id,
-      role: member?.role, 
-      status: member?.status,
-      isAdmin,
-      assemblyId,
-      voteId
-    });
-    
     if (!isAdmin || member?.status !== 'active') {
       toast({ 
         variant: "destructive", 
@@ -294,16 +361,13 @@ function AdminContent() {
     setIsSubmitting(true);
     
     try {
-      console.log(`[CLOSE] Initiation depouillement...`);
       const result = await performVoteTally(assemblyId, voteId);
       if (result.skipped) {
         toast({ title: "Déjà clôturé" });
       } else {
-        console.log(`[CLOSE] Success - Scrutin publié { winnerId: ${result.winnerId}, ballots: ${result.ballotCount} }`);
         toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés." });
       }
     } catch (e: any) {
-      console.error(`[CLOSE] Exception: ${e.code || 'UNKNOWN'} ${e.message}`);
       toast({ variant: "destructive", title: "Erreur de clôture", description: e.message || "Impossible de verrouiller le scrutin." });
     } finally {
       setIsSubmitting(false);
@@ -311,8 +375,6 @@ function AdminContent() {
   };
 
   const bulkCloseOpenVotes = async () => {
-    console.log(`[BULK CLOSE] Initiation`, { uid: user?.uid, isAdmin, memberStatus: member?.status });
-    
     if (!isAdmin || member?.status !== 'active') {
       toast({ 
         variant: "destructive", 
@@ -329,22 +391,17 @@ function AdminContent() {
     try {
       const q = query(collectionGroup(db, 'votes'), where('state', '==', 'open'));
       const snapshot = await getDocs(q);
-      console.log(`[BULK CLOSE] Found ${snapshot.size} open votes`);
 
       for (const voteDoc of snapshot.docs) {
         const voteId = voteDoc.id;
-        // Source de vérité : extraire assemblyId directement du chemin du document
         const assemblyId = voteDoc.ref.parent.parent!.id;
 
         try {
-          console.log(`[BULK CLOSE] Closing {assemblyId: ${assemblyId}, voteId: ${voteId}}`);
           const result = await performVoteTally(assemblyId, voteId);
           if (!result.skipped) {
-            console.log(`[BULK CLOSE] Done {assemblyId: ${assemblyId}, voteId: ${voteId}, ballots: ${result.ballotCount}}`);
             successCount++;
           }
         } catch (e: any) {
-          console.error(`[BULK CLOSE] Failed {assemblyId: ${assemblyId}, voteId: ${voteId}, message: ${e.message}}`);
           failCount++;
         }
       }
@@ -511,16 +568,6 @@ function AdminContent() {
     setSelectedProjectIds([]);
   };
 
-  const getStatusBadge = (state: string) => {
-    switch (state) {
-      case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
-      case 'locked': return <Badge variant="secondary">Verrouillé</Badge>;
-      case 'active': return <Badge className="bg-green-100 text-green-700 border-green-200">Actif</Badge>;
-      case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>;
-      default: return <Badge variant="outline">Brouillon</Badge>;
-    }
-  };
-
   const isUserActiveAdmin = isAdmin && member?.status === 'active';
 
   return (
@@ -607,42 +654,17 @@ function AdminContent() {
           )}
 
           <div className="grid gap-6">
-            {assemblies?.map((assembly) => {
-              const sessionVote = allVotes?.find(v => v.assemblyId === assembly.id);
-              return (
-                <div key={assembly.id} className="group border border-border p-8 bg-white hover:border-black transition-all flex flex-col md:flex-row md:items-center justify-between gap-8">
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-4">{getStatusBadge(assembly.state)}</div>
-                    <div className="space-y-1">
-                      <h3 className="text-2xl font-bold">{assembly.title}</h3>
-                      <div className="flex items-center gap-6 mt-2">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">{sessionVote?.ballotCount || 0} bulletins</p>
-                        <p className="text-[10px] uppercase font-bold text-primary">{sessionVote?.eligibleCount || 0} éligibles</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-3">
-                    {assembly.state === 'draft' && (
-                      <Button onClick={() => updateSessionState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] h-10 px-6 uppercase font-bold text-[10px]">Ouvrir</Button>
-                    )}
-                    {assembly.state === 'open' && (
-                      <div className="flex flex-col md:flex-row items-center gap-2 w-full md:w-auto">
-                        {!isUserActiveAdmin ? (
-                          <div className="px-4 py-2 bg-destructive/5 text-destructive text-[9px] uppercase font-bold border border-destructive/10">
-                            Admin Active requis
-                          </div>
-                        ) : (
-                          <>
-                            <Button variant="ghost" size="icon" onClick={() => sessionVote && handleRecalculateBallots(assembly.id, sessionVote.id)} disabled={isSubmitting}><RefreshCw className={isSubmitting ? "animate-spin" : ""} /></Button>
-                            <Button onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white h-10 px-6 uppercase font-bold text-[10px]">Clôturer</Button>
-                          </>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+            {assemblies?.map((assembly) => (
+              <AssemblySessionRow 
+                key={assembly.id}
+                assembly={assembly}
+                onUpdateState={updateSessionState}
+                onRecalculate={handleRecalculateBallots}
+                onTally={handleTallyAndPublish}
+                isSubmitting={isSubmitting}
+                isUserActiveAdmin={isUserActiveAdmin}
+              />
+            ))}
           </div>
         </TabsContent>
 
@@ -684,7 +706,10 @@ function AdminContent() {
                 {filteredMembers?.map((member) => (
                   <TableRow key={member.id}>
                     <TableCell className="font-medium text-sm">{member.email}</TableCell>
-                    <TableCell>{getStatusBadge(member.status)}</TableCell>
+                    <TableCell>
+                      {member.status === 'active' && <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Actif</Badge>}
+                      {member.status === 'pending' && <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>}
+                    </TableCell>
                     <TableCell><Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{member.role}</Badge></TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
