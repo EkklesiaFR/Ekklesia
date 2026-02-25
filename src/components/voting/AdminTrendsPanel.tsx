@@ -18,7 +18,7 @@ interface AdminTrendsPanelProps {
  * Il effectue une requête LIST sur la collection 'ballots'.
  */
 export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPanelProps) {
-  const { isAdmin } = useAuthStatus();
+  const { isAdmin, isMemberLoading } = useAuthStatus();
   const db = useFirestore();
 
   useEffect(() => {
@@ -30,12 +30,14 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
   // Sécurité "Béton" : on retourne null si l'utilisateur n'est pas admin, 
   // ce qui empêche useCollection de lancer la requête.
   const ballotsQuery = useMemoFirebase(() => {
-    if (!isAdmin) {
+    // Si isAdmin est faux ou non encore résolu, on renvoie strictement null.
+    // useCollection(null) n'émettra jamais de requête Firestore.
+    if (isMemberLoading || !isAdmin) {
       console.warn("⚠️ [SÉCURITÉ] Tentative de LIST ballots bloquée côté client (non-admin).");
       return null;
     }
     return collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
-  }, [db, assemblyId, voteId, isAdmin]);
+  }, [db, assemblyId, voteId, isAdmin, isMemberLoading]);
 
   const { data: ballots, isLoading } = useCollection<Ballot>(ballotsQuery);
 
@@ -45,7 +47,9 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
 
   const winnerProject = results?.winnerId ? projects.find(p => p.id === results.winnerId) : null;
 
-  if (!isAdmin) return null;
+  // Double protection : Si un membre forçait le montage du composant
+  if (isMemberLoading || !isAdmin) return null;
+  
   if (isLoading) return <p className="text-[10px] text-gray-400 animate-pulse uppercase tracking-widest font-bold">Calcul des tendances...</p>;
 
   return (

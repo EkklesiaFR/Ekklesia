@@ -57,7 +57,7 @@ function ParticipationPanel({ ballotCount = 0, eligibleCount = 100 }: { ballotCo
 }
 
 function AssemblyDashboardContent() {
-  const { isAdmin } = useAuthStatus();
+  const { isAdmin, isMemberLoading } = useAuthStatus();
   const db = useFirestore();
 
   // 1. Trouver l'assemblée ouverte
@@ -86,6 +86,8 @@ function AssemblyDashboardContent() {
       </div>
     );
   }
+
+  const showAdminTrends = !isMemberLoading && isAdmin && activeAssembly && activeVote;
 
   return (
     <div className="space-y-16 animate-in fade-in duration-700">
@@ -134,7 +136,7 @@ function AssemblyDashboardContent() {
 
           {/* PANNEAU DROIT : PARTICIPATION OU TRENDS (ADMIN) */}
           <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
-            {isAdmin && activeAssembly && activeVote ? (
+            {showAdminTrends ? (
               <AdminTrendsPanel 
                 assemblyId={activeAssembly.id} 
                 voteId={activeVote.id} 

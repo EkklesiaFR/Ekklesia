@@ -60,7 +60,7 @@ function ParticipationPanel({ ballotCount = 0, eligibleCount = 100 }: { ballotCo
 
 export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModuleProps) {
   const { user } = useUser();
-  const { isAdmin } = useAuthStatus();
+  const { isAdmin, isMemberLoading } = useAuthStatus();
   const db = useFirestore();
   const [currentRanking, setCurrentRanking] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -81,7 +81,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
 
     try {
-      // Sécurité atomique : Vérifier d'abord si le bulletin existe
       const ballotSnap = await getDoc(userBallotRef);
       const isNewBallot = !ballotSnap.exists();
       
@@ -113,6 +112,8 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
   const sortedProjects = currentRanking
     .map(id => projects.find(p => p.id === id))
     .filter((p): p is Project => !!p);
+
+  const showAdminTrends = !isMemberLoading && isAdmin && vote.state === 'open';
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -164,8 +165,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
           </div>
         ) : vote.state === 'open' ? (
           <div className="space-y-12">
-            {/* L'AdminTrendsPanel n'est monté QUE si isAdmin est vrai */}
-            {isAdmin ? (
+            {showAdminTrends ? (
               <AdminTrendsPanel 
                 assemblyId={assemblyId} 
                 voteId={vote.id} 
