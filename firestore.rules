@@ -43,17 +43,16 @@ service cloud.firestore {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
         allow list: if isAdminActive(assemblyId);
         
-        // Création restreinte : membre en attente uniquement + whitelist
+        // Création : membre pending uniquement + whitelist stricte
         allow create: if isOwner(uid) 
-          && request.resource.data.status == "pending" 
           && request.resource.data.role == "member"
-          && request.resource.data.keys().hasOnly(['id', 'email', 'displayName', 'role', 'status', 'createdAt', 'updatedAt', 'lastLoginAt']);
+          && request.resource.data.status == "pending"
+          && request.resource.data.keys().hasOnly(['id', 'role', 'status', 'email', 'createdAt', 'updatedAt', 'displayName', 'lastLoginAt']);
           
-        // Mise à jour restreinte : admins ou propriétaire (champs limités)
+        // Mise à jour : Admin complet ou Owner restreint
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
-              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
-              && (request.resource.data.email == resource.data.email || request.resource.data.email == request.auth.token.email)
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
              );
              
         allow delete: if isAdminActive(assemblyId);
@@ -74,13 +73,14 @@ service cloud.firestore {
 
           allow create: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
-            && isVoteOpen(assemblyId, voteId);
+            && isVoteOpen(assemblyId, voteId)
+            && request.resource.data.keys().hasOnly(['ranking', 'createdAt', 'updatedAt']);
             
-          // Mise à jour autorisée pour le classement, protection de castAt
           allow update: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
             && isVoteOpen(assemblyId, voteId)
-            && request.resource.data.castAt == resource.data.castAt;
+            && request.resource.data.keys().hasOnly(['ranking', 'createdAt', 'updatedAt'])
+            && request.resource.data.createdAt == resource.data.createdAt;
 
           allow delete: if false;
         }
