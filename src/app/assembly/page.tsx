@@ -21,10 +21,23 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
+import { useEffect } from 'react';
 
-function ParticipationPanel({ ballotCount = 0, eligibleCount = 100 }: { ballotCount?: number, eligibleCount?: number }) {
-  const participationRate = eligibleCount > 0 ? Math.round((ballotCount / eligibleCount) * 100) : 0;
-  const abstentionRate = 100 - participationRate;
+function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: number; eligibleCount?: number }) {
+  if (eligibleCount === undefined || eligibleCount === null) {
+    return (
+      <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
+        <p className="text-[10px] uppercase font-bold text-muted-foreground">Suffrage non défini</p>
+        <p className="text-[9px] text-muted-foreground mt-1 italic">Vérifiez l'ouverture du scrutin (Admin)</p>
+        <p className="text-[8px] text-muted-foreground/50 mt-2 font-mono">Bulletins: {ballotCount ?? "—"}</p>
+      </div>
+    );
+  }
+
+  const voters = ballotCount ?? 0;
+  const participationRate = eligibleCount > 0 ? Math.round((voters / eligibleCount) * 100) : 0;
+  const abstentionCount = Math.max(0, eligibleCount - voters);
+  const abstentionRate = eligibleCount > 0 ? Math.round((abstentionCount / eligibleCount) * 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -32,14 +45,16 @@ function ParticipationPanel({ ballotCount = 0, eligibleCount = 100 }: { ballotCo
         <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
           <PieChart className="h-3 w-3 text-primary" /> Participation
         </h3>
-        <span className="text-[10px] font-bold text-primary uppercase tracking-wider">{participationRate}%</span>
+        <span className="text-[10px] font-bold text-primary uppercase tracking-wider">
+          {eligibleCount > 0 ? `${participationRate}%` : "—"}
+        </span>
       </div>
       
       <div className="space-y-4">
         <div className="space-y-2">
           <div className="flex justify-between text-[10px] uppercase font-bold tracking-widest text-gray-400">
             <span>Votants</span>
-            <span className="text-white">{ballotCount}</span>
+            <span className="text-white">{ballotCount ?? "—"}</span>
           </div>
           <Progress value={participationRate} className="h-1 bg-gray-800" />
         </div>
@@ -47,7 +62,7 @@ function ParticipationPanel({ ballotCount = 0, eligibleCount = 100 }: { ballotCo
         <div className="space-y-2">
           <div className="flex justify-between text-[10px] uppercase font-bold tracking-widest text-gray-400">
             <span>Abstention</span>
-            <span className="text-white">{Math.max(0, eligibleCount - ballotCount)}</span>
+            <span className="text-white">{abstentionCount}</span>
           </div>
           <Progress value={abstentionRate} className="h-1 bg-gray-800" />
         </div>
@@ -78,6 +93,18 @@ function AssemblyDashboardContent() {
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
+
+  // Log de diagnostic temporaire
+  useEffect(() => {
+    if (activeVote) {
+      console.log("vote fields (Dashboard)", { 
+        ballotCount: activeVote.ballotCount, 
+        eligibleCount: activeVote.eligibleCount, 
+        voteId: activeVote.id,
+        state: activeVote.state
+      });
+    }
+  }, [activeVote]);
 
   if (isAssemblyLoading || isVoteLoading) {
     return (
@@ -118,7 +145,7 @@ function AssemblyDashboardContent() {
                 <p className="text-2xl font-bold leading-tight">{activeVote?.question || activeAssembly.title}</p>
                 <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
                   <span className="flex items-center gap-2 font-medium">
-                    <Users className="h-4 w-4 text-primary" /> <strong>{activeVote?.ballotCount || 0}</strong> bulletins
+                    <Users className="h-4 w-4 text-primary" /> <strong>{activeVote?.ballotCount ?? 0}</strong> bulletins
                   </span>
                   {activeVote?.closesAt && (
                     <span className="flex items-center gap-2 font-medium">
@@ -155,7 +182,7 @@ function AssemblyDashboardContent() {
             ) : (
               <ParticipationPanel 
                 ballotCount={activeVote?.ballotCount} 
-                eligibleCount={activeVote?.eligibleCount || 100} 
+                eligibleCount={activeVote?.eligibleCount} 
               />
             )}
             <Link href="/projects" className="block pt-4">
