@@ -48,25 +48,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', uid);
     const legacyMemberRef = doc(db, 'members', uid);
     
-    // Vérification passive uniquement pour éviter les créations automatiques destructives
-    const checkStatus = async () => {
+    const checkLegacy = async () => {
       try {
-        const docSnap = await getDoc(memberRef);
-        
-        if (!docSnap.exists()) {
-          console.log(`[AuthStatus] No profile in ${DEFAULT_ASSEMBLY_ID}. Checking legacy...`);
-          const legacySnap = await getDoc(legacyMemberRef);
-          if (legacySnap.exists()) {
-            console.log(`[AuthStatus] Legacy profile detected. Awaiting admin migration.`);
-            setHasLegacyProfile(true);
-          }
-        }
-      } catch (error: any) {
-        console.warn("[AuthStatus] Passive check limited by rules:", error.code);
-      }
+        const legacySnap = await getDoc(legacyMemberRef);
+        if (legacySnap.exists()) setHasLegacyProfile(true);
+      } catch (e) {}
     };
 
-    checkStatus();
+    checkLegacy();
 
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
@@ -78,30 +67,22 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           status: data.status || 'pending',
           role: data.role || 'member',
           createdAt: data.createdAt || null,
-          lastLoginAt: data.lastLoginAt || null,
-          updatedAt: data.updatedAt || null,
         } as MemberProfile);
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
-    }, (error) => {
-      console.error("[AuthStatus] Snapshot error:", error.code);
-      setIsMemberLoading(false);
-    });
+    }, () => setIsMemberLoading(false));
 
     return () => unsubscribe();
   }, [uid, isUserLoading, db, user?.email, user?.displayName]);
-
-  const isActiveMember = member?.status === 'active';
-  const isAdmin = member?.role === 'admin';
 
   return (
     <AuthStatusContext.Provider value={{ 
       member, 
       isMemberLoading, 
-      isActiveMember, 
-      isAdmin,
+      isActiveMember: member?.status === 'active', 
+      isAdmin: member?.role === 'admin',
       hasLegacyProfile,
       defaultAssemblyId: DEFAULT_ASSEMBLY_ID
     }}>

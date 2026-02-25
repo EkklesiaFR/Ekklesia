@@ -24,36 +24,41 @@ service cloud.firestore {
       return isMemberActive(assemblyId) && getMemberData(assemblyId).role == "admin";
     }
 
+    // Vérifie si l'utilisateur est admin dans l'assemblée par défaut pour autoriser la création globale
+    function isGlobalAdmin() {
+      let defaultPath = /databases/$(database)/documents/assemblies/default-assembly/members/$(request.auth.uid);
+      return isSignedIn() && exists(defaultPath) && get(defaultPath).data.role == "admin" && get(defaultPath).data.status == "active";
+    }
+
     function isVoteOpen(assemblyId, voteId) {
       return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
     }
 
-    // PROTECTION DES ANCIENNES DONNÉES (LEGACY)
-    // Seul le propriétaire peut lire son ancien profil pour diagnostic
+    // Accès restreint aux anciens profils (lecture seule propriétaire)
     match /members/{uid} {
       allow get: if isOwner(uid);
-      allow list: if false; 
-      allow write: if false;
+      allow list, write: if false;
     }
 
     match /assemblies/{assemblyId} {
       allow read: if isSignedIn();
-      allow write: if isAdminActive(assemblyId);
+      
+      // Correction : Autorise la création si l'utilisateur est admin (global ou local)
+      allow create: if isGlobalAdmin();
+      allow update, delete: if isAdminActive(assemblyId);
 
       match /members/{uid} {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
         allow list: if isAdminActive(assemblyId); 
         
-        // Auto-création sécurisée (status pending, role member uniquement)
         allow create: if isOwner(uid) 
           && request.resource.data.role == "member"
           && request.resource.data.status == "pending"
           && request.resource.data.keys().hasOnly(['id', 'role', 'status', 'email', 'createdAt', 'updatedAt', 'displayName', 'lastLoginAt']);
           
-        // Seul l'admin peut changer role/status. Le membre ne change que son profil public.
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt', 'lastLoginAt'])
              );
              
         allow delete: if isAdminActive(assemblyId);
@@ -66,14 +71,12 @@ service cloud.firestore {
 
       match /votes/{voteId} {
         allow read: if isMemberActive(assemblyId);
-        allow update: if isAdminActive(assemblyId);
-        allow create, delete: if isAdminActive(assemblyId);
+        allow create, update, delete: if isAdminActive(assemblyId);
 
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive(assemblyId);
           allow list: if isAdminActive(assemblyId); 
 
-          // Validation structurelle du bulletin
           function ballotValid() {
             let data = request.resource.data;
             return data.ranking is list 

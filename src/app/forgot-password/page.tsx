@@ -22,16 +22,9 @@ export default function ForgotPasswordPage() {
     setIsLoading(true);
     try {
       await initiatePasswordReset(auth, email);
-      toast({ 
-        title: "Email envoyé", 
-        description: "Vérifiez votre boîte mail pour réinitialiser votre mot de passe.",
-      });
+      toast({ title: "Email envoyé", description: "Vérifiez votre boîte mail." });
     } catch (error: any) {
-      toast({
-        variant: "destructive",
-        title: "Erreur",
-        description: error.message || "Impossible d'envoyer l'email.",
-      });
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible d'envoyer l'email." });
     } finally {
       setIsLoading(false);
     }
@@ -42,9 +35,7 @@ export default function ForgotPasswordPage() {
       <div className="flex flex-col items-center justify-center py-12 space-y-10 animate-in fade-in duration-700">
         <header className="space-y-4 text-center">
           <h1 className="text-4xl font-bold tracking-tight text-black">Mot de passe oublié</h1>
-          <p className="text-muted-foreground max-w-sm mx-auto">
-            Saisissez votre email pour recevoir un lien de réinitialisation.
-          </p>
+          <p className="text-muted-foreground max-w-sm mx-auto">Saisissez votre email.</p>
         </header>
 
         <div className="w-full max-w-sm space-y-8">
@@ -53,29 +44,15 @@ export default function ForgotPasswordPage() {
               <Label htmlFor="email">Email</Label>
               <div className="relative">
                 <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                <Input 
-                  id="email" 
-                  type="email" 
-                  placeholder="nom@exemple.com" 
-                  className="pl-10 rounded-none h-12" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
+                <Input id="email" type="email" placeholder="nom@exemple.com" className="pl-10 rounded-none h-12" value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
             </div>
-            <Button
-              type="submit"
-              disabled={isLoading}
-              className="w-full h-12 rounded-none font-bold uppercase tracking-widest text-xs"
-            >
+            <Button type="submit" disabled={isLoading} className="w-full h-12 rounded-none font-bold uppercase tracking-widest text-xs">
               {isLoading ? "Envoi..." : "Envoyer le lien"}
             </Button>
           </form>
-
           <Link href="/login" className="flex items-center justify-center gap-2 text-sm text-muted-foreground hover:text-black font-bold uppercase tracking-widest text-xs">
-            <ArrowLeft className="h-4 w-4" />
-            Retour à la connexion
+            <ArrowLeft className="h-4 w-4" /> Retour à la connexion
           </Link>
         </div>
       </div>
