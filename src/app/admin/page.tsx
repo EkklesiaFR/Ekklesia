@@ -19,7 +19,8 @@ import {
   getDocs,
   writeBatch,
   limit,
-  where
+  where,
+  deleteField
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -75,7 +76,8 @@ import {
   Trophy,
   ShieldAlert,
   AlertTriangle,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
@@ -143,6 +145,7 @@ function AdminContent() {
       const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
       
       batch.set(assemblyRef, {
+        id: assemblyRef.id,
         title: newSessionTitle,
         state: 'draft',
         createdAt: serverTimestamp(),
@@ -173,72 +176,96 @@ function AdminContent() {
     }
   };
 
+  /**
+   * Clôturer le scrutin (Tally & Publish)
+   * Utilise activeVoteId de l'assemblée comme source de vérité.
+   */
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    console.log("[CLOSE] Tally initiated", { assemblyId, voteId, isAdmin, memberStatus: member?.status });
+    console.log("[CLOSE] Initiation", { assemblyId, voteId, isAdmin, memberStatus: member?.status });
     
+    if (!isAdmin || member?.status !== 'active') {
+      console.error("[CLOSE] Accès refusé : Le compte admin doit être 'actif'.");
+      toast({ variant: "destructive", title: "Accès refusé", description: "Votre compte administrateur doit être 'actif' pour clôturer." });
+      return;
+    }
+
     if (isSubmitting) return;
     setIsSubmitting(true);
     
     try {
-      const voteDoc = allVotes?.find(v => v.id === voteId);
-      if (!voteDoc) {
-        throw new Error("Document de vote introuvable dans le cache local.");
-      }
+      const targetAssembly = assemblies?.find(a => a.id === assemblyId);
+      const targetVoteId = targetAssembly?.activeVoteId || voteId;
+      
+      console.log(`[CLOSE] Fetching ballots for vote: ${targetVoteId} in assembly: ${assemblyId}`);
 
-      // 1. Récupération physique de TOUS les bulletins
-      const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
+      const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', targetVoteId, 'ballots');
       const ballotsSnap = await getDocs(ballotsRef);
       const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
       
-      console.log(`[CLOSE] Found ${ballots.length} ballots.`);
+      console.log(`[CLOSE] Ballots fetched: ${ballots.length}`);
 
       if (ballots.length === 0) {
-        toast({ 
-          variant: "destructive", 
-          title: "Aucun bulletin", 
-          description: "Impossible de calculer un résultat sans bulletins déposés." 
-        });
-        setIsSubmitting(false);
-        return;
+        throw new Error("Impossible de clôturer un scrutin sans aucun bulletin déposé.");
       }
 
-      // 2. Calcul Schulze
-      const results = computeSchulzeResults(voteDoc.projectIds, ballots);
-      console.log("[CLOSE] Tally computed", results);
+      const voteDoc = allVotes?.find(v => v.id === targetVoteId);
+      if (!voteDoc) throw new Error("Document de vote introuvable.");
 
-      // 3. Publication atomique
+      // Calcul Schulze
+      const results = computeSchulzeResults(voteDoc.projectIds, ballots);
+      console.log("[CLOSE] Results computed", results);
+
       const batch = writeBatch(db);
-      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
+      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', targetVoteId);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
 
       batch.update(voteRef, {
-        results: { 
-          winnerId: results.winnerId, 
-          fullRanking: results.ranking, 
-          computedAt: serverTimestamp(), 
-          total: ballots.length 
+        results: {
+          winnerId: results.winnerId,
+          fullRanking: results.ranking,
+          computedAt: serverTimestamp(),
+          total: ballots.length
         },
-        ballotCount: ballots.length, // Synchronisation
+        ballotCount: ballots.length,
         state: 'locked',
         lockedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      
-      batch.update(assemblyRef, { 
-        state: 'locked', 
-        updatedAt: serverTimestamp() 
+
+      batch.update(assemblyRef, {
+        state: 'locked',
+        updatedAt: serverTimestamp()
       });
-      
+
       await batch.commit();
-      console.log("[CLOSE] Success");
-      toast({ title: "Scrutin clôturé", description: "Les résultats officiels ont été publiés avec succès." });
+      console.log("[CLOSE] Success - Scrutin publié");
+      toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés avec succès." });
     } catch (e: any) {
-      console.error("[CLOSE] Error:", e);
+      console.error("[CLOSE] Exception:", e.code || "unknown", e.message);
       toast({ 
         variant: "destructive", 
         title: "Erreur de clôture", 
         description: e.message || "Impossible de verrouiller le scrutin." 
       });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * Forcer le recalcul du compteur (Backfill admin)
+   */
+  const handleRecalculateBallots = async (assemblyId: string, voteId: string) => {
+    setIsSubmitting(true);
+    try {
+      const ballotsSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots'));
+      await updateDoc(doc(db, 'assemblies', assemblyId, 'votes', voteId), {
+        ballotCount: ballotsSnap.size,
+        updatedAt: serverTimestamp()
+      });
+      toast({ title: "Compteur synchronisé", description: `${ballotsSnap.size} bulletins détectés.` });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Erreur" });
     } finally {
       setIsSubmitting(false);
     }
@@ -304,11 +331,13 @@ function AdminContent() {
       let fixedCount = 0;
       snapshot.docs.forEach(memberDoc => {
         const data = memberDoc.data();
+        // Standardisation stricte sur "status" et suppression de "statut"
         if (!data.id || !data.email || !data.status || data.statut) {
           batch.update(memberDoc.ref, { 
             id: memberDoc.id, 
             email: data.email || "", 
             status: data.status || data.statut || "pending", 
+            statut: deleteField(), // Suppression du champ obsolète
             role: data.role || "member", 
             updatedAt: serverTimestamp() 
           });
@@ -424,9 +453,24 @@ function AdminContent() {
                       </Button>
                     )}
                     {assembly.state === 'open' && (
-                      <Button onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trophy className="h-3.5 w-3.5" />} Clôturer
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          onClick={() => sessionVote && handleRecalculateBallots(assembly.id, sessionVote.id)}
+                          disabled={isSubmitting}
+                          title="Recalculer ballots"
+                        >
+                          <RefreshCw className={isSubmitting ? "animate-spin" : ""} />
+                        </Button>
+                        <Button 
+                          onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} 
+                          disabled={isSubmitting} 
+                          className="rounded-none bg-black text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
+                        >
+                          {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trophy className="h-3.5 w-3.5" />} Clôturer
+                        </Button>
+                      </div>
                     )}
                     {assembly.state === 'locked' && (
                        <div className="flex items-center gap-2 text-[#7DC092] text-xs font-bold uppercase tracking-widest">
