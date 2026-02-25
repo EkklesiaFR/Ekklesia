@@ -103,42 +103,24 @@ function AssemblyDashboardContent() {
   const { isAdmin, isMemberLoading } = useAuthStatus();
   const db = useFirestore();
 
-  // 1. Trouver l'assemblée ouverte
+  // 1. Trouver l'assemblée ouverte (pour le vote actif)
   const openAssemblyQuery = useMemoFirebase(() => {
     return query(collection(db, 'assemblies'), where('state', '==', 'open'), limit(1));
   }, [db]);
   const { data: openAssemblies, isLoading: isAssemblyLoading } = useCollection<Assembly>(openAssemblyQuery);
   const activeAssembly = openAssemblies?.[0];
 
-  // 2. Charger le vote associé
+  // 2. Charger le vote associé si une assemblée est ouverte
   const voteRef = useMemoFirebase(() => {
     if (!activeAssembly?.activeVoteId) return null;
     return doc(db, 'assemblies', activeAssembly.id, 'votes', activeAssembly.activeVoteId);
   }, [db, activeAssembly]);
   const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
-  // 3. Charger les projets pour l'affichage
+  // 3. Charger les projets pour l'affichage du vote
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
-
-  // 4. Trouver l'ID de n'importe quelle assemblée pour les résultats passés
-  // (En attendant d'avoir une gestion de session active globale)
-  const anyAssemblyQuery = useMemoFirebase(() => query(collection(db, 'assemblies'), limit(1)), [db]);
-  const { data: anyAssemblies } = useCollection<Assembly>(anyAssemblyQuery);
-  const currentAssemblyId = activeAssembly?.id || anyAssemblies?.[0]?.id;
-
-  // Log de diagnostic
-  useEffect(() => {
-    if (activeVote) {
-      console.log("vote fields (Dashboard)", { 
-        ballotCount: activeVote.ballotCount, 
-        eligibleCount: activeVote.eligibleCount, 
-        voteId: activeVote.id,
-        state: activeVote.state
-      });
-    }
-  }, [activeVote]);
 
   if (isAssemblyLoading || (activeAssembly && isVoteLoading)) {
     return (
@@ -166,11 +148,11 @@ function AssemblyDashboardContent() {
             <h2 className="text-2xl font-bold">Aucun scrutin ouvert</h2>
             <p className="text-sm text-muted-foreground max-w-xs mx-auto">Vous serez notifié dès qu'une nouvelle session de vote débutera.</p>
           </section>
-          {currentAssemblyId && <LastVoteResultCard assemblyId={currentAssemblyId} />}
+          <LastVoteResultCard />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* PANNEAU GAUCHE : VOTE */}
+          {/* PANNEAU GAUCHE : VOTE ACTIF */}
           <div className="border border-border p-8 bg-white space-y-8 flex flex-col justify-between">
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -199,7 +181,7 @@ function AssemblyDashboardContent() {
             </Link>
           </div>
 
-          {/* PANNEAU DROIT : PARTICIPATION OU RÉSULTATS D'ADMIN */}
+          {/* PANNEAU DROIT : PARTICIPATION OU TENDANCES ADMIN */}
           <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
             {showAdminTrends ? (
               <AdminTrendsPanel 
@@ -221,14 +203,14 @@ function AssemblyDashboardContent() {
         </div>
       )}
 
-      {/* RÉSULTATS PUBLIÉS (Si session ouverte, on affiche quand même les derniers résultats en dessous) */}
-      {activeAssembly && currentAssemblyId && (
+      {/* RÉSULTATS PASSÉS (Toujours visibles en bas si un scrutin est ouvert, ou à droite sinon) */}
+      {activeAssembly && (
         <div className="pt-8">
           <header className="mb-8">
             <h2 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Dernière décision actée</h2>
           </header>
           <div className="max-w-md">
-            <LastVoteResultCard assemblyId={currentAssemblyId} />
+            <LastVoteResultCard />
           </div>
         </div>
       )}
