@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState } from 'react';
@@ -16,7 +17,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
-import { PlusCircle, Loader2 } from 'lucide-react';
+import { PlusCircle, Loader2, Sparkles } from 'lucide-react';
+import { generateProjectSummary } from '@/ai/flows/generate-project-summary';
 
 interface SubmitProjectModalProps {
   isOpen: boolean;
@@ -27,6 +29,7 @@ export function SubmitProjectModal({ isOpen, onOpenChange }: SubmitProjectModalP
   const { user } = useUser();
   const db = useFirestore();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -36,6 +39,37 @@ export function SubmitProjectModal({ isOpen, onOpenChange }: SubmitProjectModalP
     budget: '',
     imageUrl: ''
   });
+
+  const handleAiEnhance = async () => {
+    if (!formData.title || !formData.budget) {
+      toast({ 
+        title: "Informations insuffisantes", 
+        description: "Veuillez saisir au moins un titre et un budget pour que l'IA puisse travailler.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsGenerating(true);
+    try {
+      const result = await generateProjectSummary({
+        title: formData.title,
+        budget: formData.budget,
+        keyFeatures: [formData.summary || "Nouveau projet citoyen"],
+        description: formData.description
+      });
+
+      if (result && result.summary) {
+        setFormData(prev => ({ ...prev, summary: result.summary }));
+        toast({ title: "Résumé optimisé", description: "L'IA a généré un résumé percutant pour votre projet." });
+      }
+    } catch (error) {
+      console.error("AI Error:", error);
+      toast({ title: "Erreur IA", description: "Impossible de générer le résumé pour le moment.", variant: "destructive" });
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -100,13 +134,26 @@ export function SubmitProjectModal({ isOpen, onOpenChange }: SubmitProjectModalP
           </div>
 
           <div className="space-y-4">
-            <Label htmlFor="summary" className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Résumé court (2 lignes)</Label>
-            <Input 
+            <div className="flex items-center justify-between">
+              <Label htmlFor="summary" className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Résumé court (2-3 lignes)</Label>
+              <Button 
+                type="button" 
+                variant="ghost" 
+                size="sm" 
+                onClick={handleAiEnhance}
+                disabled={isGenerating || !formData.title}
+                className="h-8 text-[9px] uppercase font-bold tracking-wider gap-2 text-primary hover:text-primary hover:bg-primary/10"
+              >
+                {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+                Optimiser avec l'IA
+              </Button>
+            </div>
+            <Textarea 
               id="summary" 
-              placeholder="Décrivez brièvement l'impact du projet." 
+              placeholder="Décrivez brièvement l'impact du projet. Utilisez l'IA pour vous aider !" 
               value={formData.summary}
               onChange={(e) => setFormData({...formData, summary: e.target.value})}
-              className="rounded-none h-12"
+              className="rounded-none min-h-[80px]"
               required
             />
           </div>
