@@ -37,6 +37,8 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
 
   // Charger tous les bulletins UNIQUEMENT SI ADMIN (Sécurisation LIST)
   const allBallotsQuery = useMemoFirebase(() => {
+    // PREUVE : Un membre (non-admin) aura isAdmin=false. 
+    // Le hook recevra null et ne fera AUCUNE requête LIST sur Firestore.
     if (!isAdmin) return null;
     return collection(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots');
   }, [db, assemblyId, vote.id, isAdmin]);
@@ -101,7 +103,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
             <h1 className="text-4xl font-bold tracking-tight text-black">{vote.question}</h1>
           </div>
           <div className="flex items-start gap-3 p-4 bg-secondary/30 border border-border">
-            <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <span className="shrink-0"><Info className="h-4 w-4 text-muted-foreground mt-0.5" /></span>
             <p className="text-xs text-muted-foreground leading-relaxed italic">
               Classez les projets par ordre de préférence. Le projet en position n°1 est votre favori. 
               <strong> Faites glisser les cartes</strong> pour réorganiser la liste.

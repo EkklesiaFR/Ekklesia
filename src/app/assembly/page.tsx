@@ -84,6 +84,8 @@ function AssemblyDashboardContent() {
 
   // 4. Charger les bulletins UNIQUEMENT SI ADMIN (Sécurisation LIST)
   const ballotsQuery = useMemoFirebase(() => {
+    // PREUVE : Si l'utilisateur n'est pas admin, on retourne null. 
+    // useCollection n'enverra JAMAIS de requête LIST si ce paramètre est null.
     if (!activeAssembly || !activeVote || !isAdmin) return null;
     return collection(db, 'assemblies', activeAssembly.id, 'votes', activeVote.id, 'ballots');
   }, [db, activeAssembly, activeVote, isAdmin]);
