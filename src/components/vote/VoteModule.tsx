@@ -112,6 +112,17 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     const voteRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id);
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
 
+    // Prepare payloads for logging
+    const ballotPayload = {
+      ranking: currentRanking,
+      castAt: 'SERVER_TIMESTAMP',
+      updatedAt: 'SERVER_TIMESTAMP',
+    };
+    const voteUpdatePayload = {
+      ballotCount: 'INCREMENT_BY_1',
+      updatedAt: 'SERVER_TIMESTAMP',
+    };
+
     try {
       await runTransaction(db, async (transaction) => {
         const ballotSnap = await transaction.get(userBallotRef);
@@ -120,7 +131,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
         const timestamp = serverTimestamp();
 
         if (isNewBallot) {
-          console.log(`[VOTE] [BALLOT] created for ${user.uid}`);
+          console.log(`[VOTE] [BALLOT] creating for ${user.uid}`);
           transaction.set(userBallotRef, {
             ranking: currentRanking,
             castAt: timestamp,
@@ -132,7 +143,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
           });
           console.log(`[VOTE] [BALLOT] ballotCount incremented`);
         } else {
-          console.log(`[VOTE] [BALLOT] updated for ${user.uid}`);
+          console.log(`[VOTE] [BALLOT] updating for ${user.uid}`);
           transaction.update(userBallotRef, {
             ranking: currentRanking,
             updatedAt: timestamp,
@@ -145,8 +156,22 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
       
       toast({ title: "Vote enregistré", description: "Votre classement a été pris en compte." });
     } catch (e: any) {
+      // Detailed error logging
       console.error("[VOTE] Submission error:", e.code, e.message);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de sauvegarder votre vote." });
+      console.log("[VOTE] Context:", {
+        uid: user.uid,
+        assemblyId: assemblyId,
+        voteId: vote.id,
+        isNewBallot: !userBallot,
+        ballotPayloadKeys: Object.keys(ballotPayload),
+        votePayloadKeys: Object.keys(voteUpdatePayload)
+      });
+
+      toast({ 
+        variant: "destructive", 
+        title: `Erreur (${e.code || 'UNKNOWN'})`, 
+        description: "Impossible de sauvegarder votre vote." 
+      });
     } finally {
       setIsSaving(false);
     }
