@@ -44,11 +44,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         const docSnap = await getDoc(memberRef);
         
         if (docSnap.exists()) {
+          // Standardisation : on s'assure d'utiliser 'status' et on nettoie l'éventuel 'statut'
+          const data = docSnap.data();
           await updateDoc(memberRef, {
             email: user.email || '',
             displayName: user.displayName || '',
             lastLoginAt: serverTimestamp(),
-            updatedAt: serverTimestamp()
+            updatedAt: serverTimestamp(),
+            status: data.status || data.statut || 'pending'
           });
         } else {
           await setDoc(memberRef, {
@@ -77,7 +80,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           id: docSnap.id,
           email: data.email || user.email || '',
           displayName: data.displayName || user.displayName || '',
-          status: data.status || 'pending',
+          status: data.status || data.statut || 'pending',
           role: data.role || 'member',
           joinedAt: data.joinedAt || data.createdAt || null,
           lastLoginAt: data.lastLoginAt || null,
@@ -99,8 +102,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   }, [uid, isUserLoading, db, user?.email, user?.displayName]);
 
   const isActiveMember = member?.status === 'active';
-  // Un admin est défini par son rôle, indépendamment de son statut actif
-  // (pour permettre l'accès initial même si status=pending)
   const isAdmin = member?.role === 'admin';
 
   return (

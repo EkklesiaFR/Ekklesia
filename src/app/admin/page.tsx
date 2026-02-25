@@ -84,7 +84,6 @@ import { computeSchulzeResults } from '@/lib/tally';
 
 /**
  * AdminContent contient TOUTE la logique de la page d'administration.
- * Ce composant ne contient des hooks Firestore QUE s'il est monté pour un Admin.
  */
 function AdminContent() {
   const { user } = useUser();
@@ -102,7 +101,7 @@ function AdminContent() {
   const [newVoteQuestion, setNewVoteQuestion] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
 
-  // Requêtes Firestore isolées dans ce composant
+  // Requêtes Firestore isolées
   const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
   const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
 
@@ -139,6 +138,7 @@ function AdminContent() {
       const batch = writeBatch(db);
       const assemblyRef = doc(collection(db, 'assemblies'));
       const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
+      
       batch.set(assemblyRef, {
         title: newSessionTitle,
         state: 'draft',
@@ -146,6 +146,7 @@ function AdminContent() {
         createdBy: user.uid,
         activeVoteId: voteRef.id,
       });
+      
       batch.set(voteRef, {
         id: voteRef.id,
         assemblyId: assemblyRef.id,
@@ -153,10 +154,11 @@ function AdminContent() {
         projectIds: selectedProjectIds,
         state: 'draft',
         ballotCount: 0,
-        eligibleCount: 0, // Initialisé à 0, calculé à l'ouverture
+        eligibleCount: 0,
         createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
+      
       await batch.commit();
       toast({ title: "Session créée" });
       setIsDialogOpen(false);
@@ -171,26 +173,40 @@ function AdminContent() {
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
     setIsSubmitting(true);
     try {
+      const voteDoc = allVotes?.find(v => v.id === voteId);
+      if (!voteDoc) throw new Error("Vote introuvable");
+
       const ballotsSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots'));
       const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
+      
       if (ballots.length === 0) {
-        toast({ variant: "destructive", title: "Aucun bulletin" });
+        toast({ variant: "destructive", title: "Aucun bulletin", description: "Impossible de calculer les résultats sans bulletins." });
         return;
       }
+
       const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
-      const results = computeSchulzeResults(projects?.filter(p => selectedProjectIds.includes(p.id)).map(p => p.id) || [], ballots);
+      const results = computeSchulzeResults(voteDoc.projectIds, ballots);
+      
       const batch = writeBatch(db);
       batch.update(voteRef, {
-        results: { winnerId: results.winnerId, fullRanking: results.ranking, computedAt: serverTimestamp(), total: ballots.length },
-        ballotCount: ballots.length,
+        results: { 
+          winnerId: results.winnerId, 
+          fullRanking: results.ranking, 
+          computedAt: serverTimestamp(), 
+          total: ballots.length 
+        },
+        ballotCount: ballots.length, // Synchronisation forcée avec la réalité
         state: 'locked',
         updatedAt: serverTimestamp()
       });
+      
       batch.update(doc(db, 'assemblies', assemblyId), { state: 'locked', updatedAt: serverTimestamp() });
+      
       await batch.commit();
-      toast({ title: "Résultats publiés" });
+      toast({ title: "Scrutin clôturé", description: "Les résultats officiels ont été publiés." });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Erreur" });
+      console.error("Tally error:", e);
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de clôturer le scrutin." });
     } finally {
       setIsSubmitting(false);
     }
@@ -206,7 +222,6 @@ function AdminContent() {
       const batch = writeBatch(db);
 
       if (newState === 'open') {
-        // Calcul dynamique des membres actifs au moment de l'ouverture
         const activeMembersSnap = await getDocs(query(collection(db, 'members'), where('status', '==', 'active')));
         const eligibleCount = activeMembersSnap.size;
 
@@ -229,7 +244,7 @@ function AdminContent() {
       await batch.commit();
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'verrouillée'}` });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de mettre à jour l'état de la session." });
+      toast({ variant: "destructive", title: "Erreur" });
     } finally {
       setIsSubmitting(false);
     }
@@ -257,8 +272,15 @@ function AdminContent() {
       let fixedCount = 0;
       snapshot.docs.forEach(memberDoc => {
         const data = memberDoc.data();
-        if (!data.id || !data.email || !data.status) {
-          batch.update(memberDoc.ref, { id: memberDoc.id, email: data.email || "", status: data.status || "pending", role: data.role || "member", updatedAt: serverTimestamp() });
+        // Correction systématique : on s'assure que seul 'status' est utilisé
+        if (!data.id || !data.email || !data.status || data.statut) {
+          batch.update(memberDoc.ref, { 
+            id: memberDoc.id, 
+            email: data.email || "", 
+            status: data.status || data.statut || "pending", 
+            role: data.role || "member", 
+            updatedAt: serverTimestamp() 
+          });
           fixedCount++;
         }
       });
@@ -292,6 +314,7 @@ function AdminContent() {
     switch (state) {
       case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
       case 'locked': return <Badge variant="secondary">Verrouillé</Badge>;
+      case 'active': return <Badge className="bg-green-100 text-green-700 border-green-200">Actif</Badge>;
       case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>;
       default: return <Badge variant="outline">Brouillon</Badge>;
     }
