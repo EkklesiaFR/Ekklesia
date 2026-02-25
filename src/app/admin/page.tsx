@@ -1,5 +1,7 @@
 'use client';
 
+export const dynamic = 'force-dynamic';
+
 import { useState } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
