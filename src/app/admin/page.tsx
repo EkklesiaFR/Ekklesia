@@ -349,7 +349,6 @@ function AdminContent() {
     const assemblyRef = doc(db, 'assemblies', assemblyId);
 
     try {
-      // Retour à un batch atomique unique pour la clôture
       const batch = writeBatch(db);
       const timestamp = serverTimestamp();
 
@@ -431,7 +430,7 @@ function AdminContent() {
 
       for (const voteDoc of snapshot.docs) {
         const voteId = voteDoc.id;
-        // On récupère l'assemblyId depuis le chemin Firestore pour éviter toute dépendance aux données
+        // On récupère l'assemblyId depuis le chemin Firestore pour garantir la cohérence
         const assemblyId = voteDoc.ref.parent.parent!.id;
 
         try {
