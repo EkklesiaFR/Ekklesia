@@ -4,12 +4,13 @@ import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { doc, serverTimestamp, setDoc, collection, updateDoc, increment } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Trophy, Users, ChevronRight, Loader2, Info, Lock } from 'lucide-react';
+import { CheckCircle2, Trophy, Users, ChevronRight, Loader2, Info, Lock, BarChart3 } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { toast } from '@/hooks/use-toast';
 import { Project, Vote, Ballot } from '@/types';
 import { RankedList } from '@/components/voting/RankedList';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { Progress } from '@/components/ui/progress';
 
 interface VoteModuleProps {
   vote: Vote;
@@ -34,7 +35,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     }
   }, [userBallot, projects]);
 
-  // Charger tous les bulletins UNIQUEMENT SI ADMIN
+  // Charger tous les bulletins UNIQUEMENT SI ADMIN (Sécurisation LIST)
   const allBallotsQuery = useMemoFirebase(() => {
     if (!isAdmin) return null;
     return collection(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots');
@@ -45,7 +46,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     if (!user) return;
     setIsSaving(true);
 
-    const assemblyRef = doc(db, 'assemblies', assemblyId);
     const voteRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id);
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
 
@@ -58,7 +58,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
-      // Si c'est un nouveau bulletin, on incrémente le compteur public
       if (isNewBallot) {
         await updateDoc(voteRef, {
           ballotCount: increment(1)
@@ -85,7 +84,10 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     ? computeSchulzeResults(projects.map(p => p.id), allBallots)
     : vote.results;
 
-  // Mapper les IDs
+  const participationRate = (vote.eligibleCount && vote.eligibleCount > 0) 
+    ? Math.round(((vote.ballotCount || 0) / vote.eligibleCount) * 100) 
+    : 0;
+
   const sortedProjects = currentRanking
     .map(id => projects.find(p => p.id === id))
     .filter((p): p is Project => !!p);
@@ -140,17 +142,17 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
       <aside className="space-y-12 lg:bg-secondary/5 lg:p-12 border-l border-border">
         <header className="flex items-center justify-between border-b border-border pb-6">
           <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
-            <Trophy className="h-4 w-4 text-primary" />
-            {isAdmin ? "Tendance en direct" : "Scrutin"}
+            <BarChart3 className="h-4 w-4 text-primary" />
+            {isAdmin && vote.state === 'open' ? "Tendance Live (Admin)" : "Participation"}
           </h2>
           <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
             <Users className="h-3 w-3" />
-            {vote.ballotCount || results?.total || 0} bulletins
+            {vote.ballotCount || 0} bulletins
           </div>
         </header>
 
-        <div className="space-y-4">
-          {isAdmin && results ? (
+        <div className="space-y-8">
+          {isAdmin && results && vote.state === 'open' ? (
             results.ranking.map((rankInfo) => {
               const project = projects.find(p => p.id === rankInfo.id);
               const isWinner = rankInfo.rank === 1;
@@ -163,17 +165,45 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
                     <div className="font-bold text-sm uppercase tracking-tight line-clamp-1">{project?.title}</div>
                     <div className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">Méthode Schulze</div>
                   </div>
-                  {isWinner && <ChevronRight className="h-4 w-4 text-primary" />}
+                </div>
+              );
+            })
+          ) : vote.state === 'closed' && vote.results ? (
+            vote.results.fullRanking.map((rankInfo) => {
+              const project = projects.find(p => p.id === rankInfo.id);
+              const isWinner = rankInfo.rank === 1;
+              return (
+                <div key={rankInfo.id} className={`p-5 flex items-center gap-5 transition-all ${isWinner ? 'bg-white border-primary ring-1 ring-primary shadow-lg' : 'bg-white/50 border-border'} border`}>
+                  <div className={`w-10 h-10 flex items-center justify-center text-xs font-black ${isWinner ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>
+                    #{rankInfo.rank}
+                  </div>
+                  <div className="flex-grow">
+                    <div className="font-bold text-sm uppercase tracking-tight line-clamp-1">{project?.title}</div>
+                    <div className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">Résultat Final</div>
+                  </div>
                 </div>
               );
             })
           ) : (
-            <div className="p-8 border border-dashed border-border bg-white text-center space-y-4">
-              <Lock className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
-              <div className="space-y-2">
-                <p className="text-[10px] uppercase font-bold tracking-widest text-black">Intégrité Civique</p>
-                <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-relaxed">
-                  Pour garantir l'impartialité du scrutin, les tendances ne sont pas révélées avant la clôture officielle du vote.
+            <div className="space-y-8">
+              <div className="p-8 border border-dashed border-border bg-white text-center space-y-4">
+                <Lock className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-black">Scrutin Secret</p>
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-relaxed">
+                    Les tendances sont confidentielles jusqu'à la clôture.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between items-end">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Taux de participation</span>
+                  <span className="text-lg font-black">{participationRate}%</span>
+                </div>
+                <Progress value={participationRate} className="h-2 rounded-none" />
+                <p className="text-[9px] uppercase tracking-widest text-muted-foreground text-center italic">
+                  Sur la base de {vote.eligibleCount || "..."} membres inscrits
                 </p>
               </div>
             </div>
@@ -181,9 +211,9 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
         </div>
 
         <div className="pt-12 border-t border-border mt-8 space-y-4">
-          <h4 className="text-[10px] font-bold uppercase tracking-widest text-black">À propos du mode de scrutin</h4>
+          <h4 className="text-[10px] font-bold uppercase tracking-widest text-black">Méthode de Schulze</h4>
           <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-relaxed">
-            Ekklesia utilise la méthode de Schulze (Condorcet). Ce système garantit que le projet élu est celui qui l'emporte dans des duels face à chaque autre projet.
+            Ce système préférentiel garantit que l'option retenue est celle qui bat toutes les autres lors de duels en tête-à-tête.
           </p>
         </div>
       </aside>

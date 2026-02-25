@@ -52,11 +52,13 @@ export interface Vote {
   closesAt?: any;
   createdAt?: any;
   createdBy?: string;
-  ballotCount?: number; // Stats publiques
+  ballotCount?: number;
+  eligibleCount?: number;
   results?: { // Résultats officiels (après clôture/publication)
     winnerId: string;
     fullRanking: { id: string; rank: number }[];
     computedAt: any;
+    total: number;
   };
 }
 

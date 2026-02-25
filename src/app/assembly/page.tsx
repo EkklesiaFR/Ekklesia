@@ -15,13 +15,49 @@ import {
   Users,
   Activity,
   Clock,
-  Lock
+  Lock,
+  PieChart
 } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { Project, Vote, Assembly, Ballot } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
+import { Progress } from '@/components/ui/progress';
+
+function ParticipationPanel({ ballotCount = 0, eligibleCount = 100 }: { ballotCount?: number, eligibleCount?: number }) {
+  const participationRate = eligibleCount > 0 ? Math.round((ballotCount / eligibleCount) * 100) : 0;
+  const abstentionRate = 100 - participationRate;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
+          <PieChart className="h-3 w-3 text-primary" /> Participation
+        </h3>
+        <span className="text-[10px] font-bold text-primary uppercase tracking-wider">{participationRate}%</span>
+      </div>
+      
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <div className="flex justify-between text-[10px] uppercase font-bold tracking-widest text-gray-400">
+            <span>Votants</span>
+            <span className="text-white">{ballotCount}</span>
+          </div>
+          <Progress value={participationRate} className="h-1 bg-gray-800" />
+        </div>
+        
+        <div className="space-y-2">
+          <div className="flex justify-between text-[10px] uppercase font-bold tracking-widest text-gray-400">
+            <span>Abstention</span>
+            <span className="text-white">{eligibleCount - ballotCount}</span>
+          </div>
+          <Progress value={abstentionRate} className="h-1 bg-gray-800" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AssemblyDashboardContent() {
   const { isAdmin } = useAuthStatus();
@@ -46,14 +82,14 @@ function AssemblyDashboardContent() {
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
-  // 4. Charger les bulletins UNIQUEMENT SI ADMIN (pour la tendance live)
+  // 4. Charger les bulletins UNIQUEMENT SI ADMIN (Sécurisation LIST)
   const ballotsQuery = useMemoFirebase(() => {
     if (!activeAssembly || !activeVote || !isAdmin) return null;
     return collection(db, 'assemblies', activeAssembly.id, 'votes', activeVote.id, 'ballots');
   }, [db, activeAssembly, activeVote, isAdmin]);
   const { data: ballots } = useCollection<Ballot>(ballotsQuery);
 
-  // 5. Calcul Schulze (Tendance en temps réel pour l'admin, ou via doc public results pour membre)
+  // 5. Calcul Schulze (Tendance live pour admin, résultats figés pour membres)
   const results = (isAdmin && ballots && activeProjects.length > 0) 
     ? computeSchulzeResults(activeProjects.map(p => p.id), ballots)
     : activeVote?.results;
@@ -106,10 +142,9 @@ function AssemblyDashboardContent() {
                 
                 <div className="space-y-4">
                   <p className="text-2xl font-bold leading-tight">{activeVote?.question || activeAssembly.title}</p>
-                  <p className="text-sm text-muted-foreground">Participez avant la clôture.</p>
                   <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
                     <span className="flex items-center gap-2 font-medium">
-                      <Users className="h-4 w-4 text-primary" /> <strong>{activeVote?.ballotCount || ballots?.length || 0}</strong> bulletins
+                      <Users className="h-4 w-4 text-primary" /> <strong>{activeVote?.ballotCount || 0}</strong> bulletins
                     </span>
                     {activeVote?.closesAt && (
                       <span className="flex items-center gap-2 font-medium">
@@ -126,28 +161,31 @@ function AssemblyDashboardContent() {
             </div>
 
             <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
-              <div className="space-y-6">
-                <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
-                  <Trophy className="h-3 w-3 text-primary" /> {isAdmin ? "Tendance actuelle" : "Résultats"}
-                </h3>
-                <div className="space-y-4">
-                  {winnerProject ? (
-                    <div className="space-y-2">
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-primary">
-                        {activeVote?.state === 'open' ? 'En tête' : 'Projet retenu'}
-                      </p>
-                      <p className="text-2xl font-bold leading-tight">{winnerProject.title}</p>
-                    </div>
-                  ) : isAdmin ? (
-                    <p className="text-sm text-gray-400 italic">En attente des premiers bulletins...</p>
-                  ) : (
-                    <div className="flex items-center gap-3 text-gray-400 italic text-sm border border-gray-800 p-4">
-                      <Lock className="h-4 w-4 shrink-0" />
-                      <span>Les résultats sont confidentiels jusqu'à la clôture du scrutin.</span>
-                    </div>
-                  )}
+              {isAdmin || activeVote?.state === 'closed' ? (
+                <div className="space-y-6">
+                  <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
+                    <Trophy className="h-3 w-3 text-primary" /> {isAdmin && activeVote?.state === 'open' ? "Tendance actuelle (Admin)" : "Résultats officiels"}
+                  </h3>
+                  <div className="space-y-4">
+                    {winnerProject ? (
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-primary">
+                          {activeVote?.state === 'open' ? 'En tête' : 'Projet retenu'}
+                        </p>
+                        <p className="text-2xl font-bold leading-tight">{winnerProject.title}</p>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-400 italic">Calcul des résultats en cours...</p>
+                    )}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <ParticipationPanel 
+                  ballotCount={activeVote?.ballotCount} 
+                  eligibleCount={activeVote?.eligibleCount || 100} 
+                />
+              )}
+              
               <Link href="/projects" className="block pt-4">
                 <Button variant="outline" className="w-full border-gray-700 text-white hover:bg-white hover:text-black rounded-none h-12 font-bold uppercase tracking-widest text-xs">Détails des projets</Button>
               </Link>
