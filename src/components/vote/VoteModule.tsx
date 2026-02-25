@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { doc, serverTimestamp, setDoc, collection, updateDoc, increment } from 'firebase/firestore';
+import { doc, serverTimestamp, collection, writeBatch, increment } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Trophy, Users, ChevronRight, Loader2, Info, Lock, BarChart3 } from 'lucide-react';
+import { CheckCircle2, Info, Loader2, Lock, BarChart3, Users } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { toast } from '@/hooks/use-toast';
 import { Project, Vote, Ballot } from '@/types';
 import { RankedList } from '@/components/voting/RankedList';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 interface VoteModuleProps {
   vote: Vote;
@@ -34,13 +35,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     }
   }, [userBallot, projects]);
 
-  /**
-   * PREUVE DE SÉCURITÉ :
-   * La requête LIST sur 'ballots' est STRICTEMENT conditionnée par isAdmin.
-   * On définit explicitement canListBallots.
-   * Si canListBallots est false, allBallotsQuery est null.
-   * Firestore n'est pas interrogé en mode LIST pour les membres standards.
-   */
   const canListBallots = isAdmin === true;
   const allBallotsQuery = useMemoFirebase(() => {
     if (!canListBallots) return null;
@@ -57,22 +51,28 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
 
     try {
+      const batch = writeBatch(db);
       const isNewBallot = !userBallot;
       
-      await setDoc(userBallotRef, {
+      // 1. Déposer le bulletin
+      batch.set(userBallotRef, {
         ranking: currentRanking,
         castAt: userBallot?.castAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
+      // 2. Si nouveau votant, incrémenter le compteur sur le doc Vote atomiquement
       if (isNewBallot) {
-        await updateDoc(voteRef, {
-          ballotCount: increment(1)
+        batch.update(voteRef, {
+          ballotCount: increment(1),
+          updatedAt: serverTimestamp()
         });
       }
       
+      await batch.commit();
       toast({ title: "Vote enregistré", description: "Votre classement a été pris en compte." });
     } catch (e: any) {
+      console.error("Vote submission error:", e);
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de sauvegarder votre vote." });
     } finally {
       setIsSaving(false);

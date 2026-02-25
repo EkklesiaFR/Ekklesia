@@ -14,9 +14,6 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
     }
 
-    // Un admin est défini par son rôle.
-    // On ne vérifie pas le status == "active" ici pour permettre à un premier admin 
-    // d'accéder à la console même s'il est encore en attente de validation.
     function isAdmin() {
       return isSignedIn() 
         && exists(/databases/$(database)/documents/members/$(request.auth.uid))
@@ -29,23 +26,18 @@ service cloud.firestore {
         && getMemberData().status == "active";
     }
 
-    // Pour les actions métier (créer des votes), on exige que l'admin soit actif.
     function isAdminActive() {
       return isMemberActive() && getMemberData().role == "admin";
     }
 
     match /members/{uid} {
-      // Un utilisateur peut lire son propre doc. Un admin peut tout lire (get + list).
       allow get: if isOwner(uid) || isAdmin();
       allow list: if isAdmin();
       
-      // Création initiale : toujours pending/member par défaut.
       allow create: if isOwner(uid) 
         && request.resource.data.status == "pending" 
         && request.resource.data.role == "member";
         
-      // Seul un admin peut changer le rôle ou le statut.
-      // Un utilisateur peut mettre à jour ses propres infos (email, name, login).
       allow update: if isAdmin() 
         || (isOwner(uid) 
             && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
@@ -66,6 +58,14 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
         allow write: if isAdminActive();
+
+        // Règle spécifique pour l'incrémentation du compteur par les membres
+        allow update: if isMemberActive()
+          && resource.data.state == "open"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ballotCount', 'updatedAt'])
+          && request.resource.data.ballotCount == (resource.data.ballotCount == Array([]) ? 1 : resource.data.ballotCount + 1)
+          && !exists(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid))
+          && existsAfter(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid));
 
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive();
