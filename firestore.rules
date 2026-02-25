@@ -58,7 +58,7 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
         
-        // Whitelisting strict des champs modifiables pour l'admin et le membre
+        // Autorise les admins et les membres (uniquement pour l'incrémentation du ballotCount)
         allow update: if (isAdminActive() 
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'results', 'closedAt', 'updatedAt', 'publishedAt', 'lockedAt', 'ballotCount', 'eligibleCount', 'openedAt']))
                       || (isMemberActive()
@@ -73,7 +73,7 @@ service cloud.firestore {
 
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive();
-          allow list: if isAdminActive(); // Secret du scrutin : seuls les admins actifs listent pour le tally
+          allow list: if isAdminActive(); 
 
           function isValidBallotRequest() {
             let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data;

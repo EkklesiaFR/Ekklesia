@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
-import { doc, serverTimestamp, writeBatch, increment, getDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, runTransaction, increment } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Info, Loader2, Lock, BarChart3, PieChart } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -24,8 +24,9 @@ function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: numb
   if (eligibleCount === undefined || eligibleCount === null || eligibleCount === 0) {
     return (
       <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
-        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Suffrage non défini</p>
+        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Quorum en calcul…</p>
         <p className="text-[9px] text-muted-foreground italic leading-tight">Le quorum doit être calculé par un administrateur à l'ouverture.</p>
+        <p className="text-[8px] text-muted-foreground/30 font-mono mt-2 uppercase">Bulletins reçus : {ballotCount ?? 0}</p>
       </div>
     );
   }
@@ -92,27 +93,36 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
 
     try {
-      const ballotSnap = await getDoc(userBallotRef);
-      const isNewBallot = !ballotSnap.exists();
-      
-      console.log(`[VOTE] Submit. First vote: ${isNewBallot}`);
-      
-      const batch = writeBatch(db);
-      
-      batch.set(userBallotRef, {
-        ranking: currentRanking,
-        castAt: isNewBallot ? serverTimestamp() : (ballotSnap.data()?.castAt || serverTimestamp()),
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      await runTransaction(db, async (transaction) => {
+        const ballotSnap = await transaction.get(userBallotRef);
+        const isNewBallot = !ballotSnap.exists();
+        
+        const timestamp = serverTimestamp();
 
-      if (isNewBallot) {
-        batch.update(voteRef, {
-          ballotCount: increment(1),
-          updatedAt: serverTimestamp()
-        });
-      }
+        if (isNewBallot) {
+          console.log(`[VOTE] [BALLOT] created for ${user.uid}`);
+          transaction.set(userBallotRef, {
+            ranking: currentRanking,
+            castAt: timestamp,
+            updatedAt: timestamp,
+          });
+          transaction.update(voteRef, {
+            ballotCount: increment(1),
+            updatedAt: timestamp
+          });
+          console.log(`[VOTE] [BALLOT] ballotCount incremented`);
+        } else {
+          console.log(`[VOTE] [BALLOT] updated for ${user.uid}`);
+          transaction.update(userBallotRef, {
+            ranking: currentRanking,
+            updatedAt: timestamp,
+          });
+          transaction.update(voteRef, {
+            updatedAt: timestamp
+          });
+        }
+      });
       
-      await batch.commit();
       toast({ title: "Vote enregistré", description: "Votre classement a été pris en compte." });
     } catch (e: any) {
       console.error("[VOTE] Submission error:", e.code, e.message);

@@ -24,10 +24,10 @@ import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
 import { useEffect } from 'react';
 
 function ParticipationPanel({ ballotCount, eligibleCount }: { ballotCount?: number; eligibleCount?: number }) {
-  if (eligibleCount === undefined || eligibleCount === null) {
+  if (eligibleCount === undefined || eligibleCount === null || eligibleCount === 0) {
     return (
       <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
-        <p className="text-[10px] uppercase font-bold text-muted-foreground">Suffrage non défini</p>
+        <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum en calcul…</p>
         <p className="text-[9px] text-muted-foreground mt-1 italic">Vérifiez l'ouverture du scrutin (Admin)</p>
         <p className="text-[8px] text-muted-foreground/50 mt-2 font-mono">Bulletins: {ballotCount ?? "—"}</p>
       </div>
