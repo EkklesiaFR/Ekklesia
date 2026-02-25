@@ -2,6 +2,8 @@
 # https://firebase.google.com/docs/app-hosting/configure
 
 runConfig:
-  # Increase this value if you'd like to automatically spin up
-  # more instances in response to increased traffic.
+  # Valeur maintenue à 1 pour limiter les coûts et stabiliser le trafic
   maxInstances: 1
+
+# Note: Ce changement mineur est destiné à déclencher une nouvelle révision 
+# pour tenter de résoudre le conflit de tags de trafic dans Cloud Run.
