@@ -24,12 +24,15 @@ service cloud.firestore {
       return isMemberActive(assemblyId) && getMemberData(assemblyId).role == "admin";
     }
 
+    function isVoteOpen(assemblyId, voteId) {
+      return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+    }
+
     // PROTECTION DES ANCIENNES DONNÉES (LEGACY)
-    // Seul le propriétaire peut lire son ancien profil pour diagnostic/migration
     match /members/{uid} {
       allow get: if isOwner(uid);
       allow list: if false; 
-      allow write: if false; // Verrouillage définitif de la racine
+      allow write: if false;
     }
 
     match /assemblies/{assemblyId} {
@@ -40,15 +43,17 @@ service cloud.firestore {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
         allow list: if isAdminActive(assemblyId);
         
-        // Un utilisateur ne peut que se créer en tant que membre en attente
+        // Création restreinte : membre en attente uniquement + whitelist
         allow create: if isOwner(uid) 
           && request.resource.data.status == "pending" 
-          && request.resource.data.role == "member";
+          && request.resource.data.role == "member"
+          && request.resource.data.keys().hasOnly(['id', 'email', 'displayName', 'role', 'status', 'createdAt', 'updatedAt', 'lastLoginAt']);
           
-        // Seuls les admins peuvent changer les rôles et statuts
+        // Mise à jour restreinte : admins ou propriétaire (champs limités)
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
               && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
+              && (request.resource.data.email == resource.data.email || request.resource.data.email == request.auth.token.email)
              );
              
         allow delete: if isAdminActive(assemblyId);
@@ -67,17 +72,15 @@ service cloud.firestore {
           allow get: if isOwner(uid) || isAdminActive(assemblyId);
           allow list: if isAdminActive(assemblyId); 
 
-          function isVoteOpen() {
-            return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
-          }
-
           allow create: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
-            && isVoteOpen();
+            && isVoteOpen(assemblyId, voteId);
             
+          // Mise à jour autorisée pour le classement, protection de castAt
           allow update: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
-            && isVoteOpen();
+            && isVoteOpen(assemblyId, voteId)
+            && request.resource.data.castAt == resource.data.castAt;
 
           allow delete: if false;
         }
