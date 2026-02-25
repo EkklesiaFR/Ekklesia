@@ -6,7 +6,7 @@ import { useState } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { 
   collection, 
@@ -89,6 +89,84 @@ import { PlaceHolderImages } from '@/lib/placeholder-images';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { computeSchulzeResults } from '@/lib/tally';
 
+/**
+ * Composant pour afficher les résultats d'une assemblée spécifique
+ * Lit le vote directement depuis Firestore via doc(db, 'assemblies', id, 'votes', voteId)
+ */
+function AssemblyResultItem({ assembly, projects }: { assembly: Assembly; projects: Project[] }) {
+  const db = useFirestore();
+  const voteRef = useMemoFirebase(() => {
+    if (!assembly.activeVoteId) return null;
+    return doc(db, 'assemblies', assembly.id, 'votes', assembly.activeVoteId);
+  }, [db, assembly.id, assembly.activeVoteId]);
+  
+  const { data: vote, isLoading } = useDoc<Vote>(voteRef);
+
+  if (isLoading) return (
+    <div className="border border-border p-8 bg-white animate-pulse space-y-4">
+      <div className="h-8 bg-secondary w-1/3" />
+      <div className="h-24 bg-secondary w-full" />
+    </div>
+  );
+
+  if (!vote || !vote.results) return null;
+
+  const results = vote.results;
+  const winner = projects.find(p => p.id === results.winnerId);
+
+  return (
+    <div className="border border-border p-8 bg-white space-y-8 animate-in fade-in duration-500">
+      <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
+        <div className="space-y-1">
+          <h3 className="text-2xl font-bold uppercase tracking-tight">{assembly.title}</h3>
+          <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
+            Scrutin clos le {results.computedAt?.seconds ? new Date(results.computedAt.seconds * 1000).toLocaleDateString('fr-FR') : '—'}
+          </p>
+        </div>
+        <Badge className="bg-[#7DC092] hover:bg-[#7DC092] rounded-none px-4 py-1 font-bold uppercase tracking-widest text-[10px]">PV Officiel</Badge>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
+            <PieChart className="h-3 w-3" /> Participation
+          </p>
+          <p className="text-xl font-black">{vote.ballotCount || 0} / {vote.eligibleCount || 0}</p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Taux</p>
+          <p className="text-xl font-black">
+            {vote.eligibleCount ? Math.round(((vote.ballotCount || 0) / vote.eligibleCount) * 100) : 0}%
+          </p>
+        </div>
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase tracking-widest font-bold text-primary">Projet Retenu</p>
+          <p className="text-xl font-black uppercase">{winner?.title || results.winnerId || 'Calculé'}</p>
+        </div>
+      </div>
+
+      <div className="space-y-4 pt-4">
+        <h4 className="text-[10px] uppercase tracking-widest font-black text-muted-foreground border-b border-border pb-2 flex items-center gap-2">
+          <FileText className="h-3 w-3" /> Classement Schulze
+        </h4>
+        <div className="space-y-2">
+          {results.fullRanking?.map((rankItem) => {
+            const project = projects.find(p => p.id === rankItem.id);
+            return (
+              <div key={rankItem.id} className="flex items-center gap-4 text-sm py-1">
+                <span className="w-8 font-black text-muted-foreground">#{rankItem.rank}</span>
+                <span className={rankItem.rank === 1 ? "font-bold text-black" : "text-muted-foreground"}>
+                  {project?.title || rankItem.id}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AdminContent() {
   const { user } = useUser();
   const db = useFirestore();
@@ -138,7 +216,6 @@ function AdminContent() {
 
   /**
    * Logique atomique de clôture d'un scrutin unique.
-   * Réutilisable pour la clôture manuelle et le bulk close.
    */
   const performVoteTally = async (assemblyId: string, voteId: string) => {
     const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
@@ -147,12 +224,10 @@ function AdminContent() {
     if (!voteSnap.exists()) throw new Error("Scrutin introuvable.");
     const voteData = voteSnap.data() as Vote;
     
-    // Idempotence
     if (voteData.state !== 'open') {
       return { skipped: true };
     }
 
-    // Lecture physique des bulletins (LIST admin-only)
     const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
     const ballotsSnap = await getDocs(ballotsRef);
     const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
@@ -161,7 +236,6 @@ function AdminContent() {
       throw new Error("Impossible de clôturer sans aucun bulletin.");
     }
 
-    // Calcul Schulze
     const results = computeSchulzeResults(voteData.projectIds, ballots);
 
     const batch = writeBatch(db);
@@ -192,13 +266,7 @@ function AdminContent() {
   };
 
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    console.log(`[CLOSE] Initiation`, { 
-      assemblyId, 
-      voteId, 
-      uid: user?.uid, 
-      isAdmin, 
-      memberStatus: member?.status 
-    });
+    console.log(`[CLOSE] Initiation`, { assemblyId, voteId, uid: user?.uid, isAdmin, memberStatus: member?.status });
     
     if (!isAdmin || member?.status !== 'active') {
       toast({ variant: "destructive", title: "Accès refusé", description: "Votre compte admin doit être 'actif' pour clôturer." });
@@ -209,31 +277,20 @@ function AdminContent() {
     setIsSubmitting(true);
     
     try {
-      console.log(`[CLOSE] Fetching ballots...`);
       const result = await performVoteTally(assemblyId, voteId);
-      
       if (result.skipped) {
-        toast({ title: "Déjà clôturé", description: "Ce scrutin a déjà été traité." });
+        toast({ title: "Déjà clôturé" });
       } else {
-        console.log(`[CLOSE] Results computed`, result);
-        console.log(`[CLOSE] Success - Scrutin publié`);
         toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés." });
       }
     } catch (e: any) {
       console.error(`[CLOSE] Exception: ${e.code || 'UNKNOWN'} ${e.message}`);
-      toast({ 
-        variant: "destructive", 
-        title: "Erreur de clôture", 
-        description: e.message || "Impossible de verrouiller le scrutin." 
-      });
+      toast({ variant: "destructive", title: "Erreur de clôture", description: e.message || "Impossible de verrouiller le scrutin." });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  /**
-   * Opération de maintenance : Clôture tous les scrutins ouverts.
-   */
   const bulkCloseOpenVotes = async () => {
     if (!isAdmin || member?.status !== 'active') return;
     setIsBulkSubmitting(true);
@@ -241,10 +298,8 @@ function AdminContent() {
     let failCount = 0;
 
     try {
-      // 1. Scanner tous les votes ouverts (Source de vérité)
       const q = query(collectionGroup(db, 'votes'), where('state', '==', 'open'));
       const snapshot = await getDocs(q);
-      console.log(`[BULK CLOSE] Found ${snapshot.size} open votes`);
 
       for (const voteDoc of snapshot.docs) {
         const voteData = voteDoc.data() as Vote;
@@ -252,24 +307,15 @@ function AdminContent() {
         const voteId = voteDoc.id;
 
         try {
-          console.log(`[BULK CLOSE] Closing {assemblyId: ${assemblyId}, voteId: ${voteId}}`);
           const result = await performVoteTally(assemblyId, voteId);
-          if (!result.skipped) {
-            successCount++;
-            console.log(`[BULK CLOSE] Done {assemblyId: ${assemblyId}, voteId: ${voteId}, ballots: ${result.ballotCount}, winnerId: ${result.winnerId}}`);
-          }
+          if (!result.skipped) successCount++;
         } catch (e: any) {
           failCount++;
-          console.error(`[BULK CLOSE] Failed {assemblyId: ${assemblyId}, voteId: ${voteId}, code: ${e.code}, message: ${e.message}}`);
         }
       }
 
-      toast({ 
-        title: "Opération terminée", 
-        description: `${successCount} votes clôturés avec succès, ${failCount} échecs.` 
-      });
+      toast({ title: "Opération terminée", description: `${successCount} votes clôturés, ${failCount} échecs.` });
     } catch (e: any) {
-      console.error("[BULK CLOSE] Global error:", e);
       toast({ variant: "destructive", title: "Erreur globale", description: e.message });
     } finally {
       setIsBulkSubmitting(false);
@@ -279,7 +325,7 @@ function AdminContent() {
 
   const handleCreateSession = async () => {
     if (!newSessionTitle || !newVoteQuestion || selectedProjectIds.length < 2 || !user) {
-      toast({ variant: "destructive", title: "Champs manquants", description: "Veuillez remplir le titre et sélectionner au moins 2 projets." });
+      toast({ variant: "destructive", title: "Champs manquants" });
       return;
     }
     setIsSubmitting(true);
@@ -328,7 +374,7 @@ function AdminContent() {
         ballotCount: ballotsSnap.size,
         updatedAt: serverTimestamp()
       });
-      toast({ title: "Compteur synchronisé", description: `${ballotsSnap.size} bulletins détectés.` });
+      toast({ title: "Compteur synchronisé" });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Erreur" });
     } finally {
@@ -361,7 +407,7 @@ function AdminContent() {
 
       batch.update(assemblyRef, { 
         state: newState, 
-        activeVoteId: newState === 'open' ? voteDoc.id : null, 
+        activeVoteId: newState === 'open' ? voteDoc.id : (assemblyRef as any).activeVoteId, 
         updatedAt: serverTimestamp() 
       });
 
@@ -393,23 +439,19 @@ function AdminContent() {
     try {
       const snapshot = await getDocs(collection(db, 'members'));
       const batch = writeBatch(db);
-      let fixedCount = 0;
       snapshot.docs.forEach(memberDoc => {
         const data = memberDoc.data();
         if (!data.id || !data.email || !data.status || data.statut) {
           batch.update(memberDoc.ref, { 
             id: memberDoc.id, 
-            email: data.email || "", 
             status: data.status || data.statut || "pending", 
             statut: deleteField(),
-            role: data.role || "member", 
             updatedAt: serverTimestamp() 
           });
-          fixedCount++;
         }
       });
-      if (fixedCount > 0) await batch.commit();
-      toast({ title: "Réparation terminée", description: `${fixedCount} profils corrigés.` });
+      await batch.commit();
+      toast({ title: "Réparation terminée" });
     } catch (e: any) { toast({ variant: "destructive", title: "Erreur" }); } finally { setIsRepairing(false); }
   };
 
@@ -495,6 +537,7 @@ function AdminContent() {
           <TabsTrigger value="members" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Membres</TabsTrigger>
           <TabsTrigger value="results" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Résultats</TabsTrigger>
         </TabsList>
+
         <TabsContent value="sessions" className="py-12 space-y-6">
           {openSessionsCount > 0 && (
             <div className="flex justify-end mb-8">
@@ -506,19 +549,13 @@ function AdminContent() {
                 </AlertDialogTrigger>
                 <AlertDialogContent className="rounded-none">
                   <AlertDialogHeader>
-                    <AlertDialogTitle className="uppercase font-black">Confirmation de maintenance</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Cette opération va clôturer TOUTES les sessions ouvertes, calculer les résultats et publier les PV officiels. Cette action est irréversible.
-                    </AlertDialogDescription>
+                    <AlertDialogTitle className="uppercase font-black">Confirmation</AlertDialogTitle>
+                    <AlertDialogDescription>Clôturer toutes les sessions ouvertes ? Action irréversible.</AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
                     <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
-                    <AlertDialogAction 
-                      onClick={bulkCloseOpenVotes} 
-                      className="rounded-none bg-destructive hover:bg-destructive/90 uppercase font-bold text-xs"
-                      disabled={isBulkSubmitting}
-                    >
-                      {isBulkSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Oui, tout clôturer"}
+                    <AlertDialogAction onClick={bulkCloseOpenVotes} disabled={isBulkSubmitting} className="rounded-none bg-destructive">
+                      {isBulkSubmitting ? <Loader2 className="animate-spin" /> : "Oui, tout clôturer"}
                     </AlertDialogAction>
                   </AlertDialogFooter>
                 </AlertDialogContent>
@@ -536,41 +573,20 @@ function AdminContent() {
                     <div className="space-y-1">
                       <h3 className="text-2xl font-bold">{assembly.title}</h3>
                       <div className="flex items-center gap-6 mt-2">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">{sessionVote?.ballotCount || 0} bulletins reçus</p>
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground">{sessionVote?.ballotCount || 0} bulletins</p>
                         <p className="text-[10px] uppercase font-bold text-primary">{sessionVote?.eligibleCount || 0} éligibles</p>
                       </div>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     {assembly.state === 'draft' && (
-                      <Button onClick={() => updateSessionState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        <Play className="h-3.5 w-3.5" /> Ouvrir
-                      </Button>
+                      <Button onClick={() => updateSessionState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] h-10 px-6 uppercase font-bold text-[10px]">Ouvrir</Button>
                     )}
                     {assembly.state === 'open' && (
                       <div className="flex items-center gap-2">
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          onClick={() => sessionVote && handleRecalculateBallots(assembly.id, sessionVote.id)}
-                          disabled={isSubmitting}
-                          title="Recalculer ballots"
-                        >
-                          <RefreshCw className={isSubmitting ? "animate-spin" : ""} />
-                        </Button>
-                        <Button 
-                          onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} 
-                          disabled={isSubmitting} 
-                          className="rounded-none bg-black text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
-                        >
-                          {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trophy className="h-3.5 w-3.5" />} Clôturer
-                        </Button>
+                        <Button variant="ghost" size="icon" onClick={() => sessionVote && handleRecalculateBallots(assembly.id, sessionVote.id)} disabled={isSubmitting}><RefreshCw className={isSubmitting ? "animate-spin" : ""} /></Button>
+                        <Button onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white h-10 px-6 uppercase font-bold text-[10px]">Clôturer</Button>
                       </div>
-                    )}
-                    {assembly.state === 'locked' && (
-                       <div className="flex items-center gap-2 text-[#7DC092] text-xs font-bold uppercase tracking-widest">
-                         <CheckCircle2 className="h-4 w-4" /> Résultats publiés
-                       </div>
                     )}
                   </div>
                 </div>
@@ -578,6 +594,7 @@ function AdminContent() {
             })}
           </div>
         </TabsContent>
+
         <TabsContent value="projects" className="py-12 space-y-8">
           <div className="flex items-center justify-between border-b border-border pb-6">
             <h2 className="text-xl font-bold">Projets ({projects?.length || 0})</h2>
@@ -586,28 +603,24 @@ function AdminContent() {
           <div className="grid gap-4">
             {projects?.map((project) => (
               <div key={project.id} className="border border-border p-6 bg-white flex items-center justify-between">
-                <div className="flex gap-6 items-center">
-                  <div className="space-y-1">
-                    <h4 className="font-bold text-lg">{project.title}</h4>
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{project.budget}</p>
-                  </div>
+                <div className="space-y-1">
+                  <h4 className="font-bold text-lg">{project.title}</h4>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{project.budget}</p>
                 </div>
               </div>
             ))}
           </div>
         </TabsContent>
+
         <TabsContent value="members" className="py-12 space-y-8">
-          {membersError && <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Erreur Firestore</AlertTitle><AlertDescription>{membersError.message}</AlertDescription></Alert>}
           <div className="p-4 bg-secondary/5 border border-border flex items-center justify-between">
             <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest">
               <Database className="h-3 w-3 text-primary" /> <span>Membres : {members?.length || 0}</span>
             </div>
-            <Button onClick={handleRepairMembers} disabled={isRepairing} variant="outline" size="sm" className="h-8 rounded-none border-primary text-primary uppercase font-bold text-[10px] gap-2">
-              <Wrench className="h-3 w-3" /> Réparer
-            </Button>
+            <Button onClick={handleRepairMembers} disabled={isRepairing} variant="outline" size="sm" className="h-8 rounded-none border-primary text-primary font-bold uppercase text-[10px]">Réparer</Button>
           </div>
           <div className="flex flex-col md:flex-row gap-6 items-center justify-between border-b border-border pb-6">
-            <h2 className="text-xl font-bold">Membres ({members?.length || 0}) {pendingCount > 0 && <span className="text-sm font-normal text-orange-600 ml-2">({pendingCount} en attente)</span>}</h2>
+            <h2 className="text-xl font-bold">Annuaire {pendingCount > 0 && <span className="text-sm font-normal text-orange-600 ml-2">({pendingCount} en attente)</span>}</h2>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[180px] rounded-none"><SelectValue placeholder="Statut" /></SelectTrigger>
               <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="active">Actif</SelectItem><SelectItem value="pending">En attente</SelectItem><SelectItem value="blocked">Bloqué</SelectItem></SelectContent>
@@ -619,16 +632,16 @@ function AdminContent() {
               <TableBody>
                 {filteredMembers?.map((member) => (
                   <TableRow key={member.id}>
-                    <TableCell className="font-medium text-sm">{member.email || member.id}</TableCell>
+                    <TableCell className="font-medium text-sm">{member.email}</TableCell>
                     <TableCell>{getStatusBadge(member.status)}</TableCell>
                     <TableCell><Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{member.role}</Badge></TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="rounded-none">
-                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">Activer</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs">Mettre en attente</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold">Promouvoir Admin</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600 font-bold">Activer</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs">En attente</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs">Promouvoir Admin</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </TableCell>
@@ -644,69 +657,12 @@ function AdminContent() {
             <h2 className="text-xl font-bold">Procès-verbaux des scrutins</h2>
           </div>
           <div className="grid gap-8">
-            {assemblies?.filter(a => a.state === 'locked').map((assembly) => {
-              const sessionVote = allVotes?.find(v => v.assemblyId === assembly.id);
-              const results = sessionVote?.results;
-
-              if (!results) return null;
-
-              const winner = projects?.find(p => p.id === results.winnerId);
-
-              return (
-                <div key={assembly.id} className="border border-border p-8 bg-white space-y-8">
-                  <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
-                    <div className="space-y-1">
-                      <h3 className="text-2xl font-bold uppercase tracking-tight">{assembly.title}</h3>
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-                        Scrutin clos le {results.computedAt?.seconds ? new Date(results.computedAt.seconds * 1000).toLocaleDateString('fr-FR') : '—'}
-                      </p>
-                    </div>
-                    <Badge className="bg-[#7DC092] hover:bg-[#7DC092] rounded-none px-4 py-1 font-bold uppercase tracking-widest text-[10px]">Officiel</Badge>
-                  </header>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                    <div className="space-y-1">
-                      <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
-                        <PieChart className="h-3 w-3" /> Participation
-                      </p>
-                      <p className="text-xl font-black">{sessionVote.ballotCount || 0} / {sessionVote.eligibleCount || 0}</p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Taux</p>
-                      <p className="text-xl font-black">
-                        {sessionVote.eligibleCount ? Math.round(((sessionVote.ballotCount || 0) / sessionVote.eligibleCount) * 100) : 0}%
-                      </p>
-                    </div>
-                    <div className="space-y-1">
-                      <p className="text-[10px] uppercase tracking-widest font-bold text-primary">Projet Retenu</p>
-                      <p className="text-xl font-black uppercase">{winner?.title || 'Calculé'}</p>
-                    </div>
-                  </div>
-
-                  <div className="space-y-4 pt-4">
-                    <h4 className="text-[10px] uppercase tracking-widest font-black text-muted-foreground border-b border-border pb-2 flex items-center gap-2">
-                      <FileText className="h-3 w-3" /> Classement Schulze
-                    </h4>
-                    <div className="space-y-2">
-                      {results.fullRanking?.map((rankItem) => {
-                        const project = projects?.find(p => p.id === rankItem.id);
-                        return (
-                          <div key={rankItem.id} className="flex items-center gap-4 text-sm py-1">
-                            <span className="w-8 font-black text-muted-foreground">#{rankItem.rank}</span>
-                            <span className={rankItem.rank === 1 ? "font-bold text-black" : "text-muted-foreground"}>
-                              {project?.title || rankItem.id}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
+            {assemblies?.filter(a => a.state === 'locked').map((assembly) => (
+              <AssemblyResultItem key={assembly.id} assembly={assembly} projects={projects || []} />
+            ))}
             {assemblies?.filter(a => a.state === 'locked').length === 0 && (
               <div className="text-center py-24 border border-dashed border-border bg-secondary/10">
-                <p className="text-muted-foreground italic">Aucun résultat officiel disponible pour le moment.</p>
+                <p className="text-muted-foreground italic">Aucun résultat officiel publié.</p>
               </div>
             )}
           </div>
@@ -715,10 +671,10 @@ function AdminContent() {
 
       <AlertDialog open={!!confirmAdminPromote} onOpenChange={(open) => !open && setConfirmAdminPromote(null)}>
         <AlertDialogContent className="rounded-none">
-          <AlertDialogHeader><AlertDialogTitle className="uppercase font-black">Confirmer la promotion</AlertDialogTitle></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>Promouvoir Admin ?</AlertDialogTitle></AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
-            <AlertDialogAction onClick={() => confirmAdminPromote && updateMemberRole(confirmAdminPromote, 'admin')} className="rounded-none uppercase font-bold text-xs">Confirmer</AlertDialogAction>
+            <AlertDialogCancel className="rounded-none">Annuler</AlertDialogCancel>
+            <AlertDialogAction onClick={() => confirmAdminPromote && updateMemberRole(confirmAdminPromote, 'admin')} className="rounded-none bg-black">Confirmer</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -732,29 +688,16 @@ export default function AdminPage() {
   return (
     <RequireActiveMember>
       <MainLayout statusText="Administration">
-        {!isMemberLoading && isAdmin === true ? (
+        {!isMemberLoading && isAdmin ? (
           <AdminContent />
         ) : !isMemberLoading ? (
           <div className="flex flex-col items-center justify-center py-32 space-y-8 text-center animate-in fade-in duration-700">
-            <div className="relative">
-              <ShieldAlert className="h-20 w-20 text-destructive" />
-              <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-2 border border-border">
-                <AlertTriangle className="h-6 w-6 text-destructive" />
-              </div>
-            </div>
-            <header className="space-y-4">
-              <h2 className="text-3xl font-bold tracking-tight">Accès refusé</h2>
-              <p className="text-muted-foreground max-w-md mx-auto italic">
-                Cette section nécessite des privilèges d'administration certifiés par le conseil.
-              </p>
-            </header>
+            <ShieldAlert className="h-20 w-20 text-destructive" />
+            <h2 className="text-3xl font-bold">Accès refusé</h2>
           </div>
         ) : (
           <div className="flex flex-col items-center justify-center py-32 space-y-6">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
-              Vérification des accès...
-            </p>
           </div>
         )}
       </MainLayout>
