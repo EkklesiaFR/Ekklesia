@@ -216,6 +216,7 @@ function AdminContent() {
 
   /**
    * Logique atomique de clôture d'un scrutin unique.
+   * Utilise getDoc comme source de vérité directe.
    */
   const performVoteTally = async (assemblyId: string, voteId: string) => {
     const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);

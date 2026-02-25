@@ -235,3 +235,10 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     </div>
   );
 }
+
+interface VoteModuleProps {
+  vote: Vote;
+  projects: Project[];
+  userBallot: Ballot | null;
+  assemblyId: string;
+}
