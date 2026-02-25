@@ -1,3 +1,4 @@
+
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -6,44 +7,14 @@ import { useState } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { useAuthStatus, DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
 import { 
   collection, 
   query, 
-  addDoc, 
-  serverTimestamp, 
-  doc, 
-  updateDoc, 
-  collectionGroup,
-  getDocs,
-  getDoc,
-  writeBatch,
-  limit,
-  where
+  limit 
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { Checkbox } from '@/components/ui/checkbox';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger,
-  DialogFooter
-} from '@/components/ui/dialog';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { 
   Select, 
@@ -60,44 +31,25 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu';
 import { 
   Plus, 
-  Loader2, 
-  MoreHorizontal,
-  Database,
   ShieldAlert,
-  RefreshCw,
-  FileText,
-  PieChart,
-  Wrench,
-  AlertTriangle
+  Settings
 } from 'lucide-react';
-import { toast } from '@/hooks/use-toast';
-import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
-import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { computeSchulzeResults } from '@/lib/tally';
+import { Assembly, Project, MemberProfile } from '@/types';
 
 /**
- * Composants d'administration enrichis avec outils de maintenance
+ * Console d'administration sécurisée.
+ * La migration se fait désormais via script Admin SDK uniquement pour plus de sécurité.
  */
 
 function AdminContent() {
   const { user } = useUser();
   const db = useFirestore();
-  const { isAdmin, member } = useAuthStatus();
+  const { isAdmin } = useAuthStatus();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isRepairing, setIsRepairing] = useState(false);
-  
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [roleFilter, setRoleFilter] = useState<string>('all');
 
   const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
   const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
@@ -110,53 +62,11 @@ function AdminContent() {
   }, [db]);
   const { data: members } = useCollection<MemberProfile>(membersQuery);
 
-  const handleMigrateLegacyMembers = async () => {
-    if (!confirm("Voulez-vous tenter de migrer tous les membres de l'ancienne racine vers cette assemblée ?")) return;
-    setIsRepairing(true);
-    try {
-      const legacyCol = collection(db, 'members');
-      const legacySnap = await getDocs(legacyCol);
-      const batch = writeBatch(db);
-      let count = 0;
-
-      for (const lDoc of legacySnap.docs) {
-        const data = lDoc.data();
-        const targetRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', lDoc.id);
-        
-        batch.set(targetRef, {
-          ...data,
-          id: lDoc.id,
-          migratedAt: serverTimestamp(),
-          updatedAt: serverTimestamp()
-        }, { merge: true });
-        count++;
-      }
-
-      await batch.commit();
-      toast({ title: "Migration réussie", description: `${count} membres ont été synchronisés.` });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "Erreur de migration", description: e.message });
-    } finally {
-      setIsRepairing(false);
-    }
-  };
-
-  const isUserActiveAdmin = isAdmin && member?.status === 'active';
-
   return (
     <div className="space-y-12">
       <div className="flex items-center justify-between">
         <h1 className="text-4xl font-bold">Administration</h1>
         <div className="flex gap-4">
-          <Button 
-            variant="outline" 
-            onClick={handleMigrateLegacyMembers} 
-            disabled={isRepairing}
-            className="rounded-none border-orange-500 text-orange-600 gap-2 text-[10px] font-bold uppercase"
-          >
-            {isRepairing ? <Loader2 className="animate-spin h-3 w-3" /> : <Wrench className="h-3 w-3" />}
-            Récupérer Anciens Membres
-          </Button>
           <Button onClick={() => setIsDialogOpen(true)} className="rounded-none font-bold uppercase tracking-widest text-xs">
             <Plus className="h-4 w-4" /> Créer une session
           </Button>
@@ -171,12 +81,24 @@ function AdminContent() {
         </TabsList>
 
         <TabsContent value="sessions" className="py-12">
-          {/* ... existing session list code ... */}
+           <div className="grid gap-6">
+             {assemblies?.map(asm => (
+               <div key={asm.id} className="p-6 border border-border bg-white flex items-center justify-between">
+                 <div className="space-y-1">
+                   <h3 className="text-xl font-bold">{asm.title}</h3>
+                   <Badge variant="secondary" className="rounded-none uppercase text-[9px] font-black tracking-widest">{asm.state}</Badge>
+                 </div>
+                 <Button variant="outline" className="rounded-none h-10 uppercase text-xs font-bold gap-2">
+                   <Settings className="h-3 w-3" /> Gérer
+                 </Button>
+               </div>
+             ))}
+           </div>
         </TabsContent>
 
         <TabsContent value="members" className="py-12 space-y-8">
            <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">Annuaire ({members?.length || 0})</h2>
+              <h2 className="text-xl font-bold">Annuaire de l&apos;Assemblée ({members?.length || 0})</h2>
               <div className="flex gap-2">
                  <Select value={statusFilter} onValueChange={setStatusFilter}>
                    <SelectTrigger className="w-[150px] rounded-none"><SelectValue placeholder="Statut" /></SelectTrigger>
@@ -188,17 +110,25 @@ function AdminContent() {
                  </Select>
               </div>
            </div>
-           <div className="border border-border">
+           <div className="border border-border bg-white">
              <Table>
-               <TableHeader><TableRow><TableHead>Email</TableHead><TableHead>Statut</TableHead><TableHead>Rôle</TableHead></TableRow></TableHeader>
+               <TableHeader>
+                 <TableRow className="hover:bg-transparent">
+                   <TableHead>Email</TableHead>
+                   <TableHead>Statut</TableHead>
+                   <TableHead>Rôle</TableHead>
+                 </TableRow>
+               </TableHeader>
                <TableBody>
-                 {members?.map((m) => (
+                 {members?.filter(m => statusFilter === 'all' || m.status === statusFilter).map((m) => (
                    <TableRow key={m.id}>
-                     <TableCell>{m.email}</TableCell>
+                     <TableCell className="font-medium">{m.email}</TableCell>
                      <TableCell>
-                        <Badge className={m.status === 'active' ? "bg-green-600" : "bg-orange-500"}>{m.status}</Badge>
+                        <Badge className={m.status === 'active' ? "bg-green-600 rounded-none" : "bg-orange-500 rounded-none"}>
+                          {m.status}
+                        </Badge>
                      </TableCell>
-                     <TableCell>{m.role}</TableCell>
+                     <TableCell className="capitalize">{m.role}</TableCell>
                    </TableRow>
                  ))}
                </TableBody>
@@ -207,7 +137,9 @@ function AdminContent() {
         </TabsContent>
 
         <TabsContent value="results" className="py-12">
-          {/* ... existing results code ... */}
+          <div className="p-12 border border-dashed border-border bg-secondary/10 text-center">
+            <p className="text-muted-foreground italic">Sélectionnez une session pour voir les résultats consolidés.</p>
+          </div>
         </TabsContent>
       </Tabs>
     </div>
