@@ -1,24 +1,20 @@
 'use client';
 
-import { useState } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useUser, useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
 import { collection, query, where, limit, doc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Bug } from 'lucide-react';
+import { Loader2, ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { Project, Vote, Assembly, Ballot } from '@/types';
 import { VoteModule } from '@/components/vote/VoteModule';
-
-// FLAG DEBUG - Passer à false en production
-const DEBUG_VOTE = true;
 
 function VoteGate() {
   const { user } = useUser();
   const db = useFirestore();
 
-  // 1. Trouver l'assemblée ouverte (Source de vérité absolue)
+  // 1. Trouver l'assemblée ouverte (Source de vérité)
   const activeAssemblyQuery = useMemoFirebase(() => {
     return query(collection(db, 'assemblies'), where('state', '==', 'open'), limit(1));
   }, [db]);
@@ -61,63 +57,40 @@ function VoteGate() {
     );
   }
 
-  // Panneau de diagnostic
-  const debugPanel = DEBUG_VOTE && (
-    <div className="fixed bottom-20 left-4 right-4 z-[100] bg-black text-white p-6 text-[10px] font-mono border-t-4 border-primary shadow-2xl space-y-2 opacity-90 hover:opacity-100 transition-opacity">
-      <div className="flex items-center gap-2 text-primary font-bold mb-2">
-        <Bug className="h-3 w-3" /> DIAGNOSTIC VOTE
-      </div>
-      <p>Assembly ID: {activeAssembly?.id || 'null'}</p>
-      <p>Assembly State: {activeAssembly?.state || 'null'}</p>
-      <p>activeVoteId: {activeAssembly?.activeVoteId || 'null'}</p>
-      <p>Vote Doc Found: {activeVote ? 'OUI' : 'NON'}</p>
-      <p>Vote State: {activeVote?.state || 'null'}</p>
-      <p>Project IDs in Vote: {activeVote?.projectIds?.length || 0}</p>
-      <p>Resolved Projects: {voteProjects.length}</p>
-    </div>
-  );
-
   if (!activeAssembly) {
     return (
-      <>
-        <div className="flex flex-col items-center justify-center py-32 text-center space-y-8">
-          <h1 className="text-4xl font-bold tracking-tight text-black">Aucun vote ouvert</h1>
-          <p className="text-muted-foreground max-w-sm mx-auto">Il n'y a pas d'assemblée active pour le moment.</p>
-          <Link href="/assembly">
-            <Button variant="outline" className="rounded-none h-14 px-8 uppercase font-bold text-xs tracking-widest gap-2">
-              <ArrowLeft className="h-4 w-4" /> Retour au Dashboard
-            </Button>
-          </Link>
-        </div>
-        {debugPanel}
-      </>
+      <div className="flex flex-col items-center justify-center py-32 text-center space-y-8">
+        <h1 className="text-4xl font-bold tracking-tight text-black">Aucun vote ouvert</h1>
+        <p className="text-muted-foreground max-w-sm mx-auto">Il n'y a pas d'assemblée active pour le moment.</p>
+        <Link href="/assembly">
+          <Button variant="outline" className="rounded-none h-14 px-8 uppercase font-bold text-xs tracking-widest gap-2">
+            <ArrowLeft className="h-4 w-4" /> Retour au Dashboard
+          </Button>
+        </Link>
+      </div>
     );
   }
 
-  // Cas critique : assemblée ouverte mais activeVoteId manquant
+  // Cas : assemblée ouverte mais activeVoteId manquant ou vote non trouvé
   if (!activeAssembly.activeVoteId || !activeVote) {
     return (
-      <>
-        <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
-          <h1 className="text-2xl font-bold text-destructive">Scrutin non configuré</h1>
-          <p className="text-muted-foreground">L'assemblée est ouverte mais le lien vers le vote est corrompu ou manquant.</p>
-          <p className="text-[10px] font-mono p-4 bg-secondary">activeVoteId: {activeAssembly.activeVoteId || 'null'}</p>
-        </div>
-        {debugPanel}
-      </>
+      <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
+        <h1 className="text-2xl font-bold text-destructive">Scrutin non configuré</h1>
+        <p className="text-muted-foreground">L'assemblée est ouverte mais le scrutin n'est pas encore prêt. Veuillez contacter un administrateur.</p>
+        <Link href="/assembly" className="pt-4">
+          <Button variant="ghost" className="uppercase font-bold text-xs tracking-widest">Retour</Button>
+        </Link>
+      </div>
     );
   }
 
   return (
-    <>
-      <VoteModule 
-        vote={activeVote} 
-        projects={voteProjects} 
-        userBallot={userBallot} 
-        assemblyId={activeAssembly.id}
-      />
-      {debugPanel}
-    </>
+    <VoteModule 
+      vote={activeVote} 
+      projects={voteProjects} 
+      userBallot={userBallot} 
+      assemblyId={activeAssembly.id}
+    />
   );
 }
 
