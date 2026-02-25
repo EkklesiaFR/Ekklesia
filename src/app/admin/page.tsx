@@ -1,4 +1,3 @@
-
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -88,11 +87,11 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { computeSchulzeResults } from '@/lib/tally';
 
 /**
- * Sous-composant pour afficher une ligne de session avec ses métriques temps réel
+ * Sous-composant pour afficher une ligne de session avec ses métriques temps réel.
+ * Utilise assembly.activeVoteId pour charger le scrutin exact.
  */
 function AssemblySessionRow({ 
   assembly, 
@@ -111,6 +110,7 @@ function AssemblySessionRow({
 }) {
   const { user } = useUser();
   const db = useFirestore();
+  
   const voteRef = useMemoFirebase(() => {
     if (!assembly.activeVoteId) return null;
     return doc(db, 'assemblies', assembly.id, 'votes', assembly.activeVoteId);
@@ -161,14 +161,14 @@ function AssemblySessionRow({
             {!assembly.activeVoteId ? (
               <p className="text-[10px] uppercase font-bold text-destructive">Scrutin non configuré</p>
             ) : isLoading ? (
-              <p className="text-[10px] uppercase font-bold text-muted-foreground animate-pulse">Chargement du scrutin...</p>
+              <p className="text-[10px] uppercase font-bold text-muted-foreground animate-pulse">Chargement...</p>
             ) : vote ? (
               <>
                 <p className="text-[10px] uppercase font-bold text-muted-foreground">{vote.ballotCount ?? 0} bulletins</p>
                 <p className="text-[10px] uppercase font-bold text-primary">{vote.eligibleCount ?? 0} éligibles</p>
               </>
             ) : (
-              <p className="text-[10px] uppercase font-bold text-muted-foreground">— Inconnu —</p>
+              <p className="text-[10px] uppercase font-bold text-muted-foreground">—</p>
             )}
           </div>
         </div>
@@ -517,28 +517,35 @@ function AdminContent() {
     try {
       setIsSubmitting(true);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
-      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
-      if (votesSnap.empty) return;
-      const voteDoc = votesSnap.docs[0];
+      const assemblySnap = await getDoc(assemblyRef);
+      if (!assemblySnap.exists()) return;
+      const assemblyData = assemblySnap.data() as Assembly;
+      const activeVoteId = assemblyData.activeVoteId;
+      
+      if (!activeVoteId) {
+        toast({ variant: "destructive", title: "Erreur", description: "Scrutin non configuré" });
+        return;
+      }
+
+      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', activeVoteId);
       const batch = writeBatch(db);
 
       if (newState === 'open') {
         const activeMembersSnap = await getDocs(query(collection(db, 'members'), where('status', '==', 'active')));
         const eligibleCount = activeMembersSnap.size;
 
-        batch.update(voteDoc.ref, { 
+        batch.update(voteRef, { 
           state: newState, 
           eligibleCount: eligibleCount,
           openedAt: serverTimestamp(),
           updatedAt: serverTimestamp() 
         });
       } else {
-        batch.update(voteDoc.ref, { state: newState, updatedAt: serverTimestamp() });
+        batch.update(voteRef, { state: newState, updatedAt: serverTimestamp() });
       }
 
       batch.update(assemblyRef, { 
         state: newState, 
-        activeVoteId: newState === 'open' ? voteDoc.id : (assemblyRef as any).activeVoteId, 
         updatedAt: serverTimestamp() 
       });
 
