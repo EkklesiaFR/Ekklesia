@@ -78,7 +78,9 @@ import {
   ShieldAlert,
   AlertTriangle,
   CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  FileText,
+  PieChart
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
@@ -173,10 +175,6 @@ function AdminContent() {
     }
   };
 
-  /**
-   * Clôturer le scrutin (Dépouillement & Publication)
-   * Utilise getDoc comme source de vérité pour l'idempotence.
-   */
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
     console.log(`[CLOSE] Initiation`, { 
       assemblyId, 
@@ -196,7 +194,6 @@ function AdminContent() {
     setIsSubmitting(true);
     
     try {
-      // Source de vérité : on lit le document de vote directement
       const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       const voteSnap = await getDoc(voteRef);
       
@@ -206,7 +203,6 @@ function AdminContent() {
       
       const voteData = voteSnap.data() as Vote;
       
-      // Idempotence : si le vote n'est plus ouvert, on s'arrête
       if (voteData.state !== 'open') {
         console.warn(`[CLOSE] Scrutin déjà clôturé ou non ouvert (state: ${voteData.state})`);
         toast({ title: "Déjà clôturé", description: "Ce scrutin a déjà été traité." });
@@ -223,14 +219,12 @@ function AdminContent() {
         throw new Error("Impossible de clôturer sans aucun bulletin.");
       }
 
-      // Calcul Schulze
       const results = computeSchulzeResults(voteData.projectIds, ballots);
       console.log(`[CLOSE] Results computed`, results);
 
       const batch = writeBatch(db);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
 
-      // Mise à jour atomique du vote et de l'assemblée
       batch.update(voteRef, {
         results: {
           winnerId: results.winnerId,
@@ -439,6 +433,7 @@ function AdminContent() {
           <TabsTrigger value="sessions" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Sessions</TabsTrigger>
           <TabsTrigger value="projects" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Projets</TabsTrigger>
           <TabsTrigger value="members" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Membres</TabsTrigger>
+          <TabsTrigger value="results" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Résultats</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions" className="py-12 space-y-6">
           <div className="grid gap-6">
@@ -551,6 +546,79 @@ function AdminContent() {
                 ))}
               </TableBody>
             </Table>
+          </div>
+        </TabsContent>
+
+        <TabsContent value="results" className="py-12 space-y-8">
+          <div className="flex items-center justify-between border-b border-border pb-6">
+            <h2 className="text-xl font-bold">Procès-verbaux des scrutins</h2>
+          </div>
+          <div className="grid gap-8">
+            {assemblies?.filter(a => a.state === 'locked').map((assembly) => {
+              const sessionVote = allVotes?.find(v => v.assemblyId === assembly.id);
+              const results = sessionVote?.results;
+
+              if (!results) return null;
+
+              const winner = projects?.find(p => p.id === results.winnerId);
+
+              return (
+                <div key={assembly.id} className="border border-border p-8 bg-white space-y-8">
+                  <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border pb-6">
+                    <div className="space-y-1">
+                      <h3 className="text-2xl font-bold uppercase tracking-tight">{assembly.title}</h3>
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
+                        Scrutin clos le {results.computedAt?.seconds ? new Date(results.computedAt.seconds * 1000).toLocaleDateString('fr-FR') : '—'}
+                      </p>
+                    </div>
+                    <Badge className="bg-[#7DC092] hover:bg-[#7DC092] rounded-none px-4 py-1 font-bold uppercase tracking-widest text-[10px]">Officiel</Badge>
+                  </header>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
+                        <PieChart className="h-3 w-3" /> Participation
+                      </p>
+                      <p className="text-xl font-black">{sessionVote.ballotCount || 0} / {sessionVote.eligibleCount || 0}</p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Taux</p>
+                      <p className="text-xl font-black">
+                        {sessionVote.eligibleCount ? Math.round(((sessionVote.ballotCount || 0) / sessionVote.eligibleCount) * 100) : 0}%
+                      </p>
+                    </div>
+                    <div className="space-y-1">
+                      <p className="text-[10px] uppercase tracking-widest font-bold text-primary">Projet Retenu</p>
+                      <p className="text-xl font-black uppercase">{winner?.title || 'Calculé'}</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4 pt-4">
+                    <h4 className="text-[10px] uppercase tracking-widest font-black text-muted-foreground border-b border-border pb-2 flex items-center gap-2">
+                      <FileText className="h-3 w-3" /> Classement Schulze
+                    </h4>
+                    <div className="space-y-2">
+                      {results.fullRanking?.map((rankItem) => {
+                        const project = projects?.find(p => p.id === rankItem.id);
+                        return (
+                          <div key={rankItem.id} className="flex items-center gap-4 text-sm py-1">
+                            <span className="w-8 font-black text-muted-foreground">#{rankItem.rank}</span>
+                            <span className={rankItem.rank === 1 ? "font-bold text-black" : "text-muted-foreground"}>
+                              {project?.title || rankItem.id}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {assemblies?.filter(a => a.state === 'locked').length === 0 && (
+              <div className="text-center py-24 border border-dashed border-border bg-secondary/10">
+                <p className="text-muted-foreground italic">Aucun résultat officiel disponible pour le moment.</p>
+              </div>
+            )}
           </div>
         </TabsContent>
       </Tabs>
