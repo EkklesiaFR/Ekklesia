@@ -114,9 +114,7 @@ function AdminContent() {
 
   // Members Query
   const membersQuery = useMemoFirebase(() => {
-    let q = query(collection(db, 'members'), orderBy('joinedAt', 'desc'), limit(50));
-    // Firestore filters would require index, so we do client-side filtering or add index
-    // For MVP we do simple query
+    let q = query(collection(db, 'members'), orderBy('createdAt', 'desc'), limit(50));
     return q;
   }, [db]);
   const { data: members, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
