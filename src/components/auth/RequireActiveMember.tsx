@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, ReactNode } from 'react';
+import { useEffect, ReactNode, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useUser } from '@/firebase';
 import { useAuthStatus } from './AuthStatusProvider';
@@ -8,41 +8,51 @@ import { MainLayout } from '@/components/layout/MainLayout';
 
 /**
  * Composant Guard pour protéger l'accès aux pages privées.
- * Empêche les redirections hâtives pendant le chargement des profils.
+ * Utilise un délai de grâce pour éviter les flashs de redirection lors du chargement des profils.
  */
 export function RequireActiveMember({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const { user, isUserLoading } = useUser();
   const { isMemberLoading, isActiveMember, isAdmin, member } = useAuthStatus();
+  
+  // État local pour gérer la période de grâce (évite le flash "Access Denied" au login)
+  const [isWaitingForGracePeriod, setIsWaitingForGracePeriod] = useState(false);
 
   useEffect(() => {
-    // RÈGLE D'OR : On ne redirige JAMAIS tant qu'on n'a pas fini de charger
+    // 1. On ne fait rien tant que Firebase Auth ou le Provider Membre chargent
     if (isUserLoading || isMemberLoading) return;
 
-    // Ne pas protéger les pages qui gèrent elles-mêmes le refus ou le login
+    // 2. Whitelist : Ne pas appliquer de redirection sur les pages de login ou d'erreur
     const isPublicPage = pathname === '/login' || pathname === '/access-denied';
     if (isPublicPage) return;
 
-    // 1. Utilisateur non authentifié
+    // 3. Utilisateur non authentifié -> Login
     if (!user) {
       router.replace('/login');
       return;
     }
 
-    // 2. Utilisateur authentifié mais profil membre inexistant dans Firestore
+    // 4. Utilisateur authentifié mais profil membre introuvable
+    // On applique un délai de grâce avant de considérer que le membre n'existe vraiment pas
     if (!member) {
-      router.replace('/access-denied?reason=no_member');
-      return;
+      setIsWaitingForGracePeriod(true);
+      const timer = setTimeout(() => {
+        // Si après 800ms le membre est toujours null, on redirige
+        router.replace('/access-denied?reason=no_member');
+      }, 800);
+      return () => clearTimeout(timer);
+    } else {
+      setIsWaitingForGracePeriod(false);
     }
 
-    // 3. Profil membre trouvé mais état non actif (ex: pending ou revoked)
+    // 5. Profil membre trouvé mais état non actif (ex: pending ou revoked)
     if (!isActiveMember) {
       router.replace('/access-denied?reason=inactive');
       return;
     }
 
-    // 4. Protection spécifique de la section Administration
+    // 6. Protection spécifique de la section Administration
     if (pathname.startsWith('/admin') && !isAdmin) {
       router.replace('/access-denied?reason=admin');
       return;
@@ -53,22 +63,23 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
   const isAuthorized = user && isActiveMember && (!pathname.startsWith('/admin') || isAdmin);
   const isSpecialPage = pathname === '/login' || pathname === '/access-denied';
 
-  if ((isUserLoading || isMemberLoading) && !isSpecialPage) {
+  // Pendant le chargement ou la période de grâce, on affiche un loader propre
+  if ((isUserLoading || isMemberLoading || isWaitingForGracePeriod) && !isSpecialPage) {
     return (
       <MainLayout statusText="Vérification">
-        <div className="flex flex-col items-center justify-center py-32 space-y-6">
+        <div className="flex flex-col items-center justify-center py-32 space-y-6 animate-in fade-in duration-500">
           <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
           <div className="text-center space-y-2">
             <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground font-bold">
-              Identification en cours
+              Sécurisation de l&apos;accès
             </p>
-            <p className="text-xs text-muted-foreground italic">Sécurisation de l'accès à l'assemblée...</p>
+            <p className="text-xs text-muted-foreground italic">Vérification de vos accréditations...</p>
           </div>
         </div>
       </MainLayout>
     );
   }
 
-  // Si on est sur une page publique ou autorisé, on affiche les enfants
+  // Si on est sur une page publique ou autorisé, on affiche le contenu
   return <>{(isAuthorized || isSpecialPage) ? children : null}</>;
 }

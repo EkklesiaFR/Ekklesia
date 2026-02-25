@@ -37,7 +37,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const uid = user?.uid;
 
   useEffect(() => {
-    // 1. Toujours réinitialiser l'état au changement d'UID ou pendant le chargement initial d'Auth
+    // 1. Reset state immediately when UID changes or starts loading
     setMember(null);
     setIsMemberLoading(true);
 
@@ -45,14 +45,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
     if (!uid) {
       if (process.env.NODE_ENV !== "production") {
-        console.log("[AuthStatus] Aucun UID détecté (déconnecté)");
+        console.log("[AuthStatus] No UID detected (Signed out)");
       }
       setIsMemberLoading(false);
       return;
     }
 
     if (process.env.NODE_ENV !== "production") {
-      console.log("[AuthStatus] Démarrage surveillance pour UID:", uid);
+      console.log("[AuthStatus] Starting snapshot listener for UID:", uid);
     }
 
     const memberRef = doc(db, 'members', uid);
@@ -67,36 +67,26 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         };
         
         if (process.env.NODE_ENV !== "production") {
-          console.log("[AuthStatus] Document trouvé:", { 
-            uid, 
-            status: profile.status, 
-            role: profile.role 
-          });
+          console.log("[AuthStatus] Member doc found:", profile);
         }
         setMember(profile);
       } else {
         if (process.env.NODE_ENV !== "production") {
-          console.warn("[AuthStatus] Document members/" + uid + " INTROUVABLE. Accès refusé par défaut.");
+          console.warn("[AuthStatus] Member doc NOT FOUND for UID:", uid);
         }
         setMember(null);
       }
+      // Loading ends ONLY after we get a definitive response from Firestore
       setIsMemberLoading(false);
     }, (error) => {
       if (process.env.NODE_ENV !== "production") {
-        console.error("[AuthStatus] Erreur critique Firestore:", {
-          code: error.code,
-          message: error.message,
-          hint: error.code === 'permission-denied' ? "Vérifiez les Security Rules ou si le projet est correct." : "Erreur inconnue"
-        });
+        console.error("[AuthStatus] Firestore snapshot error:", error.code, error.message);
       }
       setMember(null);
       setIsMemberLoading(false);
     });
 
     return () => {
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[AuthStatus] Cleanup listener pour UID:", uid);
-      }
       unsubscribe();
     };
   }, [uid, isUserLoading, db]);
@@ -104,15 +94,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const isActiveMember = member?.status === 'active';
   const isAdmin = member?.role === 'admin' && isActiveMember;
 
-  // Log de diagnostic (Appelé systématiquement, condition interne)
+  // Debug log for internal state tracking
   useEffect(() => {
     if (process.env.NODE_ENV !== "production") {
-      console.log("[AuthStatus State Sync]", { 
+      console.log("[AuthStatus Internal State]", { 
         uid, 
         isMemberLoading, 
         isActiveMember, 
-        memberStatus: member?.status,
-        memberRole: member?.role 
+        memberStatus: member?.status 
       });
     }
   }, [uid, isMemberLoading, isActiveMember, member]);
@@ -120,7 +109,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   return (
     <AuthStatusContext.Provider value={{ 
       member, 
-      isMemberLoading: isUserLoading || isMemberLoading, 
+      isMemberLoading, 
       isActiveMember, 
       isAdmin 
     }}>
@@ -129,7 +118,4 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Hook pour consommer l'état d'authentification et de membre.
- */
 export const useAuthStatus = () => useContext(AuthStatusContext);
