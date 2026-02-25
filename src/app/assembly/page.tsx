@@ -14,7 +14,8 @@ import {
   Trophy,
   Users,
   Activity,
-  Clock
+  Clock,
+  Lock
 } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { Project, Vote, Assembly, Ballot } from '@/types';
@@ -33,7 +34,7 @@ function AssemblyDashboardContent() {
   const { data: openAssemblies, isLoading: isAssemblyLoading } = useCollection<Assembly>(openAssemblyQuery);
   const activeAssembly = openAssemblies?.[0];
 
-  // 2. Charger le vote associé via activeVoteId
+  // 2. Charger le vote associé
   const voteRef = useMemoFirebase(() => {
     if (!activeAssembly?.activeVoteId) return null;
     return doc(db, 'assemblies', activeAssembly.id, 'votes', activeAssembly.activeVoteId);
@@ -45,17 +46,18 @@ function AssemblyDashboardContent() {
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
-  // 4. Charger les bulletins pour le vote actif
+  // 4. Charger les bulletins UNIQUEMENT SI ADMIN (pour la tendance live)
   const ballotsQuery = useMemoFirebase(() => {
-    if (!activeAssembly || !activeVote) return null;
+    if (!activeAssembly || !activeVote || !isAdmin) return null;
     return collection(db, 'assemblies', activeAssembly.id, 'votes', activeVote.id, 'ballots');
-  }, [db, activeAssembly, activeVote]);
+  }, [db, activeAssembly, activeVote, isAdmin]);
   const { data: ballots } = useCollection<Ballot>(ballotsQuery);
 
-  // 5. Calcul Schulze (Tendance en temps réel)
-  const results = (ballots && activeProjects.length > 0) 
+  // 5. Calcul Schulze (Tendance en temps réel pour l'admin, ou via doc public results pour membre)
+  const results = (isAdmin && ballots && activeProjects.length > 0) 
     ? computeSchulzeResults(activeProjects.map(p => p.id), ballots)
-    : null;
+    : activeVote?.results;
+
   const winnerProject = results?.winnerId ? activeProjects.find(p => p.id === results.winnerId) : null;
 
   if (isAssemblyLoading || isVoteLoading) {
@@ -107,7 +109,7 @@ function AssemblyDashboardContent() {
                   <p className="text-sm text-muted-foreground">Participez avant la clôture.</p>
                   <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
                     <span className="flex items-center gap-2 font-medium">
-                      <Users className="h-4 w-4 text-primary" /> <strong>{ballots?.length || 0}</strong> bulletins
+                      <Users className="h-4 w-4 text-primary" /> <strong>{activeVote?.ballotCount || ballots?.length || 0}</strong> bulletins
                     </span>
                     {activeVote?.closesAt && (
                       <span className="flex items-center gap-2 font-medium">
@@ -126,16 +128,23 @@ function AssemblyDashboardContent() {
             <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
               <div className="space-y-6">
                 <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
-                  <Trophy className="h-3 w-3 text-primary" /> Tendance actuelle
+                  <Trophy className="h-3 w-3 text-primary" /> {isAdmin ? "Tendance actuelle" : "Résultats"}
                 </h3>
                 <div className="space-y-4">
                   {winnerProject ? (
                     <div className="space-y-2">
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-primary">En tête</p>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-primary">
+                        {activeVote?.state === 'open' ? 'En tête' : 'Projet retenu'}
+                      </p>
                       <p className="text-2xl font-bold leading-tight">{winnerProject.title}</p>
                     </div>
-                  ) : (
+                  ) : isAdmin ? (
                     <p className="text-sm text-gray-400 italic">En attente des premiers bulletins...</p>
+                  ) : (
+                    <div className="flex items-center gap-3 text-gray-400 italic text-sm border border-gray-800 p-4">
+                      <Lock className="h-4 w-4 shrink-0" />
+                      <span>Les résultats sont confidentiels jusqu'à la clôture du scrutin.</span>
+                    </div>
                   )}
                 </div>
               </div>

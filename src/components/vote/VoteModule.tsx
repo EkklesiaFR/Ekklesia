@@ -2,13 +2,14 @@
 
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { doc, serverTimestamp, setDoc, collection } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc, collection, updateDoc, increment } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Trophy, Users, ChevronRight, Loader2, Info } from 'lucide-react';
+import { CheckCircle2, Trophy, Users, ChevronRight, Loader2, Info, Lock } from 'lucide-react';
 import { computeSchulzeResults } from '@/lib/tally';
 import { toast } from '@/hooks/use-toast';
 import { Project, Vote, Ballot } from '@/types';
 import { RankedList } from '@/components/voting/RankedList';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 interface VoteModuleProps {
   vote: Vote;
@@ -19,11 +20,12 @@ interface VoteModuleProps {
 
 export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModuleProps) {
   const { user } = useUser();
+  const { isAdmin } = useAuthStatus();
   const db = useFirestore();
   const [currentRanking, setCurrentRanking] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Initialiser le classement à partir du bulletin existant ou de l'ordre par défaut
+  // Initialiser le classement
   useEffect(() => {
     if (userBallot?.ranking) {
       setCurrentRanking(userBallot.ranking);
@@ -32,28 +34,40 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     }
   }, [userBallot, projects]);
 
-  // Charger tous les bulletins pour les résultats Schulze en temps réel
+  // Charger tous les bulletins UNIQUEMENT SI ADMIN
   const allBallotsQuery = useMemoFirebase(() => {
+    if (!isAdmin) return null;
     return collection(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots');
-  }, [db, assemblyId, vote.id]);
+  }, [db, assemblyId, vote.id, isAdmin]);
   const { data: allBallots } = useCollection<Ballot>(allBallotsQuery);
 
   const handleVoteSubmit = async () => {
     if (!user) return;
     setIsSaving(true);
 
+    const assemblyRef = doc(db, 'assemblies', assemblyId);
+    const voteRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id);
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
 
     try {
+      const isNewBallot = !userBallot;
+      
       await setDoc(userBallotRef, {
         ranking: currentRanking,
         castAt: userBallot?.castAt || serverTimestamp(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
+
+      // Si c'est un nouveau bulletin, on incrémente le compteur public
+      if (isNewBallot) {
+        await updateDoc(voteRef, {
+          ballotCount: increment(1)
+        });
+      }
       
       toast({ 
         title: "Vote enregistré", 
-        description: "Votre classement préférentiel a été mis à jour." 
+        description: "Votre classement préférentiel a été pris en compte." 
       });
     } catch (e: any) {
       toast({ 
@@ -66,11 +80,12 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     }
   };
 
-  const results = allBallots && projects.length > 0 
+  // Calcul Schulze : pour l'admin (live) ou si publié (results)
+  const results = (isAdmin && allBallots && projects.length > 0) 
     ? computeSchulzeResults(projects.map(p => p.id), allBallots)
-    : null;
+    : vote.results;
 
-  // Mapper les IDs du classement vers les objets Projets complets
+  // Mapper les IDs
   const sortedProjects = currentRanking
     .map(id => projects.find(p => p.id === id))
     .filter((p): p is Project => !!p);
@@ -116,7 +131,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
           {userBallot && (
             <div className="flex items-center gap-3 p-5 bg-green-50 text-green-700 text-sm font-bold border border-green-100 animate-in zoom-in-95 duration-300">
               <CheckCircle2 className="h-5 w-5" />
-              <span>Votre participation a été prise en compte.</span>
+              <span>Votre participation a été enregistrée.</span>
             </div>
           )}
         </div>
@@ -126,37 +141,49 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
         <header className="flex items-center justify-between border-b border-border pb-6">
           <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
             <Trophy className="h-4 w-4 text-primary" />
-            Tendance en direct
+            {isAdmin ? "Tendance en direct" : "Scrutin"}
           </h2>
           <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
             <Users className="h-3 w-3" />
-            {results?.total || 0} bulletins
+            {vote.ballotCount || results?.total || 0} bulletins
           </div>
         </header>
 
         <div className="space-y-4">
-          {results?.ranking.map((rankInfo) => {
-            const project = projects.find(p => p.id === rankInfo.id);
-            const isWinner = rankInfo.rank === 1;
-            return (
-              <div key={rankInfo.id} className={`p-5 flex items-center gap-5 transition-all ${isWinner ? 'bg-white border-black ring-1 ring-black shadow-lg translate-x-2' : 'bg-white/50 border-border'} border`}>
-                <div className={`w-10 h-10 flex items-center justify-center text-xs font-black ${isWinner ? 'bg-black text-white' : 'bg-muted text-muted-foreground'}`}>
-                  #{rankInfo.rank}
+          {isAdmin && results ? (
+            results.ranking.map((rankInfo) => {
+              const project = projects.find(p => p.id === rankInfo.id);
+              const isWinner = rankInfo.rank === 1;
+              return (
+                <div key={rankInfo.id} className={`p-5 flex items-center gap-5 transition-all ${isWinner ? 'bg-white border-black ring-1 ring-black shadow-lg translate-x-2' : 'bg-white/50 border-border'} border`}>
+                  <div className={`w-10 h-10 flex items-center justify-center text-xs font-black ${isWinner ? 'bg-black text-white' : 'bg-muted text-muted-foreground'}`}>
+                    #{rankInfo.rank}
+                  </div>
+                  <div className="flex-grow">
+                    <div className="font-bold text-sm uppercase tracking-tight line-clamp-1">{project?.title}</div>
+                    <div className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">Méthode Schulze</div>
+                  </div>
+                  {isWinner && <ChevronRight className="h-4 w-4 text-primary" />}
                 </div>
-                <div className="flex-grow">
-                  <div className="font-bold text-sm uppercase tracking-tight line-clamp-1">{project?.title}</div>
-                  <div className="text-[9px] uppercase tracking-widest text-muted-foreground mt-1">Méthode Schulze</div>
-                </div>
-                {isWinner && <ChevronRight className="h-4 w-4 text-primary" />}
+              );
+            })
+          ) : (
+            <div className="p-8 border border-dashed border-border bg-white text-center space-y-4">
+              <Lock className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
+              <div className="space-y-2">
+                <p className="text-[10px] uppercase font-bold tracking-widest text-black">Intégrité Civique</p>
+                <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-relaxed">
+                  Pour garantir l'impartialité du scrutin, les tendances ne sont pas révélées avant la clôture officielle du vote.
+                </p>
               </div>
-            );
-          })}
+            </div>
+          )}
         </div>
 
         <div className="pt-12 border-t border-border mt-8 space-y-4">
           <h4 className="text-[10px] font-bold uppercase tracking-widest text-black">À propos du mode de scrutin</h4>
           <p className="text-[10px] text-muted-foreground uppercase tracking-widest leading-relaxed">
-            Ekklesia utilise la méthode de Schulze (Condorcet). Ce système garantit que le projet élu est celui qui l'emporte dans des duels face à chaque autre projet, assurant une légitimité maximale à la décision collective.
+            Ekklesia utilise la méthode de Schulze (Condorcet). Ce système garantit que le projet élu est celui qui l'emporte dans des duels face à chaque autre projet.
           </p>
         </div>
       </aside>

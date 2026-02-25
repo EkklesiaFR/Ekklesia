@@ -81,15 +81,17 @@ import {
   RefreshCw,
   AlertTriangle,
   Database,
-  Wrench
+  Wrench,
+  Trophy
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { Assembly, Vote, Project, MemberProfile } from '@/types';
+import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
 import Image from 'next/image';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { computeSchulzeResults } from '@/lib/tally';
 
 function AdminContent() {
   const { user } = useUser();
@@ -124,13 +126,11 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // MEMBRES: Requête simplifiée sur la collection 'members'
   const membersQuery = useMemoFirebase(() => {
     return query(collection(db, 'members'), limit(150));
   }, [db]);
   const { data: members, error: membersError, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
 
-  // Filtrage et Tri (Pending en premier)
   const filteredMembers = members?.filter(m => {
     const matchStatus = statusFilter === 'all' || m.status === statusFilter;
     const matchRole = roleFilter === 'all' || m.role === roleFilter;
@@ -176,6 +176,7 @@ function AdminContent() {
         question: newVoteQuestion,
         projectIds: selectedProjectIds,
         state: 'draft',
+        ballotCount: 0,
         createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
@@ -187,6 +188,53 @@ function AdminContent() {
       resetForm();
     } catch (e: any) {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer la session." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
+    setIsSubmitting(true);
+    try {
+      // 1. Récupérer tous les bulletins
+      const ballotsSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots'));
+      const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
+      
+      if (ballots.length === 0) {
+        toast({ variant: "destructive", title: "Aucun bulletin", description: "Impossible de calculer les résultats sans bulletins." });
+        return;
+      }
+
+      // 2. Récupérer le vote pour avoir les IDs de projets
+      const voteSnap = await getDocs(query(collection(db, 'assemblies', assemblyId, 'votes'), where('id', '==', voteId)));
+      const voteData = voteSnap.docs[0].data() as Vote;
+
+      // 3. Calculer Schulze
+      const results = computeSchulzeResults(voteData.projectIds, ballots);
+
+      // 4. Enregistrer les résultats officiels
+      await updateDoc(doc(db, 'assemblies', assemblyId, 'votes', voteId), {
+        results: {
+          winnerId: results.winnerId,
+          fullRanking: results.ranking,
+          computedAt: serverTimestamp(),
+          total: ballots.length
+        },
+        ballotCount: ballots.length,
+        state: 'closed',
+        updatedAt: serverTimestamp()
+      });
+
+      // 5. Clôturer l'assemblée
+      await updateDoc(doc(db, 'assemblies', assemblyId), {
+        state: 'closed',
+        updatedAt: serverTimestamp()
+      });
+
+      toast({ title: "Résultats publiés", description: "Le scrutin est clôturé et les résultats sont officiels." });
+    } catch (e: any) {
+      console.error(e);
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de publier les résultats." });
     } finally {
       setIsSubmitting(false);
     }
@@ -246,7 +294,7 @@ function AdminContent() {
       const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
       
       if (votesSnap.empty) {
-        toast({ variant: "destructive", title: "Erreur", description: "Aucun vote trouvé pour cette assemblée." });
+        toast({ variant: "destructive", title: "Erreur", description: "Aucun vote trouvé." });
         return;
       }
 
@@ -257,14 +305,12 @@ function AdminContent() {
       batch.update(assemblyRef, { 
         state: newState,
         activeVoteId: newState === 'open' ? voteDoc.id : null,
-        updatedAt: serverTimestamp(),
-        openedAt: newState === 'open' ? serverTimestamp() : null
+        updatedAt: serverTimestamp()
       });
       
       batch.update(voteRef, { 
         state: newState,
-        updatedAt: serverTimestamp(),
-        opensAt: newState === 'open' ? serverTimestamp() : null
+        updatedAt: serverTimestamp()
       });
 
       await batch.commit();
@@ -282,9 +328,9 @@ function AdminContent() {
         status: newStatus, 
         updatedAt: serverTimestamp() 
       });
-      toast({ title: "Statut mis à jour", description: `Le membre est désormais ${newStatus}.` });
+      toast({ title: "Statut mis à jour" });
     } catch (e) {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier le statut." });
+      toast({ variant: "destructive", title: "Erreur" });
     }
   };
 
@@ -294,9 +340,9 @@ function AdminContent() {
         role: newRole, 
         updatedAt: serverTimestamp() 
       });
-      toast({ title: "Rôle mis à jour", description: `Rôle modifié : ${newRole}.` });
+      toast({ title: "Rôle mis à jour" });
     } catch (e) {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier le rôle." });
+      toast({ variant: "destructive", title: "Erreur" });
     }
   };
 
@@ -306,9 +352,7 @@ function AdminContent() {
     const demoData = [
       { title: "Pistes cyclables sécurisées", summary: "Aménagement de voies réservées aux vélos.", budget: "45 000 €", imageUrl: PlaceHolderImages[4].imageUrl },
       { title: "Rénovation de l'école primaire", summary: "Isolation thermique et modernisation.", budget: "120 000 €", imageUrl: PlaceHolderImages[1].imageUrl },
-      { title: "Festival des Arts de Rue", summary: "Organisation d'un événement annuel gratuit.", budget: "15 000 €", imageUrl: PlaceHolderImages[3].imageUrl },
-      { title: "Installation de panneaux solaires", summary: "Équiper les bâtiments publics.", budget: "85 000 €", imageUrl: PlaceHolderImages[2].imageUrl },
-      { title: "Jardins partagés urbains", summary: "Culture collective en ville.", budget: "8 000 €", imageUrl: PlaceHolderImages[0].imageUrl }
+      { title: "Festival des Arts de Rue", summary: "Organisation d'un événement annuel gratuit.", budget: "15 000 €", imageUrl: PlaceHolderImages[3].imageUrl }
     ];
 
     try {
@@ -334,7 +378,6 @@ function AdminContent() {
   const getStatusBadge = (state: string) => {
     switch (state) {
       case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
-      case 'active': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Actif</Badge>;
       case 'closed': return <Badge variant="secondary">Clos</Badge>;
       case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>;
       case 'blocked': return <Badge variant="destructive">Bloqué</Badge>;
@@ -414,6 +457,9 @@ function AdminContent() {
                     <div className="space-y-1">
                       <h3 className="text-2xl font-bold">{assembly.title}</h3>
                       {sessionVote && <p className="text-sm text-muted-foreground italic">{sessionVote.question}</p>}
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground mt-2">
+                        {sessionVote?.ballotCount || 0} bulletins reçus
+                      </p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -424,9 +470,13 @@ function AdminContent() {
                       </Button>
                     )}
                     {assembly.state === 'open' && (
-                      <Button onClick={() => updateSessionState(assembly.id, 'closed')} variant="outline" disabled={isSubmitting} className="rounded-none border-black hover:bg-black hover:text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Square className="h-3.5 w-3.5" />}
-                        Clôturer
+                      <Button 
+                        onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} 
+                        disabled={isSubmitting} 
+                        className="rounded-none bg-black text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
+                      >
+                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trophy className="h-3.5 w-3.5" />}
+                        Clôturer & Publier
                       </Button>
                     )}
                   </div>
@@ -463,255 +513,87 @@ function AdminContent() {
         </TabsContent>
 
         <TabsContent value="members" className="py-12 space-y-8">
-          {/* Debug Info */}
           <div className="p-4 bg-secondary/5 border border-border flex items-center justify-between">
             <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest">
               <Database className="h-3 w-3 text-primary" />
-              <span>Collection : <code className="bg-white px-1">members</code></span>
+              <span>Collection : members</span>
               <span className="text-muted-foreground">|</span>
-              <span>Docs chargés : <code className="bg-white px-1">{members?.length || 0}</code></span>
+              <span>Docs chargés : {members?.length || 0}</span>
             </div>
-            <div className="flex items-center gap-4">
-              <Button 
-                onClick={handleRepairMembers} 
-                disabled={isRepairing} 
-                variant="outline" 
-                size="sm"
-                className="h-8 rounded-none border-primary text-primary uppercase font-bold text-[10px] gap-2"
-              >
-                {isRepairing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
-                Réparer les profils
-              </Button>
-              {isMembersLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-            </div>
+            <Button onClick={handleRepairMembers} disabled={isRepairing} variant="outline" size="sm" className="h-8 rounded-none border-primary text-primary uppercase font-bold text-[10px] gap-2">
+              <Wrench className="h-3 w-3" /> Réparer les profils
+            </Button>
           </div>
 
-          {/* Error Message */}
-          {membersError && (
-            <Alert variant="destructive" className="rounded-none">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle>Erreur de lecture Firestore</AlertTitle>
-              <AlertDescription className="font-mono text-[10px] mt-2">
-                {String(membersError)}
-                <br />
-                Vérifiez les règles de sécurité ou si la collection "members" existe.
-              </AlertDescription>
-            </Alert>
-          )}
-
           <div className="flex flex-col md:flex-row gap-6 items-center justify-between border-b border-border pb-6">
-            <h2 className="text-xl font-bold flex items-center gap-2">
-              <Users className="h-5 w-5" />
-              Gestion des Membres ({members?.length || 0}
-              {pendingCount > 0 && (
-                <span className="text-sm font-normal text-orange-600 ml-2 italic">
-                  (dont {pendingCount} en attente)
-                </span>
-              )}
-              )
+            <h2 className="text-xl font-bold">
+              Gestion des Membres ({members?.length || 0})
+              {pendingCount > 0 && <span className="text-sm font-normal text-orange-600 ml-2">({pendingCount} en attente)</span>}
             </h2>
-            <div className="flex gap-4 w-full md:w-auto">
+            <div className="flex gap-4">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-[180px] rounded-none">
-                  <SelectValue placeholder="Filtrer par statut" />
+                  <SelectValue placeholder="Statut" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">Tous les statuts</SelectItem>
+                  <SelectItem value="all">Tous</SelectItem>
                   <SelectItem value="active">Actif</SelectItem>
                   <SelectItem value="pending">En attente</SelectItem>
                   <SelectItem value="blocked">Bloqué</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={roleFilter} onValueChange={setRoleFilter}>
-                <SelectTrigger className="w-[180px] rounded-none">
-                  <SelectValue placeholder="Filtrer par rôle" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous les rôles</SelectItem>
-                  <SelectItem value="member">Membre</SelectItem>
-                  <SelectItem value="admin">Admin</SelectItem>
-                </SelectContent>
-              </Select>
             </div>
           </div>
 
-          {filteredMembers && filteredMembers.length > 0 ? (
-            <div className="border border-border bg-white overflow-hidden">
-              <Table>
-                <TableHeader className="bg-secondary/20">
-                  <TableRow>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Email / ID</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Nom</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest hidden md:table-cell">Inscrit le</TableHead>
-                    <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions rapides</TableHead>
+          <div className="border border-border bg-white overflow-hidden">
+            <Table>
+              <TableHeader className="bg-secondary/20">
+                <TableRow>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Email</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredMembers?.map((member) => (
+                  <TableRow key={member.id} className="hover:bg-secondary/5">
+                    <TableCell className="font-medium text-sm">{member.email || member.id}</TableCell>
+                    <TableCell>{getStatusBadge(member.status)}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{member.role || 'member'}</Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-none w-56">
+                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">Activer</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs">Mettre en attente</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">Bloquer</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold">Promouvoir Admin</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
                   </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredMembers?.map((member) => (
-                    <TableRow key={member.id} className="hover:bg-secondary/5">
-                      <TableCell className="font-medium text-sm">
-                        <div className="flex flex-col">
-                          <span>{member.email || member.id}</span>
-                          {!member.email && <span className="text-[9px] text-muted-foreground uppercase">(ID uniquement)</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm">{member.displayName || '-'}</TableCell>
-                      <TableCell>{getStatusBadge(member.status)}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px] gap-1">
-                          {member.role === 'admin' ? <Shield className="h-3 w-3" /> : null}
-                          {member.role || 'member'}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-[10px] text-muted-foreground hidden md:table-cell">
-                        {member.joinedAt?.seconds ? format(new Date(member.joinedAt.seconds * 1000), 'dd/MM/yyyy') : '-'}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {member.status !== 'active' && (
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              onClick={() => updateMemberStatus(member.id, 'active')}
-                              className="h-8 px-3 rounded-none border-green-200 text-green-600 hover:bg-green-50 hover:text-green-700 text-[10px] font-bold uppercase"
-                            >
-                              <UserCheck className="h-3 w-3 mr-1" /> Activer
-                            </Button>
-                          )}
-                          
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8">
-                                <MoreHorizontal className="h-4 w-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="rounded-none w-56">
-                              <DropdownMenuLabel className="text-[10px] uppercase font-bold">Fiche détaillée</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => setSelectedMember(member)} className="text-xs">
-                                <Eye className="h-3.5 w-3.5 mr-2" /> Voir les informations
-                              </DropdownMenuItem>
-                              
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Statut</DropdownMenuLabel>
-                              <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">
-                                <UserCheck className="h-3.5 w-3.5 mr-2" /> Activer le compte
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs text-orange-600">
-                                <RefreshCw className="h-3.5 w-3.5 mr-2" /> Remettre en attente
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">
-                                <Ban className="h-3.5 w-3.5 mr-2" /> Bloquer l'accès
-                              </DropdownMenuItem>
-                              
-                              <DropdownMenuSeparator />
-                              <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Rôle</DropdownMenuLabel>
-                              {member.role === 'member' || !member.role ? (
-                                <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold text-primary">
-                                  <Shield className="h-3.5 w-3.5 mr-2" /> Promouvoir Admin
-                                </DropdownMenuItem>
-                              ) : (
-                                <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'member')} className="text-xs">
-                                  <Users className="h-3.5 w-3.5 mr-2" /> Rétrograder Membre
-                                </DropdownMenuItem>
-                              )}
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-          ) : !isMembersLoading && (
-            <div className="py-24 text-center border border-dashed border-border bg-secondary/5 space-y-4">
-              <Users className="h-8 w-8 text-muted-foreground mx-auto" />
-              <div className="space-y-1">
-                <p className="font-bold text-sm uppercase tracking-widest text-muted-foreground">Aucun membre trouvé</p>
-                <p className="text-xs text-muted-foreground italic">
-                  Si vous attendez des résultats, vérifiez que la collection "members" contient bien des documents.
-                </p>
-              </div>
-            </div>
-          )}
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </TabsContent>
       </Tabs>
 
-      {/* Member Profile Modal */}
-      <Dialog open={!!selectedMember} onOpenChange={(open) => !open && setSelectedMember(null)}>
-        <DialogContent className="max-w-md rounded-none p-12">
-          <DialogHeader className="space-y-6">
-            <div className="w-16 h-16 bg-secondary flex items-center justify-center border border-border">
-              <Users className="h-8 w-8 text-muted-foreground" />
-            </div>
-            <DialogTitle className="text-2xl font-bold tracking-tight">Fiche Membre</DialogTitle>
-          </DialogHeader>
-          <div className="py-8 space-y-6">
-            <div className="grid grid-cols-2 gap-8">
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Nom complet</p>
-                <p className="font-medium">{selectedMember?.displayName || 'Non renseigné'}</p>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Email / ID</p>
-                <p className="font-medium text-sm truncate">{selectedMember?.email || selectedMember?.id}</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-8">
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Rôle actuel</p>
-                <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{selectedMember?.role || 'member'}</Badge>
-              </div>
-              <div className="space-y-1">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Statut</p>
-                {selectedMember && getStatusBadge(selectedMember.status)}
-              </div>
-            </div>
-            <div className="space-y-1 pt-4 border-t border-border">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Activités</p>
-              <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
-                <span className="flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> 
-                  Inscrit le {selectedMember?.joinedAt?.seconds ? format(new Date(selectedMember.joinedAt.seconds * 1000), 'dd/MM/yyyy') : '-'}
-                </span>
-                <span className="flex items-center gap-1">
-                  <Play className="h-3 w-3" /> 
-                  Dernière connexion : {selectedMember?.lastLoginAt?.seconds ? format(new Date(selectedMember.lastLoginAt.seconds * 1000), 'dd/MM HH:mm') : 'Jamais'}
-                </span>
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setSelectedMember(null)} className="rounded-none h-12 w-full uppercase font-bold text-xs">Fermer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Confirmation Dialog for Admin Promotion */}
       <AlertDialog open={!!confirmAdminPromote} onOpenChange={(open) => !open && setConfirmAdminPromote(null)}>
         <AlertDialogContent className="rounded-none">
           <AlertDialogHeader>
-            <AlertDialogTitle className="uppercase font-black tracking-tight">Confirmer la promotion</AlertDialogTitle>
-            <AlertDialogDescription className="text-sm">
-              Êtes-vous sûr de vouloir accorder des privilèges d&apos;administrateur à ce membre ? 
-              Un administrateur peut modifier les sessions de vote, les projets et le statut de tous les autres membres.
-            </AlertDialogDescription>
+            <AlertDialogTitle className="uppercase font-black">Confirmer la promotion</AlertDialogTitle>
+            <AlertDialogDescription>Accorder des privilèges d&apos;administrateur à ce membre ?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={() => {
-                if (confirmAdminPromote) {
-                  updateMemberRole(confirmAdminPromote, 'admin');
-                  setConfirmAdminPromote(null);
-                }
-              }}
-              className="rounded-none bg-primary text-white hover:bg-primary/90 uppercase font-bold text-xs"
-            >
-              Confirmer la promotion
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => confirmAdminPromote && updateMemberRole(confirmAdminPromote, 'admin')} className="rounded-none uppercase font-bold text-xs">Confirmer</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
