@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore, useAuthStatus } from '@/firebase';
-import { doc, serverTimestamp, writeBatch, increment } from 'firebase/firestore';
+import { doc, serverTimestamp, writeBatch, increment, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Info, Loader2, Lock, BarChart3, Users, PieChart } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -17,6 +17,45 @@ interface VoteModuleProps {
   projects: Project[];
   userBallot: Ballot | null;
   assemblyId: string;
+}
+
+function ParticipationPanel({ ballotCount = 0, eligibleCount = 100 }: { ballotCount?: number, eligibleCount?: number }) {
+  const participationRate = eligibleCount > 0 ? Math.round((ballotCount / eligibleCount) * 100) : 0;
+  const abstentionCount = Math.max(0, eligibleCount - ballotCount);
+
+  return (
+    <div className="space-y-12">
+      <header className="flex items-center justify-between border-b border-border pb-6">
+        <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
+          <PieChart className="h-4 w-4 text-primary" /> Participation
+        </h2>
+        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+          {ballotCount} bulletins reçus
+        </div>
+      </header>
+
+      <div className="space-y-8">
+        <div className="space-y-4">
+          <div className="flex justify-between items-end">
+            <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Taux</span>
+            <span className="text-lg font-black">{participationRate}%</span>
+          </div>
+          <Progress value={participationRate} className="h-2 rounded-none" />
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div className="p-4 bg-white border border-border space-y-1">
+            <p className="text-[9px] uppercase font-bold text-muted-foreground">Abstention</p>
+            <p className="text-sm font-black">{abstentionCount}</p>
+          </div>
+          <div className="p-4 bg-white border border-border flex items-center gap-2">
+            <BarChart3 className="h-3 w-3 text-primary" />
+            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest">Scrutin Secret</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModuleProps) {
@@ -42,12 +81,15 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
 
     try {
+      // Sécurité atomique : Vérifier d'abord si le bulletin existe
+      const ballotSnap = await getDoc(userBallotRef);
+      const isNewBallot = !ballotSnap.exists();
+      
       const batch = writeBatch(db);
-      const isNewBallot = !userBallot;
       
       batch.set(userBallotRef, {
         ranking: currentRanking,
-        castAt: userBallot?.castAt || serverTimestamp(),
+        castAt: isNewBallot ? serverTimestamp() : (ballotSnap.data()?.castAt || serverTimestamp()),
         updatedAt: serverTimestamp(),
       }, { merge: true });
 
@@ -67,11 +109,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
       setIsSaving(false);
     }
   };
-
-  const ballotCount = vote.ballotCount || 0;
-  const eligibleCount = vote.eligibleCount || 100;
-  const participationRate = Math.round((ballotCount / eligibleCount) * 100);
-  const abstentionCount = Math.max(0, eligibleCount - ballotCount);
 
   const sortedProjects = currentRanking
     .map(id => projects.find(p => p.id === id))
@@ -127,34 +164,18 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
           </div>
         ) : vote.state === 'open' ? (
           <div className="space-y-12">
-            {/* ADMIN ONLY : TRENDS */}
+            {/* L'AdminTrendsPanel n'est monté QUE si isAdmin est vrai */}
             {isAdmin ? (
-              <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} projects={projects} />
+              <AdminTrendsPanel 
+                assemblyId={assemblyId} 
+                voteId={vote.id} 
+                projects={projects} 
+              />
             ) : (
-              <div className="space-y-12">
-                <header className="flex items-center justify-between border-b border-border pb-6">
-                  <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
-                    <PieChart className="h-4 w-4 text-primary" /> Participation
-                  </h2>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                    {ballotCount} bulletins
-                  </div>
-                </header>
-
-                <div className="space-y-8">
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-end">
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Taux</span>
-                      <span className="text-lg font-black">{participationRate}%</span>
-                    </div>
-                    <Progress value={participationRate} className="h-2 rounded-none" />
-                  </div>
-                  <div className="p-6 bg-white border border-border flex items-center gap-3">
-                    <BarChart3 className="h-3 w-3 text-primary" />
-                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Scrutin Secret</p>
-                  </div>
-                </div>
-              </div>
+              <ParticipationPanel 
+                ballotCount={vote.ballotCount} 
+                eligibleCount={vote.eligibleCount} 
+              />
             )}
           </div>
         ) : (

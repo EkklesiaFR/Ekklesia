@@ -9,7 +9,6 @@ import { collection, query, where, limit, doc } from 'firebase/firestore';
 import Link from 'next/link';
 import { 
   LayoutGrid, 
-  User, 
   Settings, 
   Users,
   Activity,
@@ -75,7 +74,7 @@ function AssemblyDashboardContent() {
   }, [db, activeAssembly]);
   const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
-  // 3. Charger les projets pour l'affichage Admin (Trends)
+  // 3. Charger les projets pour l'affichage (Utilisé pour les titres des résultats)
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
@@ -144,9 +143,12 @@ function AssemblyDashboardContent() {
             ) : activeVote?.state === 'locked' && activeVote.results ? (
               <div className="space-y-6">
                 <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400">Résultats officiels</h3>
-                <p className="text-2xl font-bold">
-                  {activeProjects.find(p => p.id === activeVote.results?.winnerId)?.title || "Calculé"}
-                </p>
+                <div className="space-y-2">
+                  <p className="text-[10px] uppercase font-bold text-primary tracking-widest">Élu à l&apos;unanimité</p>
+                  <p className="text-2xl font-bold">
+                    {activeProjects.find(p => p.id === activeVote.results?.winnerId)?.title || "Calculé"}
+                  </p>
+                </div>
               </div>
             ) : (
               <ParticipationPanel 

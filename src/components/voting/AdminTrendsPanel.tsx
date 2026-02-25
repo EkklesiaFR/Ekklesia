@@ -1,8 +1,8 @@
 'use client';
 
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, DocumentData } from 'firebase/firestore';
-import { Ballot, Project, Vote } from '@/types';
+import { useFirestore, useCollection, useMemoFirebase, useAuthStatus } from '@/firebase';
+import { collection } from 'firebase/firestore';
+import { Ballot, Project } from '@/types';
 import { computeSchulzeResults } from '@/lib/tally';
 import { Trophy } from 'lucide-react';
 import { useEffect } from 'react';
@@ -18,15 +18,24 @@ interface AdminTrendsPanelProps {
  * Il effectue une requête LIST sur la collection 'ballots'.
  */
 export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPanelProps) {
+  const { isAdmin } = useAuthStatus();
   const db = useFirestore();
 
   useEffect(() => {
-    console.log("🛡️ [DIAGNOSTIC] ADMIN identifié : Lancement du LIST ballots...");
-  }, []);
+    if (isAdmin) {
+      console.log("🛡️ [DIAGNOSTIC] ADMIN identifié : Lancement du LIST ballots...");
+    }
+  }, [isAdmin]);
 
+  // Sécurité "Béton" : on retourne null si l'utilisateur n'est pas admin, 
+  // ce qui empêche useCollection de lancer la requête.
   const ballotsQuery = useMemoFirebase(() => {
+    if (!isAdmin) {
+      console.warn("⚠️ [SÉCURITÉ] Tentative de LIST ballots bloquée côté client (non-admin).");
+      return null;
+    }
     return collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
-  }, [db, assemblyId, voteId]);
+  }, [db, assemblyId, voteId, isAdmin]);
 
   const { data: ballots, isLoading } = useCollection<Ballot>(ballotsQuery);
 
@@ -36,6 +45,7 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
 
   const winnerProject = results?.winnerId ? projects.find(p => p.id === results.winnerId) : null;
 
+  if (!isAdmin) return null;
   if (isLoading) return <p className="text-[10px] text-gray-400 animate-pulse uppercase tracking-widest font-bold">Calcul des tendances...</p>;
 
   return (
