@@ -1,110 +1,140 @@
-
-import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import fs from 'fs';
-
 /**
- * SCRIPT DE MIGRATION SÉCURISÉ POUR EKKLESIA VOTE
+ * @fileOverview Script de migration sécurisé pour transférer les membres de la racine vers une assemblée cible.
+ * Utilise le SDK Firebase Admin.
  * 
- * Usage: node scripts/migrate-members.mjs <targetAssemblyId> [--dry-run]
- * 
- * Ce script copie les membres de la racine /members vers /assemblies/{id}/members.
- * - Ne jamais écraser un doc existant.
- * - Whitelist de champs stricte.
- * - Mode dry-run par défaut pour test.
+ * Usage:
+ * node scripts/migrate-members.mjs <targetAssemblyId> [--dry-run] [--limit N] [--only-admins]
  */
 
-const targetAssemblyId = process.argv[2];
-const isDryRun = process.argv.includes('--dry-run');
+import { initializeApp, cert } from 'firebase-admin/app';
+import { getFirestore, Timestamp } from 'firebase-admin/firestore';
+import { readFileSync } from 'fs';
+
+// Configuration
+const args = process.argv.slice(2);
+const targetAssemblyId = args.find(arg => !arg.startsWith('--'));
+const isDryRun = args.includes('--dry-run');
+const onlyAdmins = args.includes('--only-admins');
+const limitArg = args.find(arg => arg.startsWith('--limit='));
+const limit = limitArg ? parseInt(limitArg.split('=')[1], 10) : null;
 
 if (!targetAssemblyId) {
-  console.log('\n❌ Usage: node scripts/migrate-members.mjs <targetAssemblyId> [--dry-run]');
-  console.log('Exemple: node scripts/migrate-members.mjs default-assembly --dry-run\n');
+  console.error('❌ Erreur: targetAssemblyId manquant.');
+  console.log('Usage: node scripts/migrate-members.mjs <targetAssemblyId> [--dry-run] [--limit=N] [--only-admins]');
   process.exit(1);
 }
 
-const saPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-if (!saPath) {
-  console.error('\n❌ Erreur: La variable d\'environnement GOOGLE_APPLICATION_CREDENTIALS n\'est pas définie.');
-  console.log('Veuillez l\'exporter : export GOOGLE_APPLICATION_CREDENTIALS="chemin/vers/votre/cle.json"\n');
-  process.exit(1);
-}
-
-const serviceAccount = JSON.parse(fs.readFileSync(saPath, 'utf8'));
-
-initializeApp({
-  credential: cert(serviceAccount)
-});
-
+// Initialisation Firebase Admin
+// Note: Utilise les identifiants par défaut ou la variable d'environnement GOOGLE_APPLICATION_CREDENTIALS
+initializeApp();
 const db = getFirestore();
 
 async function migrate() {
-  console.log(`\n--- 🛡️  Ekklesia Member Migration Tool ---`);
-  console.log(`Cible : assemblies/${targetAssemblyId}/members`);
-  console.log(`Mode : ${isDryRun ? 'DRY RUN (Aucune écriture)' : 'LIVE (Écriture en cours)'}\n`);
+  console.log(`🚀 Démarrage de la migration vers l'assemblée: ${targetAssemblyId}`);
+  if (isDryRun) console.log('⚠️ MODE DRY-RUN ACTIVÉ (Aucune écriture)');
+  if (onlyAdmins) console.log('🛡️ FILTRE: Uniquement les administrateurs');
+  if (limit) console.log(`🔢 LIMITE: ${limit} membres`);
 
-  const legacyCol = db.collection('members');
-  const snapshot = await legacyCol.get();
+  const stats = {
+    totalLegacy: 0,
+    toMigrate: 0,
+    migrated: 0,
+    skipped: 0,
+    errors: 0
+  };
 
-  let migrated = 0;
-  let skipped = 0;
-  let errors = 0;
+  try {
+    const legacyRef = db.collection('members');
+    const snapshot = await legacyRef.get();
+    stats.totalLegacy = snapshot.size;
 
-  for (const doc of snapshot.docs) {
-    const uid = doc.id;
-    const data = doc.data();
+    console.log(`📋 ${stats.totalLegacy} membres trouvés à la racine.`);
 
-    // Whitelist des champs autorisés pour la migration
-    const payload = {
-      id: uid,
-      email: data.email || '',
-      role: data.role || 'member',
-      status: data.status || 'pending',
-      createdAt: data.createdAt || data.joinedAt || new Date().toISOString(),
-      displayName: data.displayName || '',
-      updatedAt: new Date().toISOString(),
-      migratedFromRoot: true
-    };
+    let processedCount = 0;
 
-    const targetRef = db.collection('assemblies').doc(targetAssemblyId).collection('members').doc(uid);
-    
-    // VÉRIFICATION DE SÉCURITÉ : Ne pas écraser
-    const targetSnap = await targetRef.get();
-    if (targetSnap.exists) {
-      console.log(`[-] ${uid}: Déjà présent dans ${targetAssemblyId}. Skip.`);
-      skipped++;
-      continue;
-    }
+    for (const doc of snapshot.docs) {
+      if (limit && processedCount >= limit) break;
 
-    if (isDryRun) {
-      console.log(`[DRY] ${uid}: Prêt pour migration en tant que ${payload.role}/${payload.status} (${payload.email})`);
-      migrated++;
-    } else {
-      try {
-        await targetRef.set(payload);
-        console.log(`[OK] ${uid}: Migré avec succès.`);
-        migrated++;
-      } catch (e) {
-        console.log(`[ERR] ${uid}: Échec - ${e.message}`);
-        errors++;
+      const data = doc.data();
+      const uid = doc.id;
+
+      // Filtre Admin
+      if (onlyAdmins && data.role !== 'admin') continue;
+
+      processedCount++;
+      stats.toMigrate++;
+
+      // 1. Normalisation du Rôle
+      let role = 'member';
+      if (data.role === 'admin') role = 'admin';
+
+      // 2. Normalisation du Statut
+      let status = 'pending';
+      const validStatuses = ['active', 'pending', 'suspended'];
+      if (validStatuses.includes(data.status)) {
+        status = data.status;
+      }
+
+      // 3. Gestion des Timestamps (createdAt / updatedAt)
+      let createdAt = Timestamp.now();
+      const rawCreated = data.createdAt || data.joinedAt;
+      if (rawCreated) {
+        if (rawCreated instanceof Timestamp) {
+          createdAt = rawCreated;
+        } else if (typeof rawCreated === 'string') {
+          createdAt = Timestamp.fromDate(new Date(rawCreated));
+        } else if (rawCreated._seconds) {
+          createdAt = new Timestamp(rawCreated._seconds, rawCreated._nanoseconds || 0);
+        }
+      }
+
+      // 4. Préparation du document cible
+      const targetDocRef = db.collection('assemblies').doc(targetAssemblyId).collection('members').doc(uid);
+      
+      // Vérification existence
+      const targetSnap = await targetDocRef.get();
+      if (targetSnap.exists()) {
+        console.log(`[SKIP] Member ${uid} already exists in target.`);
+        stats.skipped++;
+        continue;
+      }
+
+      const newData = {
+        id: uid,
+        email: data.email || '',
+        displayName: data.displayName || '',
+        role: role,
+        status: status,
+        createdAt: createdAt,
+        updatedAt: Timestamp.now()
+      };
+
+      if (isDryRun) {
+        console.log(`[DRY-RUN] Would migrate ${uid} (${role}, ${status})`);
+        stats.migrated++;
+      } else {
+        try {
+          await targetDocRef.set(newData);
+          console.log(`[OK] Migrated ${uid}`);
+          stats.migrated++;
+        } catch (err) {
+          console.error(`[ERROR] Failed to migrate ${uid}:`, err.message);
+          stats.errors++;
+        }
       }
     }
-  }
 
-  console.log(`\n--- 📊 Résumé Final ---`);
-  console.log(`Anciens profils trouvés : ${snapshot.size}`);
-  console.log(`Migrés                  : ${migrated}`);
-  console.log(`Ignorés (déjà présents) : ${skipped}`);
-  console.log(`Erreurs                 : ${errors}`);
-  
-  if (isDryRun) {
-    console.log(`\n💡 NOTE: Ceci était une simulation. Lancez sans --dry-run pour appliquer les changements.\n`);
-  } else {
-    console.log(`\n✅ Migration terminée.\n`);
+    console.log('\n--- RÉSUMÉ FINAL ---');
+    console.log(`Total Racine      : ${stats.totalLegacy}`);
+    console.log(`Cibles Identifiées: ${stats.toMigrate}`);
+    console.log(`Migrés            : ${stats.migrated}`);
+    console.log(`Ignorés (existants): ${stats.skipped}`);
+    console.log(`Erreurs           : ${stats.errors}`);
+    console.log('--------------------\n');
+
+  } catch (error) {
+    console.error('❌ Erreur critique pendant la migration:', error);
   }
 }
 
-migrate().catch(err => {
-  console.error('\n❌ Erreur fatale lors de la migration:', err);
-  process.exit(1);
-});
+migrate();
