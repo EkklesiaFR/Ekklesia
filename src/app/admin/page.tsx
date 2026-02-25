@@ -16,7 +16,6 @@ import {
   getDocs,
   writeBatch,
   limit,
-  orderBy,
   where
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -61,36 +60,28 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { 
   Plus, 
-  Calendar, 
   Play, 
-  ChevronRight, 
   Loader2, 
-  Users,
   MoreHorizontal,
-  RefreshCw,
-  AlertTriangle,
   Database,
   Wrench,
-  Trophy
+  Trophy,
+  ShieldAlert,
+  AlertTriangle
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
-import { format } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { PlaceHolderImages } from '@/lib/placeholder-images';
-import Image from 'next/image';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { computeSchulzeResults } from '@/lib/tally';
 
 /**
  * AdminContent contient TOUTE la logique de la page d'administration.
- * Ce composant ne doit être monté QUE par AdminPage après vérification du rôle.
+ * Ce composant ne contient des hooks Firestore QUE s'il est monté pour un Admin.
  */
 function AdminContent() {
   const { user } = useUser();
@@ -108,7 +99,7 @@ function AdminContent() {
   const [newVoteQuestion, setNewVoteQuestion] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
 
-  // Requêtes Firestore
+  // Requêtes Firestore isolées dans ce composant
   const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
   const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
 
@@ -159,7 +150,7 @@ function AdminContent() {
         projectIds: selectedProjectIds,
         state: 'draft',
         ballotCount: 0,
-        eligibleCount: members?.length || 100,
+        eligibleCount: 0, // Initialisé à 0, calculé à l'ouverture
         createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
@@ -210,12 +201,32 @@ function AdminContent() {
       if (votesSnap.empty) return;
       const voteDoc = votesSnap.docs[0];
       const batch = writeBatch(db);
-      batch.update(assemblyRef, { state: newState, activeVoteId: newState === 'open' ? voteDoc.id : null, updatedAt: serverTimestamp() });
-      batch.update(voteDoc.ref, { state: newState, updatedAt: serverTimestamp() });
+
+      if (newState === 'open') {
+        // Calcul dynamique des membres actifs au moment de l'ouverture
+        const activeMembersSnap = await getDocs(query(collection(db, 'members'), where('status', '==', 'active')));
+        const eligibleCount = activeMembersSnap.size;
+
+        batch.update(voteDoc.ref, { 
+          state: newState, 
+          eligibleCount: eligibleCount,
+          openedAt: serverTimestamp(),
+          updatedAt: serverTimestamp() 
+        });
+      } else {
+        batch.update(voteDoc.ref, { state: newState, updatedAt: serverTimestamp() });
+      }
+
+      batch.update(assemblyRef, { 
+        state: newState, 
+        activeVoteId: newState === 'open' ? voteDoc.id : null, 
+        updatedAt: serverTimestamp() 
+      });
+
       await batch.commit();
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'verrouillée'}` });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Erreur" });
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de mettre à jour l'état de la session." });
     } finally {
       setIsSubmitting(false);
     }
@@ -343,7 +354,10 @@ function AdminContent() {
                     <div className="flex items-center gap-4">{getStatusBadge(assembly.state)}</div>
                     <div className="space-y-1">
                       <h3 className="text-2xl font-bold">{assembly.title}</h3>
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground mt-2">{sessionVote?.ballotCount || 0} bulletins reçus</p>
+                      <div className="flex items-center gap-6 mt-2">
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground">{sessionVote?.ballotCount || 0} bulletins reçus</p>
+                        <p className="text-[10px] uppercase font-bold text-primary">{sessionVote?.eligibleCount || 0} éligibles</p>
+                      </div>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
@@ -443,16 +457,30 @@ export default function AdminPage() {
 
   return (
     <RequireActiveMember>
-      <MainLayout role="admin" statusText="Administration">
-        {/* Isolation "Béton" : on ne monte AdminContent QUE si l'utilisateur est admin */}
-        {!isMemberLoading && isAdmin ? (
-          <AdminContent />
-        ) : (
+      <MainLayout statusText="Administration">
+        {isMemberLoading ? (
           <div className="flex flex-col items-center justify-center py-32 space-y-6">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
               Vérification des accès...
             </p>
+          </div>
+        ) : isAdmin ? (
+          <AdminContent />
+        ) : (
+          <div className="flex flex-col items-center justify-center py-32 space-y-8 text-center animate-in fade-in duration-700">
+            <div className="relative">
+              <ShieldAlert className="h-20 w-20 text-destructive" />
+              <div className="absolute -bottom-2 -right-2 bg-white rounded-full p-2 border border-border">
+                <AlertTriangle className="h-6 w-6 text-destructive" />
+              </div>
+            </div>
+            <header className="space-y-4">
+              <h2 className="text-3xl font-bold tracking-tight">Accès refusé</h2>
+              <p className="text-muted-foreground max-w-md mx-auto italic">
+                Cette section nécessite des privilèges d'administration certifiés par le conseil.
+              </p>
+            </header>
           </div>
         )}
       </MainLayout>
