@@ -14,11 +14,8 @@ import {
   doc, 
   updateDoc, 
   collectionGroup,
-  deleteDoc,
   getDocs,
   writeBatch,
-  getDoc,
-  where,
   limit
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
@@ -33,6 +30,16 @@ import {
   DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { 
   Select, 
@@ -63,18 +70,16 @@ import {
   Play, 
   Square, 
   ChevronRight, 
-  Archive,
-  Wand2,
-  LayoutGrid,
-  Loader2,
-  Trash2,
+  Loader2, 
   Users,
   MoreHorizontal,
   Eye,
   Shield,
   UserCheck,
   Ban,
-  Clock
+  Clock,
+  UserX,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile } from '@/types';
@@ -90,12 +95,15 @@ function AdminContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedMember, setSelectedMember] = useState<MemberProfile | null>(null);
+  
+  // Promotion to Admin confirmation
+  const [confirmAdminPromote, setConfirmAdminPromote] = useState<string | null>(null);
 
   // Filters for members
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
-  // Form state
+  // Form state for sessions
   const [newSessionTitle, setNewSessionTitle] = useState('');
   const [newVoteQuestion, setNewVoteQuestion] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
@@ -112,12 +120,10 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), orderBy('createdAt', 'desc')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // Members Query
   const membersQuery = useMemoFirebase(() => {
-    let q = query(collection(db, 'members'), orderBy('createdAt', 'desc'), limit(50));
-    return q;
+    return query(collection(db, 'members'), orderBy('createdAt', 'desc'), limit(100));
   }, [db]);
-  const { data: members, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
+  const { data: members } = useCollection<MemberProfile>(membersQuery);
 
   const filteredMembers = members?.filter(m => {
     const matchStatus = statusFilter === 'all' || m.status === statusFilter;
@@ -180,7 +186,10 @@ function AdminContent() {
       const assemblyRef = doc(db, 'assemblies', assemblyId);
       const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
       
-      if (votesSnap.empty) return;
+      if (votesSnap.empty) {
+        toast({ variant: "destructive", title: "Erreur", description: "Aucun vote trouvé pour cette assemblée." });
+        return;
+      }
 
       const voteDoc = votesSnap.docs[0];
       const voteRef = voteDoc.ref;
@@ -210,8 +219,11 @@ function AdminContent() {
 
   const updateMemberStatus = async (uid: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'members', uid), { status: newStatus, updatedAt: serverTimestamp() });
-      toast({ title: "Statut mis à jour" });
+      await updateDoc(doc(db, 'members', uid), { 
+        status: newStatus, 
+        updatedAt: serverTimestamp() 
+      });
+      toast({ title: "Statut mis à jour", description: `Le membre est désormais ${newStatus}.` });
     } catch (e) {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier le statut." });
     }
@@ -219,8 +231,11 @@ function AdminContent() {
 
   const updateMemberRole = async (uid: string, newRole: string) => {
     try {
-      await updateDoc(doc(db, 'members', uid), { role: newRole, updatedAt: serverTimestamp() });
-      toast({ title: "Rôle mis à jour" });
+      await updateDoc(doc(db, 'members', uid), { 
+        role: newRole, 
+        updatedAt: serverTimestamp() 
+      });
+      toast({ title: "Rôle mis à jour", description: `Rôle modifié : ${newRole}.` });
     } catch (e) {
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de modifier le rôle." });
     }
@@ -290,11 +305,11 @@ function AdminContent() {
                 <Input id="title" value={newSessionTitle} onChange={(e) => setNewSessionTitle(e.target.value)} className="rounded-none h-12" />
               </div>
               <div className="space-y-4">
-                <Label htmlFor="question" className="text-xs uppercase font-black tracking-widest text-muted-foreground">Question</Label>
+                <Label htmlFor="question" className="text-xs uppercase font-black tracking-widest text-muted-foreground">Question du vote</Label>
                 <Input id="question" value={newVoteQuestion} onChange={(e) => setNewVoteQuestion(e.target.value)} className="rounded-none h-12" />
               </div>
               <div className="space-y-4">
-                <Label className="text-xs uppercase font-black tracking-widest text-muted-foreground block mb-4">Projets (Min. 2)</Label>
+                <Label className="text-xs uppercase font-black tracking-widest text-muted-foreground block mb-4">Sélection des Projets (Min. 2)</Label>
                 <div className="grid grid-cols-1 gap-3 max-h-48 overflow-y-auto p-4 border border-border">
                   {projects?.map((project) => (
                     <div key={project.id} className="flex items-center space-x-3 p-2 hover:bg-secondary transition-colors">
@@ -428,18 +443,18 @@ function AdminContent() {
                   <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
                   <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
                   <TableHead className="text-[10px] font-black uppercase tracking-widest hidden md:table-cell">Connexion</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions rapides</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredMembers?.map((member) => (
-                  <TableRow key={member.id} className="hover:bg-secondary/10">
+                  <TableRow key={member.id} className="hover:bg-secondary/5">
                     <TableCell className="font-medium text-sm">{member.email}</TableCell>
                     <TableCell className="text-sm">{member.displayName || '-'}</TableCell>
                     <TableCell>{getStatusBadge(member.status)}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">
-                        {member.role === 'admin' ? <Shield className="h-3 w-3 mr-1" /> : null}
+                      <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px] gap-1">
+                        {member.role === 'admin' ? <Shield className="h-3 w-3" /> : null}
                         {member.role}
                       </Badge>
                     </TableCell>
@@ -447,35 +462,56 @@ function AdminContent() {
                       {member.lastLoginAt?.seconds ? format(new Date(member.lastLoginAt.seconds * 1000), 'dd/MM HH:mm') : 'Jamais'}
                     </TableCell>
                     <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <MoreHorizontal className="h-4 w-4" />
+                      <div className="flex items-center justify-end gap-2">
+                        {member.status !== 'active' && (
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => updateMemberStatus(member.id, 'active')}
+                            className="h-8 px-3 rounded-none border-green-200 text-green-600 hover:bg-green-50 hover:text-green-700 text-[10px] font-bold uppercase"
+                          >
+                            <UserCheck className="h-3 w-3 mr-1" /> Activer
                           </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="rounded-none w-48">
-                          <DropdownMenuLabel className="text-[10px] uppercase font-bold">Action Membre</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => setSelectedMember(member)} className="text-xs">
-                            <Eye className="h-3.5 w-3.5 mr-2" /> Voir la fiche
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuLabel className="text-[10px] uppercase font-bold">Changer Statut</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">
-                            <UserCheck className="h-3.5 w-3.5 mr-2" /> Activer
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">
-                            <Ban className="h-3.5 w-3.5 mr-2" /> Bloquer
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuLabel className="text-[10px] uppercase font-bold">Changer Rôle</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'admin')} className="text-xs">
-                            <Shield className="h-3.5 w-3.5 mr-2" /> Passer Admin
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'member')} className="text-xs">
-                            Passer Membre
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                        )}
+                        
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end" className="rounded-none w-56">
+                            <DropdownMenuLabel className="text-[10px] uppercase font-bold">Fiche détaillée</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => setSelectedMember(member)} className="text-xs">
+                              <Eye className="h-3.5 w-3.5 mr-2" /> Voir les informations
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Statut</DropdownMenuLabel>
+                            <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">
+                              <UserCheck className="h-3.5 w-3.5 mr-2" /> Activer le compte
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs text-orange-600">
+                              <RefreshCw className="h-3.5 w-3.5 mr-2" /> Remettre en attente
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">
+                              <Ban className="h-3.5 w-3.5 mr-2" /> Bloquer l'accès
+                            </DropdownMenuItem>
+                            
+                            <DropdownMenuSeparator />
+                            <DropdownMenuLabel className="text-[10px] uppercase font-bold">Gestion Rôle</DropdownMenuLabel>
+                            {member.role === 'member' ? (
+                              <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold text-primary">
+                                <Shield className="h-3.5 w-3.5 mr-2" /> Promouvoir Admin
+                              </DropdownMenuItem>
+                            ) : (
+                              <DropdownMenuItem onClick={() => updateMemberRole(member.id, 'member')} className="text-xs">
+                                <Users className="h-3.5 w-3.5 mr-2" /> Rétrograder Membre
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -517,8 +553,15 @@ function AdminContent() {
             </div>
             <div className="space-y-1 pt-4 border-t border-border">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Activités</p>
-              <div className="flex items-center gap-4 text-xs text-muted-foreground mt-2">
-                <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Inscrit le {selectedMember?.joinedAt?.seconds ? format(new Date(selectedMember.joinedAt.seconds * 1000), 'dd/MM/yyyy') : '-'}</span>
+              <div className="flex flex-col gap-2 text-xs text-muted-foreground mt-2">
+                <span className="flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> 
+                  Inscrit le {selectedMember?.joinedAt?.seconds ? format(new Date(selectedMember.joinedAt.seconds * 1000), 'dd/MM/yyyy') : '-'}
+                </span>
+                <span className="flex items-center gap-1">
+                  <Play className="h-3 w-3" /> 
+                  Dernière connexion : {selectedMember?.lastLoginAt?.seconds ? format(new Date(selectedMember.lastLoginAt.seconds * 1000), 'dd/MM HH:mm') : 'Jamais'}
+                </span>
               </div>
             </div>
           </div>
@@ -527,6 +570,33 @@ function AdminContent() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialog for Admin Promotion */}
+      <AlertDialog open={!!confirmAdminPromote} onOpenChange={(open) => !open && setConfirmAdminPromote(null)}>
+        <AlertDialogContent className="rounded-none">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="uppercase font-black tracking-tight">Confirmer la promotion</AlertDialogTitle>
+            <AlertDialogDescription className="text-sm">
+              Êtes-vous sûr de vouloir accorder des privilèges d&apos;administrateur à ce membre ? 
+              Un administrateur peut modifier les sessions de vote, les projets et le statut de tous les autres membres.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                if (confirmAdminPromote) {
+                  updateMemberRole(confirmAdminPromote, 'admin');
+                  setConfirmAdminPromote(null);
+                }
+              }}
+              className="rounded-none bg-primary text-white hover:bg-primary/90 uppercase font-bold text-xs"
+            >
+              Confirmer la promotion
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
