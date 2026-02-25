@@ -23,7 +23,7 @@ import { toast } from '@/hooks/use-toast';
 import { Loader2, Calendar } from 'lucide-react';
 import { Project } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
-import { DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
+import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
 interface CreateSessionModalProps {
   isOpen: boolean;
@@ -53,25 +53,27 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
 
     setIsSubmitting(true);
     try {
+      /**
+       * HANDLER : Créer une session
+       * - Chemin : /assemblies/{DEFAULT_ASSEMBLY_ID}
+       * - Chemin : /assemblies/{DEFAULT_ASSEMBLY_ID}/votes/{voteId}
+       * - Transaction atomique pour garantir l'intégrité du pointeur activeVoteId
+       */
       await runTransaction(db, async (transaction) => {
-        // RÉFÉRENCE UNIQUE SUR L'ASSEMBLÉE PAR DÉFAUT
         const assemblyRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
-        const votesCollectionRef = collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes');
+        const voteRef = doc(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'));
         
-        // Génération de l'ID pour le NOUVEAU vote uniquement (pas pour l'assemblée)
-        const voteRef = doc(votesCollectionRef);
-
         const now = serverTimestamp();
 
-        // 1. MISE À JOUR de l'assemblée unique (Source de vérité)
+        // 1. Mise à jour du document parent (Assembly)
         transaction.update(assemblyRef, {
           title: title,
           state: 'open',
-          updatedAt: now,
-          activeVoteId: voteRef.id
+          activeVoteId: voteRef.id,
+          updatedAt: now
         });
 
-        // 2. CRÉATION du document de scrutin (vote)
+        // 2. Création du document de vote fils
         transaction.set(voteRef, {
           id: voteRef.id,
           assemblyId: DEFAULT_ASSEMBLY_ID,
@@ -88,9 +90,9 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
 
       toast({ title: "Session lancée", description: "Le scrutin est désormais ouvert pour tous les membres." });
       onClose();
-    } catch (e) {
-      console.error(e);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de lancer la session. Vérifiez vos droits admin." });
+    } catch (e: any) {
+      console.error("[ADMIN] Failed to create session:", e);
+      toast({ variant: "destructive", title: "Erreur", description: `Échec du lancement : ${e.message}` });
     } finally {
       setIsSubmitting(false);
     }
@@ -102,7 +104,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
         <DialogHeader className="space-y-4">
           <DialogTitle className="text-3xl font-bold">Nouvelle Session</DialogTitle>
           <DialogDescription className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
-            Configurez un nouveau scrutin pour l'assemblée en cours.
+            Configurez un nouveau scrutin pour l'assemblée par défaut.
           </DialogDescription>
         </DialogHeader>
 
@@ -135,9 +137,6 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
                   </div>
                 </div>
               ))}
-              {availableProjects.length === 0 && (
-                <p className="text-xs italic text-muted-foreground p-4 text-center">Aucun projet "candidat" n'est disponible.</p>
-              )}
             </div>
           </div>
 

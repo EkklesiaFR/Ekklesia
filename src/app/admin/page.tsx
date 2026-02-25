@@ -7,7 +7,8 @@ import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
-import { useAuthStatus, DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 import { 
   collection, 
   query, 
@@ -53,7 +54,6 @@ function AdminContent() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Queries localisées sur l'assemblée par défaut
   const votesQuery = useMemoFirebase(() => {
     return query(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'), orderBy('createdAt', 'desc'));
   }, [db]);
@@ -81,7 +81,6 @@ function AdminContent() {
 
   const closeVote = async (vote: Vote) => {
     try {
-      // On ferme l'assemblée ET le vote spécifique
       await updateDoc(doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), { 
         state: 'locked', 
         updatedAt: serverTimestamp() 
@@ -119,11 +118,6 @@ function AdminContent() {
 
         <TabsContent value="sessions" className="space-y-6">
            <div className="grid gap-6">
-             {votes?.length === 0 && (
-               <div className="p-12 border border-dashed text-center italic text-muted-foreground bg-secondary/5">
-                 Aucun scrutin configuré.
-               </div>
-             )}
              {votes?.map(v => (
                <div key={v.id} className="p-8 border border-border bg-white flex flex-col md:flex-row md:items-center justify-between gap-6">
                  <div className="space-y-3">
@@ -131,7 +125,6 @@ function AdminContent() {
                      <Badge className={v.state === 'open' ? "bg-green-600 rounded-none uppercase text-[9px]" : "bg-black rounded-none uppercase text-[9px]"}>
                        {v.state === 'open' ? 'Ouvert' : 'Archives'}
                      </Badge>
-                     <span className="text-[10px] font-mono text-muted-foreground">ID: {v.id}</span>
                    </div>
                    <h3 className="text-2xl font-bold">{v.question}</h3>
                  </div>
@@ -141,9 +134,6 @@ function AdminContent() {
                        <XCircle className="h-3 w-3" /> Clôturer
                      </Button>
                    )}
-                   <Button variant="outline" className="rounded-none h-10 border-black uppercase text-xs font-bold gap-2">
-                     <Settings className="h-3 w-3" /> Gérer
-                   </Button>
                  </div>
                </div>
              ))}
@@ -171,44 +161,26 @@ function AdminContent() {
                 </div>
               </div>
             ))}
-            {projects?.length === 0 && <p className="text-center italic text-muted-foreground p-12">Aucun projet déposé.</p>}
           </div>
         </TabsContent>
 
         <TabsContent value="members" className="space-y-8">
-           <div className="flex items-center justify-between">
-              <h2 className="text-xl font-bold">Annuaire ({members?.length || 0})</h2>
-              <div className="flex gap-2">
-                 <Select value={statusFilter} onValueChange={setStatusFilter}>
-                   <SelectTrigger className="w-[150px] rounded-none h-10"><SelectValue placeholder="Statut" /></SelectTrigger>
-                   <SelectContent>
-                     <SelectItem value="all">Tous</SelectItem>
-                     <SelectItem value="active">Actif</SelectItem>
-                     <SelectItem value="pending">En attente</SelectItem>
-                   </SelectContent>
-                 </Select>
-              </div>
-           </div>
            <div className="border border-border bg-white overflow-hidden">
              <Table>
                <TableHeader className="bg-secondary/30">
                  <TableRow className="hover:bg-transparent">
                    <TableHead className="font-bold text-[10px] uppercase tracking-widest">Email</TableHead>
                    <TableHead className="font-bold text-[10px] uppercase tracking-widest">Statut</TableHead>
-                   <TableHead className="font-bold text-[10px] uppercase tracking-widest text-right">Actions</TableHead>
                  </TableRow>
                </TableHeader>
                <TableBody>
-                 {members?.filter(m => statusFilter === 'all' || m.status === statusFilter).map((m) => (
+                 {members?.map((m) => (
                    <TableRow key={m.id} className="hover:bg-secondary/10">
                      <TableCell className="font-medium">{m.email}</TableCell>
                      <TableCell>
                         <Badge className={m.status === 'active' ? "bg-green-600 rounded-none text-[9px]" : "bg-orange-500 rounded-none text-[9px]"}>
                           {m.status}
                         </Badge>
-                     </TableCell>
-                     <TableCell className="text-right">
-                       <Button variant="ghost" size="sm" className="text-[10px] font-bold uppercase">Gérer</Button>
                      </TableCell>
                    </TableRow>
                  ))}

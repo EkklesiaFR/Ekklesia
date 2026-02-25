@@ -6,11 +6,9 @@ import { MobileNav } from './MobileNav';
 import { useFirestore, useMemoFirebase, useDoc } from '@/firebase';
 import { doc } from 'firebase/firestore';
 import { Assembly } from '@/types';
-import { useAuthStatus, DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
-/**
- * MainLayout gère dynamiquement l'état "Vote Ouvert" basé sur l'assemblée unique.
- */
 export function MainLayout({ 
   children, 
   role, 
@@ -23,7 +21,6 @@ export function MainLayout({
   const db = useFirestore();
   const { isActiveMember, isMemberLoading } = useAuthStatus();
 
-  // Détection d'un vote ouvert sur l'assemblée par défaut
   const assemblyRef = useMemoFirebase(() => {
     if (isMemberLoading || !isActiveMember) return null;
     return doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
