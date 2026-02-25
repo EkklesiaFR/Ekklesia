@@ -28,12 +28,10 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const uid = user?.uid;
 
   useEffect(() => {
-    // Reset state immediately on UID change to prevent access leak/flicker
     setMember(null);
     setIsMemberLoading(true);
 
     if (isUserLoading) return;
-
     if (!uid) {
       setIsMemberLoading(false);
       return;
@@ -41,26 +39,18 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
     const memberRef = doc(db, 'members', uid);
     
-    // Logic for automatic profile creation and login updates
     const syncProfile = async () => {
       try {
         const docSnap = await getDoc(memberRef);
         
         if (docSnap.exists()) {
-          // Existing user: Update last login and basic info only
-          // We do not overwrite role, status, or joinedAt
           await updateDoc(memberRef, {
             email: user.email || '',
             displayName: user.displayName || '',
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
-          
-          if (process.env.NODE_ENV !== "production") {
-            console.log("[AuthStatus] Profile updated for:", uid);
-          }
         } else {
-          // New user: Create profile with default 'pending' status
           await setDoc(memberRef, {
             id: uid,
             email: user.email || '',
@@ -72,22 +62,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
-          
-          if (process.env.NODE_ENV !== "production") {
-            console.log("[AuthStatus] New profile created for:", uid);
-          }
         }
       } catch (error: any) {
-        if (process.env.NODE_ENV !== "production") {
-          console.error("[AuthStatus] Sync Error:", error.code, error.message);
-        }
+        console.error("[AuthStatus] Sync Error:", error.code, error.message);
       }
     };
 
-    // Trigger sync
     syncProfile();
 
-    // Real-time subscription to member document
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
@@ -103,18 +85,12 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         } as MemberProfile;
         
         setMember(profile);
-        
-        if (process.env.NODE_ENV !== "production") {
-          console.log("[AuthStatus] Member resolved:", { uid, status: profile.status, role: profile.role });
-        }
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
-      if (process.env.NODE_ENV !== "production") {
-        console.error("[AuthStatus] Snapshot Error:", error.code, error.message);
-      }
+      console.error("[AuthStatus] Snapshot Error:", error.code, error.message);
       setMember(null);
       setIsMemberLoading(false);
     });
@@ -123,7 +99,9 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   }, [uid, isUserLoading, db, user?.email, user?.displayName]);
 
   const isActiveMember = member?.status === 'active';
-  const isAdmin = member?.role === 'admin' && isActiveMember;
+  // Un admin est défini par son rôle, indépendamment de son statut actif
+  // (pour permettre l'accès initial même si status=pending)
+  const isAdmin = member?.role === 'admin';
 
   return (
     <AuthStatusContext.Provider value={{ 
