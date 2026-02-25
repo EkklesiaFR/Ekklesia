@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useAuthStatus } from '@/firebase';
 import { 
   collection, 
   query, 
@@ -69,16 +69,10 @@ import {
   Plus, 
   Calendar, 
   Play, 
-  Square, 
   ChevronRight, 
   Loader2, 
   Users,
   MoreHorizontal,
-  Eye,
-  Shield,
-  UserCheck,
-  Ban,
-  Clock,
   RefreshCw,
   AlertTriangle,
   Database,
@@ -94,6 +88,10 @@ import Image from 'next/image';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { computeSchulzeResults } from '@/lib/tally';
 
+/**
+ * AdminContent contient TOUTE la logique de la page d'administration.
+ * Ce composant ne doit être monté QUE par AdminPage après vérification du rôle.
+ */
 function AdminContent() {
   const { user } = useUser();
   const db = useFirestore();
@@ -102,21 +100,17 @@ function AdminContent() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRepairing, setIsRepairing] = useState(false);
   
-  // Promotion to Admin confirmation
   const [confirmAdminPromote, setConfirmAdminPromote] = useState<string | null>(null);
-
-  // Filters for members
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [roleFilter, setRoleFilter] = useState<string>('all');
 
-  // Form state for sessions
   const [newSessionTitle, setNewSessionTitle] = useState('');
   const [newVoteQuestion, setNewVoteQuestion] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [startsAt, setStartsAt] = useState('');
   const [endsAt, setEndsAt] = useState('');
 
-  // 1. Data Fetching
+  // Requêtes Firestore
   const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
   const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
 
@@ -143,33 +137,23 @@ function AdminContent() {
 
   const pendingCount = members?.filter(m => m.status === 'pending').length || 0;
 
-  // 2. Actions
   const handleCreateSession = async () => {
     if (!newSessionTitle || !newVoteQuestion || selectedProjectIds.length < 2 || !user) {
-      toast({ 
-        variant: "destructive", 
-        title: "Champs manquants", 
-        description: "Veuillez remplir le titre, la question et sélectionner au moins 2 projets." 
-      });
+      toast({ variant: "destructive", title: "Champs manquants", description: "Veuillez remplir le titre et sélectionner au moins 2 projets." });
       return;
     }
-
     setIsSubmitting(true);
     try {
       const batch = writeBatch(db);
       const assemblyRef = doc(collection(db, 'assemblies'));
       const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
-
       batch.set(assemblyRef, {
         title: newSessionTitle,
         state: 'draft',
         createdAt: serverTimestamp(),
         createdBy: user.uid,
-        startsAt: startsAt ? new Date(startsAt) : null,
-        endsAt: endsAt ? new Date(endsAt) : null,
         activeVoteId: voteRef.id,
       });
-
       batch.set(voteRef, {
         id: voteRef.id,
         assemblyId: assemblyRef.id,
@@ -181,14 +165,12 @@ function AdminContent() {
         createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
-
       await batch.commit();
-
-      toast({ title: "Session créée", description: "L'assemblée et le vote sont en brouillon." });
+      toast({ title: "Session créée" });
       setIsDialogOpen(false);
       resetForm();
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer la session." });
+      toast({ variant: "destructive", title: "Erreur" });
     } finally {
       setIsSubmitting(false);
     }
@@ -199,41 +181,24 @@ function AdminContent() {
     try {
       const ballotsSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots'));
       const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
-      
       if (ballots.length === 0) {
-        toast({ variant: "destructive", title: "Aucun bulletin", description: "Impossible de calculer les résultats sans bulletins." });
+        toast({ variant: "destructive", title: "Aucun bulletin" });
         return;
       }
-
       const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
-      const voteSnap = await getDocs(query(collection(db, 'assemblies', assemblyId, 'votes'), where('id', '==', voteId)));
-      const voteData = voteSnap.docs[0].data() as Vote;
-
-      const results = computeSchulzeResults(voteData.projectIds, ballots);
-
+      const results = computeSchulzeResults(projects?.filter(p => selectedProjectIds.includes(p.id)).map(p => p.id) || [], ballots);
       const batch = writeBatch(db);
       batch.update(voteRef, {
-        results: {
-          winnerId: results.winnerId,
-          fullRanking: results.ranking,
-          computedAt: serverTimestamp(),
-          total: ballots.length
-        },
+        results: { winnerId: results.winnerId, fullRanking: results.ranking, computedAt: serverTimestamp(), total: ballots.length },
         ballotCount: ballots.length,
         state: 'locked',
         updatedAt: serverTimestamp()
       });
-
-      batch.update(doc(db, 'assemblies', assemblyId), {
-        state: 'locked',
-        updatedAt: serverTimestamp()
-      });
-
+      batch.update(doc(db, 'assemblies', assemblyId), { state: 'locked', updatedAt: serverTimestamp() });
       await batch.commit();
-      toast({ title: "Résultats publiés", description: "Le scrutin est verrouillé et les résultats sont officiels." });
+      toast({ title: "Résultats publiés" });
     } catch (e: any) {
-      console.error(e);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de publier les résultats." });
+      toast({ variant: "destructive", title: "Erreur" });
     } finally {
       setIsSubmitting(false);
     }
@@ -244,31 +209,15 @@ function AdminContent() {
       setIsSubmitting(true);
       const assemblyRef = doc(db, 'assemblies', assemblyId);
       const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
-      
-      if (votesSnap.empty) {
-        toast({ variant: "destructive", title: "Erreur", description: "Aucun vote trouvé." });
-        return;
-      }
-
+      if (votesSnap.empty) return;
       const voteDoc = votesSnap.docs[0];
-      const voteRef = voteDoc.ref;
-
       const batch = writeBatch(db);
-      batch.update(assemblyRef, { 
-        state: newState,
-        activeVoteId: newState === 'open' ? voteDoc.id : null,
-        updatedAt: serverTimestamp()
-      });
-      
-      batch.update(voteRef, { 
-        state: newState,
-        updatedAt: serverTimestamp()
-      });
-
+      batch.update(assemblyRef, { state: newState, activeVoteId: newState === 'open' ? voteDoc.id : null, updatedAt: serverTimestamp() });
+      batch.update(voteDoc.ref, { state: newState, updatedAt: serverTimestamp() });
       await batch.commit();
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'verrouillée'}` });
     } catch (e: any) {
-      toast({ variant: "destructive", title: "Erreur", description: "Action impossible." });
+      toast({ variant: "destructive", title: "Erreur" });
     } finally {
       setIsSubmitting(false);
     }
@@ -276,26 +225,16 @@ function AdminContent() {
 
   const updateMemberStatus = async (uid: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'members', uid), { 
-        status: newStatus, 
-        updatedAt: serverTimestamp() 
-      });
+      await updateDoc(doc(db, 'members', uid), { status: newStatus, updatedAt: serverTimestamp() });
       toast({ title: "Statut mis à jour" });
-    } catch (e) {
-      toast({ variant: "destructive", title: "Erreur" });
-    }
+    } catch (e) { toast({ variant: "destructive", title: "Erreur" }); }
   };
 
   const updateMemberRole = async (uid: string, newRole: string) => {
     try {
-      await updateDoc(doc(db, 'members', uid), { 
-        role: newRole, 
-        updatedAt: serverTimestamp() 
-      });
+      await updateDoc(doc(db, 'members', uid), { role: newRole, updatedAt: serverTimestamp() });
       toast({ title: "Rôle mis à jour" });
-    } catch (e) {
-      toast({ variant: "destructive", title: "Erreur" });
-    }
+    } catch (e) { toast({ variant: "destructive", title: "Erreur" }); }
   };
 
   const handleRepairMembers = async () => {
@@ -304,45 +243,16 @@ function AdminContent() {
       const snapshot = await getDocs(collection(db, 'members'));
       const batch = writeBatch(db);
       let fixedCount = 0;
-      let okCount = 0;
-
       snapshot.docs.forEach(memberDoc => {
         const data = memberDoc.data();
-        const needsRepair = !data.email || !data.status || !data.role || !data.id || data.displayName === undefined;
-
-        if (needsRepair) {
-          batch.update(memberDoc.ref, {
-            id: memberDoc.id,
-            email: data.email || "",
-            displayName: data.displayName || "",
-            status: data.status || "pending",
-            role: data.role || "member",
-            lastLoginAt: data.lastLoginAt || null,
-            updatedAt: serverTimestamp()
-          });
+        if (!data.id || !data.email || !data.status) {
+          batch.update(memberDoc.ref, { id: memberDoc.id, email: data.email || "", status: data.status || "pending", role: data.role || "member", updatedAt: serverTimestamp() });
           fixedCount++;
-        } else {
-          okCount++;
         }
       });
-
-      if (fixedCount > 0) {
-        await batch.commit();
-      }
-
-      toast({ 
-        title: "Réparation terminée", 
-        description: `${fixedCount} profils corrigés, ${okCount} déjà conformes.` 
-      });
-    } catch (e: any) {
-      toast({ 
-        variant: "destructive", 
-        title: "Erreur de réparation", 
-        description: e.message 
-      });
-    } finally {
-      setIsRepairing(false);
-    }
+      if (fixedCount > 0) await batch.commit();
+      toast({ title: "Réparation terminée", description: `${fixedCount} profils corrigés.` });
+    } catch (e: any) { toast({ variant: "destructive", title: "Erreur" }); } finally { setIsRepairing(false); }
   };
 
   const generateDemoProjects = async () => {
@@ -350,28 +260,20 @@ function AdminContent() {
     setIsGenerating(true);
     const demoData = [
       { title: "Pistes cyclables sécurisées", summary: "Aménagement de voies réservées aux vélos.", budget: "45 000 €", imageUrl: PlaceHolderImages[4].imageUrl },
-      { title: "Rénovation de l'école primaire", summary: "Isolation thermique et modernisation.", budget: "120 000 €", imageUrl: PlaceHolderImages[1].imageUrl },
-      { title: "Festival des Arts de Rue", summary: "Organisation d'un événement annuel gratuit.", budget: "15 000 €", imageUrl: PlaceHolderImages[3].imageUrl }
+      { title: "Rénovation de l'école primaire", summary: "Isolation thermique et modernisation.", budget: "120 000 €", imageUrl: PlaceHolderImages[1].imageUrl }
     ];
-
     try {
       for (const item of demoData) {
         await addDoc(collection(db, 'projects'), { ...item, status: "candidate", createdAt: serverTimestamp(), updatedAt: serverTimestamp(), ownerUid: user.uid });
       }
       toast({ title: "Projets générés" });
-    } catch (e) {
-      toast({ variant: "destructive", title: "Erreur" });
-    } finally {
-      setIsGenerating(false);
-    }
+    } catch (e) { toast({ variant: "destructive", title: "Erreur" }); } finally { setIsGenerating(false); }
   };
 
   const resetForm = () => {
     setNewSessionTitle('');
     setNewVoteQuestion('');
     setSelectedProjectIds([]);
-    setStartsAt('');
-    setEndsAt('');
   };
 
   const getStatusBadge = (state: string) => {
@@ -379,7 +281,6 @@ function AdminContent() {
       case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
       case 'locked': return <Badge variant="secondary">Verrouillé</Badge>;
       case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>;
-      case 'blocked': return <Badge variant="destructive">Bloqué</Badge>;
       default: return <Badge variant="outline">Brouillon</Badge>;
     }
   };
@@ -388,32 +289,28 @@ function AdminContent() {
     <div className="space-y-12">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <h1 className="text-4xl font-bold">Administration</h1>
-        
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button className="rounded-none h-12 px-6 font-bold uppercase tracking-widest text-xs gap-2">
-              <Plus className="h-4 w-4" />
-              Créer une session
+              <Plus className="h-4 w-4" /> Créer une session
             </Button>
           </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-none p-8">
-            <DialogHeader className="space-y-4">
-              <DialogTitle className="text-2xl font-bold uppercase tracking-tight">Nouvelle Session</DialogTitle>
-            </DialogHeader>
+            <DialogHeader><DialogTitle className="text-2xl font-bold uppercase tracking-tight">Nouvelle Session</DialogTitle></DialogHeader>
             <div className="space-y-8 py-6">
               <div className="space-y-4">
                 <Label htmlFor="title" className="text-xs uppercase font-black tracking-widest text-muted-foreground">Titre</Label>
                 <Input id="title" value={newSessionTitle} onChange={(e) => setNewSessionTitle(e.target.value)} className="rounded-none h-12" />
               </div>
               <div className="space-y-4">
-                <Label htmlFor="question" className="text-xs uppercase font-black tracking-widest text-muted-foreground">Question du vote</Label>
+                <Label htmlFor="question" className="text-xs uppercase font-black tracking-widest text-muted-foreground">Question</Label>
                 <Input id="question" value={newVoteQuestion} onChange={(e) => setNewVoteQuestion(e.target.value)} className="rounded-none h-12" />
               </div>
               <div className="space-y-4">
-                <Label className="text-xs uppercase font-black tracking-widest text-muted-foreground block mb-4">Sélection des Projets (Min. 2)</Label>
+                <Label className="text-xs uppercase font-black tracking-widest text-muted-foreground block mb-4">Projets</Label>
                 <div className="grid grid-cols-1 gap-3 max-h-48 overflow-y-auto p-4 border border-border">
                   {projects?.map((project) => (
-                    <div key={project.id} className="flex items-center space-x-3 p-2 hover:bg-secondary transition-colors">
+                    <div key={project.id} className="flex items-center space-x-3 p-2 hover:bg-secondary">
                       <Checkbox id={`p-${project.id}`} checked={selectedProjectIds.includes(project.id)} onCheckedChange={(checked) => {
                         if (checked) setSelectedProjectIds([...selectedProjectIds, project.id]);
                         else setSelectedProjectIds(selectedProjectIds.filter(id => id !== project.id));
@@ -438,44 +335,28 @@ function AdminContent() {
           <TabsTrigger value="projects" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Projets</TabsTrigger>
           <TabsTrigger value="members" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Membres</TabsTrigger>
         </TabsList>
-        
         <TabsContent value="sessions" className="py-12 space-y-6">
           <div className="grid gap-6">
             {assemblies?.map((assembly) => {
               const sessionVote = allVotes?.find(v => v.assemblyId === assembly.id);
               return (
                 <div key={assembly.id} className="group border border-border p-8 bg-white hover:border-black transition-all flex flex-col md:flex-row md:items-center justify-between gap-8">
-                  <div className="space-y-4 max-w-xl">
-                    <div className="flex items-center gap-4">
-                      {getStatusBadge(assembly.state)}
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-2">
-                        <Calendar className="h-3 w-3" />
-                        {assembly.createdAt?.seconds ? format(new Date(assembly.createdAt.seconds * 1000), 'dd MMM yyyy', { locale: fr }) : 'Date inconnue'}
-                      </span>
-                    </div>
+                  <div className="space-y-4">
+                    <div className="flex items-center gap-4">{getStatusBadge(assembly.state)}</div>
                     <div className="space-y-1">
                       <h3 className="text-2xl font-bold">{assembly.title}</h3>
-                      {sessionVote && <p className="text-sm text-muted-foreground italic">{sessionVote.question}</p>}
-                      <p className="text-[10px] uppercase font-bold text-muted-foreground mt-2">
-                        {sessionVote?.ballotCount || 0} bulletins reçus sur {sessionVote?.eligibleCount || '?'}
-                      </p>
+                      <p className="text-[10px] uppercase font-bold text-muted-foreground mt-2">{sessionVote?.ballotCount || 0} bulletins reçus</p>
                     </div>
                   </div>
                   <div className="flex flex-wrap items-center gap-3">
                     {assembly.state === 'draft' && (
                       <Button onClick={() => updateSessionState(assembly.id, 'open')} disabled={isSubmitting} className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                        Ouvrir le vote
+                        <Play className="h-3.5 w-3.5" /> Ouvrir
                       </Button>
                     )}
                     {assembly.state === 'open' && (
-                      <Button 
-                        onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} 
-                        disabled={isSubmitting} 
-                        className="rounded-none bg-black text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2"
-                      >
-                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trophy className="h-3.5 w-3.5" />}
-                        Clôturer & Publier
+                      <Button onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
+                        <Trophy className="h-3.5 w-3.5" /> Clôturer
                       </Button>
                     )}
                   </div>
@@ -484,23 +365,15 @@ function AdminContent() {
             })}
           </div>
         </TabsContent>
-
         <TabsContent value="projects" className="py-12 space-y-8">
           <div className="flex items-center justify-between border-b border-border pb-6">
-            <h2 className="text-xl font-bold">Liste des Projets ({projects?.length || 0})</h2>
-            <div className="flex gap-4">
-              <Button onClick={generateDemoProjects} disabled={isGenerating} variant="outline" className="rounded-none border-primary text-primary uppercase font-bold text-xs">Générer démo</Button>
-            </div>
+            <h2 className="text-xl font-bold">Projets ({projects?.length || 0})</h2>
+            <Button onClick={generateDemoProjects} disabled={isGenerating} variant="outline" className="rounded-none border-primary text-primary uppercase font-bold text-xs">Générer démo</Button>
           </div>
           <div className="grid gap-4">
             {projects?.map((project) => (
-              <div key={project.id} className="border border-border p-6 bg-white hover:border-black transition-all flex items-center justify-between">
+              <div key={project.id} className="border border-border p-6 bg-white flex items-center justify-between">
                 <div className="flex gap-6 items-center">
-                  {project.imageUrl && (
-                    <div className="relative h-16 w-16 flex-shrink-0 border">
-                      <Image src={project.imageUrl} alt="" fill className="object-cover grayscale" />
-                    </div>
-                  )}
                   <div className="space-y-1">
                     <h4 className="font-bold text-lg">{project.title}</h4>
                     <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{project.budget}</p>
@@ -510,78 +383,38 @@ function AdminContent() {
             ))}
           </div>
         </TabsContent>
-
         <TabsContent value="members" className="py-12 space-y-8">
-          {membersError && (
-            <Alert variant="destructive" className="rounded-none">
-              <AlertTriangle className="h-4 w-4" />
-              <AlertTitle className="text-[10px] uppercase font-black tracking-widest">Erreur Firestore</AlertTitle>
-              <AlertDescription className="text-xs font-mono mt-2">
-                [{membersError.name}] {membersError.message}
-              </AlertDescription>
-            </Alert>
-          )}
-
+          {membersError && <Alert variant="destructive"><AlertTriangle className="h-4 w-4" /><AlertTitle>Erreur Firestore</AlertTitle><AlertDescription>{membersError.message}</AlertDescription></Alert>}
           <div className="p-4 bg-secondary/5 border border-border flex items-center justify-between">
             <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest">
-              <Database className="h-3 w-3 text-primary" />
-              <span>Collection : members</span>
-              <span className="text-muted-foreground">|</span>
-              <span>Docs chargés : {members?.length || 0}</span>
+              <Database className="h-3 w-3 text-primary" /> <span>Membres : {members?.length || 0}</span>
             </div>
             <Button onClick={handleRepairMembers} disabled={isRepairing} variant="outline" size="sm" className="h-8 rounded-none border-primary text-primary uppercase font-bold text-[10px] gap-2">
-              <Wrench className="h-3 w-3" /> Réparer les profils
+              <Wrench className="h-3 w-3" /> Réparer
             </Button>
           </div>
-
           <div className="flex flex-col md:flex-row gap-6 items-center justify-between border-b border-border pb-6">
-            <h2 className="text-xl font-bold">
-              Gestion des Membres ({members?.length || 0})
-              {pendingCount > 0 && <span className="text-sm font-normal text-orange-600 ml-2">({pendingCount} en attente)</span>}
-            </h2>
-            <div className="flex gap-4">
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-[180px] rounded-none">
-                  <SelectValue placeholder="Statut" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Tous</SelectItem>
-                  <SelectItem value="active">Actif</SelectItem>
-                  <SelectItem value="pending">En attente</SelectItem>
-                  <SelectItem value="blocked">Bloqué</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <h2 className="text-xl font-bold">Membres ({members?.length || 0}) {pendingCount > 0 && <span className="text-sm font-normal text-orange-600 ml-2">({pendingCount} en attente)</span>}</h2>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px] rounded-none"><SelectValue placeholder="Statut" /></SelectTrigger>
+              <SelectContent><SelectItem value="all">Tous</SelectItem><SelectItem value="active">Actif</SelectItem><SelectItem value="pending">En attente</SelectItem><SelectItem value="blocked">Bloqué</SelectItem></SelectContent>
+            </Select>
           </div>
-
           <div className="border border-border bg-white overflow-hidden">
             <Table>
-              <TableHeader className="bg-secondary/20">
-                <TableRow>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Email</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Statut</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest">Rôle</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase tracking-widest text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
+              <TableHeader className="bg-secondary/20"><TableRow><TableHead>Email</TableHead><TableHead>Statut</TableHead><TableHead>Rôle</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
               <TableBody>
                 {filteredMembers?.map((member) => (
-                  <TableRow key={member.id} className="hover:bg-secondary/5">
+                  <TableRow key={member.id}>
                     <TableCell className="font-medium text-sm">{member.email || member.id}</TableCell>
                     <TableCell>{getStatusBadge(member.status)}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{member.role || 'member'}</Badge>
-                    </TableCell>
+                    <TableCell><Badge variant="outline" className="rounded-none border-black font-bold uppercase text-[9px]">{member.role}</Badge></TableCell>
                     <TableCell className="text-right">
                       <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8"><MoreHorizontal className="h-4 w-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="rounded-none w-56">
+                        <DropdownMenuTrigger asChild><Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="rounded-none">
                           <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'active')} className="text-xs text-green-600">Activer</DropdownMenuItem>
                           <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'pending')} className="text-xs">Mettre en attente</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => updateMemberStatus(member.id, 'blocked')} className="text-xs text-destructive">Bloquer</DropdownMenuItem>
-                          <DropdownMenuSeparator />
                           <DropdownMenuItem onClick={() => setConfirmAdminPromote(member.id)} className="text-xs font-bold">Promouvoir Admin</DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -596,10 +429,7 @@ function AdminContent() {
 
       <AlertDialog open={!!confirmAdminPromote} onOpenChange={(open) => !open && setConfirmAdminPromote(null)}>
         <AlertDialogContent className="rounded-none">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="uppercase font-black">Confirmer la promotion</AlertDialogTitle>
-            <AlertDialogDescription>Accorder des privilèges d&apos;administrateur à ce membre ?</AlertDialogDescription>
-          </AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle className="uppercase font-black">Confirmer la promotion</AlertDialogTitle></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
             <AlertDialogAction onClick={() => confirmAdminPromote && updateMemberRole(confirmAdminPromote, 'admin')} className="rounded-none uppercase font-bold text-xs">Confirmer</AlertDialogAction>
@@ -611,11 +441,18 @@ function AdminContent() {
 }
 
 export default function AdminPage() {
+  const { isAdmin, isMemberLoading } = useAuthStatus();
+
   return (
     <RequireActiveMember>
       <MainLayout role="admin" statusText="Administration">
-        <AdminContent />
-      </MainLayout>
-    </RequireActiveMember>
-  );
+        {/* Isolation "Béton" : on ne monte AdminContent QUE si l'utilisateur est admin */}
+        {!isMemberLoading && isAdmin ? <AdminContent /> : (
+          <div className="flex flex-col items-center justify-center py-32 space-y-6">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">Vérification des accès...</p>
+          </div>
+        )}
+      </RequireActiveMember>
+    );
 }
