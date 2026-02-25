@@ -5,6 +5,9 @@ import { useUser, useFirestore } from '@/firebase';
 import { doc, onSnapshot, getDoc } from 'firebase/firestore';
 import { MemberProfile } from '@/types';
 
+/**
+ * SOURCE UNIQUE DE VÉRITÉ : L'ID de l'assemblée est fixe pour toute l'application.
+ */
 export const DEFAULT_ASSEMBLY_ID = process.env.NEXT_PUBLIC_DEFAULT_ASSEMBLY_ID || 'default-assembly';
 
 interface AuthStatusContextType {

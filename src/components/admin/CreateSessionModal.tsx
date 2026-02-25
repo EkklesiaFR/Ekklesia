@@ -54,21 +54,24 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
     setIsSubmitting(true);
     try {
       await runTransaction(db, async (transaction) => {
+        // RÉFÉRENCE UNIQUE SUR L'ASSEMBLÉE PAR DÉFAUT
         const assemblyRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
         const votesCollectionRef = collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes');
+        
+        // Génération de l'ID pour le NOUVEAU vote uniquement (pas pour l'assemblée)
         const voteRef = doc(votesCollectionRef);
 
         const now = serverTimestamp();
 
-        // 1. Mettre à jour l'assemblée existante (Source de vérité)
+        // 1. MISE À JOUR de l'assemblée unique (Source de vérité)
         transaction.update(assemblyRef, {
-          title: title, // Le titre de l'assemblée reflète la session actuelle
+          title: title,
           state: 'open',
           updatedAt: now,
           activeVoteId: voteRef.id
         });
 
-        // 2. Créer le vote associé
+        // 2. CRÉATION du document de scrutin (vote)
         transaction.set(voteRef, {
           id: voteRef.id,
           assemblyId: DEFAULT_ASSEMBLY_ID,
@@ -87,7 +90,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
       onClose();
     } catch (e) {
       console.error(e);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer la session. Vérifiez vos droits admin." });
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de lancer la session. Vérifiez vos droits admin." });
     } finally {
       setIsSubmitting(false);
     }

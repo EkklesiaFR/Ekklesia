@@ -43,9 +43,11 @@ service cloud.firestore {
     match /assemblies/{assemblyId} {
       allow read: if isSignedIn();
       
-      // Correction : Autorise la création si l'utilisateur est admin (global ou local)
-      allow create: if isGlobalAdmin();
+      // On autorise l'update uniquement si on est admin de cette assemblée
       allow update, delete: if isAdminActive(assemblyId);
+      
+      // On n'autorise plus la création d'assemblies aléatoires par les clients
+      allow create: if false;
 
       match /members/{uid} {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
@@ -54,11 +56,11 @@ service cloud.firestore {
         allow create: if isOwner(uid) 
           && request.resource.data.role == "member"
           && request.resource.data.status == "pending"
-          && request.resource.data.keys().hasOnly(['id', 'role', 'status', 'email', 'createdAt', 'updatedAt', 'displayName', 'lastLoginAt']);
+          && request.resource.data.keys().hasOnly(['id', 'role', 'status', 'email', 'createdAt', 'updatedAt', 'displayName']);
           
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt', 'lastLoginAt'])
+              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
              );
              
         allow delete: if isAdminActive(assemblyId);

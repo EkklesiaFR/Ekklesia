@@ -41,7 +41,7 @@ import {
   CheckCircle2,
   XCircle,
 } from 'lucide-react';
-import { Assembly, Project, MemberProfile, Vote } from '@/types';
+import { Project, MemberProfile, Vote } from '@/types';
 import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
 import { toast } from '@/hooks/use-toast';
 
@@ -53,7 +53,7 @@ function AdminContent() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
-  // Queries
+  // Queries localisées sur l'assemblée par défaut
   const votesQuery = useMemoFirebase(() => {
     return query(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'), orderBy('createdAt', 'desc'));
   }, [db]);
@@ -81,6 +81,7 @@ function AdminContent() {
 
   const closeVote = async (vote: Vote) => {
     try {
+      // On ferme l'assemblée ET le vote spécifique
       await updateDoc(doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), { 
         state: 'locked', 
         updatedAt: serverTimestamp() 
@@ -170,6 +171,7 @@ function AdminContent() {
                 </div>
               </div>
             ))}
+            {projects?.length === 0 && <p className="text-center italic text-muted-foreground p-12">Aucun projet déposé.</p>}
           </div>
         </TabsContent>
 
