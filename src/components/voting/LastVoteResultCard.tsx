@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useFirestore, useDoc, useMemoFirebase, useCollection } from '@/firebase';
@@ -10,18 +11,18 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Assembly, Vote, Project } from '@/types';
 import { cn } from '@/lib/utils';
 
 /**
  * LastVoteResultCard - Affiche le dernier résultat officiel (PV) publié.
- * Ce composant interroge directement la source de vérité des scrutins verrouillés.
+ * Cherche l'assemblée verrouillée la plus récente et son scrutin final.
  */
 export function LastVoteResultCard() {
   const db = useFirestore();
 
-  // 1. Rechercher la dernière assemblée verrouillée (state == 'locked')
+  // 1. Rechercher l'assemblée verrouillée la plus récente
   const latestLockedAssemblyQuery = useMemoFirebase(() => 
     query(
       collection(db, 'assemblies'), 
@@ -33,27 +34,40 @@ export function LastVoteResultCard() {
   const { data: assemblies, isLoading: isAssemblyLoading } = useCollection<Assembly>(latestLockedAssemblyQuery);
   const latestAssembly = assemblies?.[0];
 
-  // 2. Charger le scrutin associé (PV) via activeVoteId
-  const voteRef = useMemoFirebase(() => {
-    if (!latestAssembly?.activeVoteId) return null;
-    return doc(db, 'assemblies', latestAssembly.id, 'votes', latestAssembly.activeVoteId);
+  // 2. Rechercher les scrutins de cette assemblée
+  const votesQuery = useMemoFirebase(() => {
+    if (!latestAssembly) return null;
+    return collection(db, 'assemblies', latestAssembly.id, 'votes');
   }, [db, latestAssembly]);
-  const { data: vote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
+  const { data: allVotes, isLoading: isVoteLoading } = useCollection<Vote>(votesQuery);
 
   // 3. Charger les projets pour résoudre les titres dans le classement
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: projects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
 
+  // Trier les scrutins en mémoire pour trouver le dernier ayant des résultats
+  const vote = useMemo(() => {
+    if (!allVotes) return null;
+    return allVotes
+      .filter(v => v.results && v.state === 'locked')
+      .sort((a, b) => {
+        const tA = a.closedAt?.seconds || 0;
+        const tB = b.closedAt?.seconds || 0;
+        return tB - tA;
+      })[0];
+  }, [allVotes]);
+
   const isLoading = isAssemblyLoading || isVoteLoading || isProjectsLoading;
 
   useEffect(() => {
-    if (latestAssembly) {
-      console.log("[DASH] PV Source identified", { 
-        assemblyId: latestAssembly.id, 
-        voteId: latestAssembly.activeVoteId 
+    if (vote) {
+      console.log("[DASH] Procès-Verbal identifié", { 
+        assemblyId: latestAssembly?.id, 
+        voteId: vote.id,
+        results: !!vote.results
       });
     }
-  }, [latestAssembly]);
+  }, [vote, latestAssembly]);
 
   if (isLoading) {
     return (
@@ -70,7 +84,7 @@ export function LastVoteResultCard() {
     );
   }
 
-  if (!latestAssembly || !vote || !vote.results) {
+  if (!vote || !vote.results) {
     return (
       <div className="p-8 border border-dashed border-border bg-secondary/5 text-center space-y-4 h-full flex flex-col justify-center">
         <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
@@ -92,14 +106,14 @@ export function LastVoteResultCard() {
         <CardHeader className="p-8 pb-6 border-b border-border">
           <div className="flex items-center justify-between mb-4">
             <Badge className="bg-[#7DC092] rounded-none uppercase font-bold text-[9px] tracking-widest">Dernier Procès-Verbal</Badge>
-            {results.computedAt?.seconds && (
+            {vote.closedAt?.seconds && (
               <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
                 <Calendar className="h-3 w-3" />
-                {format(new Date(results.computedAt.seconds * 1000), 'dd MMM yyyy', { locale: fr })}
+                {format(new Date(vote.closedAt.seconds * 1000), 'dd MMM yyyy', { locale: fr })}
               </span>
             )}
           </div>
-          <h3 className="text-2xl font-bold tracking-tight">{vote.question || latestAssembly.title}</h3>
+          <h3 className="text-2xl font-bold tracking-tight">{vote.question || latestAssembly?.title}</h3>
         </CardHeader>
 
         <CardContent className="p-8 space-y-10">
