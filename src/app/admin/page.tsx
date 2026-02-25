@@ -44,6 +44,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger
 } from "@/components/ui/alert-dialog";
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -95,6 +96,8 @@ function AdminContent() {
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+  const [isConfirmBulkOpen, setIsConfirmBulkOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRepairing, setIsRepairing] = useState(false);
   
@@ -131,6 +134,148 @@ function AdminContent() {
   });
 
   const pendingCount = members?.filter(m => m.status === 'pending').length || 0;
+  const openSessionsCount = assemblies?.filter(a => a.state === 'open').length || 0;
+
+  /**
+   * Logique atomique de clôture d'un scrutin unique.
+   * Réutilisable pour la clôture manuelle et le bulk close.
+   */
+  const performVoteTally = async (assemblyId: string, voteId: string) => {
+    const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
+    const voteSnap = await getDoc(voteRef);
+    
+    if (!voteSnap.exists()) throw new Error("Scrutin introuvable.");
+    const voteData = voteSnap.data() as Vote;
+    
+    // Idempotence
+    if (voteData.state !== 'open') {
+      return { skipped: true };
+    }
+
+    // Lecture physique des bulletins (LIST admin-only)
+    const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
+    const ballotsSnap = await getDocs(ballotsRef);
+    const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
+
+    if (ballots.length === 0) {
+      throw new Error("Impossible de clôturer sans aucun bulletin.");
+    }
+
+    // Calcul Schulze
+    const results = computeSchulzeResults(voteData.projectIds, ballots);
+
+    const batch = writeBatch(db);
+    const assemblyRef = doc(db, 'assemblies', assemblyId);
+
+    batch.update(voteRef, {
+      results: {
+        winnerId: results.winnerId,
+        fullRanking: results.ranking,
+        computedAt: serverTimestamp(),
+        total: ballots.length
+      },
+      ballotCount: ballots.length,
+      state: 'locked',
+      lockedAt: serverTimestamp(),
+      closedAt: serverTimestamp(),
+      publishedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    });
+
+    batch.update(assemblyRef, {
+      state: 'locked',
+      updatedAt: serverTimestamp()
+    });
+
+    await batch.commit();
+    return { winnerId: results.winnerId, ballotCount: ballots.length };
+  };
+
+  const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
+    console.log(`[CLOSE] Initiation`, { 
+      assemblyId, 
+      voteId, 
+      uid: user?.uid, 
+      isAdmin, 
+      memberStatus: member?.status 
+    });
+    
+    if (!isAdmin || member?.status !== 'active') {
+      toast({ variant: "destructive", title: "Accès refusé", description: "Votre compte admin doit être 'actif' pour clôturer." });
+      return;
+    }
+
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+    
+    try {
+      console.log(`[CLOSE] Fetching ballots...`);
+      const result = await performVoteTally(assemblyId, voteId);
+      
+      if (result.skipped) {
+        toast({ title: "Déjà clôturé", description: "Ce scrutin a déjà été traité." });
+      } else {
+        console.log(`[CLOSE] Results computed`, result);
+        console.log(`[CLOSE] Success - Scrutin publié`);
+        toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés." });
+      }
+    } catch (e: any) {
+      console.error(`[CLOSE] Exception: ${e.code || 'UNKNOWN'} ${e.message}`);
+      toast({ 
+        variant: "destructive", 
+        title: "Erreur de clôture", 
+        description: e.message || "Impossible de verrouiller le scrutin." 
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  /**
+   * Opération de maintenance : Clôture tous les scrutins ouverts.
+   */
+  const bulkCloseOpenVotes = async () => {
+    if (!isAdmin || member?.status !== 'active') return;
+    setIsBulkSubmitting(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    try {
+      // 1. Scanner tous les votes ouverts (Source de vérité)
+      const q = query(collectionGroup(db, 'votes'), where('state', '==', 'open'));
+      const snapshot = await getDocs(q);
+      console.log(`[BULK CLOSE] Found ${snapshot.size} open votes`);
+
+      for (const voteDoc of snapshot.docs) {
+        const voteData = voteDoc.data() as Vote;
+        const assemblyId = voteData.assemblyId;
+        const voteId = voteDoc.id;
+
+        try {
+          console.log(`[BULK CLOSE] Closing {assemblyId: ${assemblyId}, voteId: ${voteId}}`);
+          const result = await performVoteTally(assemblyId, voteId);
+          if (!result.skipped) {
+            successCount++;
+            console.log(`[BULK CLOSE] Done {assemblyId: ${assemblyId}, voteId: ${voteId}, ballots: ${result.ballotCount}, winnerId: ${result.winnerId}}`);
+          }
+        } catch (e: any) {
+          failCount++;
+          console.error(`[BULK CLOSE] Failed {assemblyId: ${assemblyId}, voteId: ${voteId}, code: ${e.code}, message: ${e.message}}`);
+        }
+      }
+
+      toast({ 
+        title: "Opération terminée", 
+        description: `${successCount} votes clôturés avec succès, ${failCount} échecs.` 
+      });
+    } catch (e: any) {
+      console.error("[BULK CLOSE] Global error:", e);
+      toast({ variant: "destructive", title: "Erreur globale", description: e.message });
+    } finally {
+      setIsBulkSubmitting(false);
+      setIsConfirmBulkOpen(false);
+    }
+  };
 
   const handleCreateSession = async () => {
     if (!newSessionTitle || !newVoteQuestion || selectedProjectIds.length < 2 || !user) {
@@ -170,91 +315,6 @@ function AdminContent() {
       resetForm();
     } catch (e: any) {
       toast({ variant: "destructive", title: "Erreur" });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    console.log(`[CLOSE] Initiation`, { 
-      assemblyId, 
-      voteId, 
-      uid: user?.uid, 
-      isAdmin, 
-      memberStatus: member?.status 
-    });
-    
-    if (!isAdmin || member?.status !== 'active') {
-      console.error("[CLOSE] Exception: Access Denied. L'admin doit être 'actif'.");
-      toast({ variant: "destructive", title: "Accès refusé", description: "Votre compte admin doit être 'actif' pour clôturer." });
-      return;
-    }
-
-    if (isSubmitting) return;
-    setIsSubmitting(true);
-    
-    try {
-      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
-      const voteSnap = await getDoc(voteRef);
-      
-      if (!voteSnap.exists()) {
-        throw new Error("Le scrutin n'existe pas.");
-      }
-      
-      const voteData = voteSnap.data() as Vote;
-      
-      if (voteData.state !== 'open') {
-        console.warn(`[CLOSE] Scrutin déjà clôturé ou non ouvert (state: ${voteData.state})`);
-        toast({ title: "Déjà clôturé", description: "Ce scrutin a déjà été traité." });
-        return;
-      }
-
-      console.log(`[CLOSE] Fetching ballots...`);
-      const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
-      const ballotsSnap = await getDocs(ballotsRef);
-      const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
-      console.log(`[CLOSE] Ballots fetched: ${ballots.length}`);
-
-      if (ballots.length === 0) {
-        throw new Error("Impossible de clôturer sans aucun bulletin.");
-      }
-
-      const results = computeSchulzeResults(voteData.projectIds, ballots);
-      console.log(`[CLOSE] Results computed`, results);
-
-      const batch = writeBatch(db);
-      const assemblyRef = doc(db, 'assemblies', assemblyId);
-
-      batch.update(voteRef, {
-        results: {
-          winnerId: results.winnerId,
-          fullRanking: results.ranking,
-          computedAt: serverTimestamp(),
-          total: ballots.length
-        },
-        ballotCount: ballots.length,
-        state: 'locked',
-        lockedAt: serverTimestamp(),
-        closedAt: serverTimestamp(),
-        publishedAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-
-      batch.update(assemblyRef, {
-        state: 'locked',
-        updatedAt: serverTimestamp()
-      });
-
-      await batch.commit();
-      console.log(`[CLOSE] Success - Scrutin publié`);
-      toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés." });
-    } catch (e: any) {
-      console.error(`[CLOSE] Exception: ${e.code || 'UNKNOWN'} ${e.message}`);
-      toast({ 
-        variant: "destructive", 
-        title: "Erreur de clôture", 
-        description: e.message || "Impossible de verrouiller le scrutin." 
-      });
     } finally {
       setIsSubmitting(false);
     }
@@ -436,6 +496,36 @@ function AdminContent() {
           <TabsTrigger value="results" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary px-0 py-4 text-sm font-bold uppercase tracking-widest">Résultats</TabsTrigger>
         </TabsList>
         <TabsContent value="sessions" className="py-12 space-y-6">
+          {openSessionsCount > 0 && (
+            <div className="flex justify-end mb-8">
+              <AlertDialog open={isConfirmBulkOpen} onOpenChange={setIsConfirmBulkOpen}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" className="rounded-none h-10 px-6 font-bold uppercase tracking-widest text-[10px] gap-2">
+                    <ShieldAlert className="h-3.5 w-3.5" /> Clôturer tout ({openSessionsCount})
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent className="rounded-none">
+                  <AlertDialogHeader>
+                    <AlertDialogTitle className="uppercase font-black">Confirmation de maintenance</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Cette opération va clôturer TOUTES les sessions ouvertes, calculer les résultats et publier les PV officiels. Cette action est irréversible.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel className="rounded-none uppercase font-bold text-xs">Annuler</AlertDialogCancel>
+                    <AlertDialogAction 
+                      onClick={bulkCloseOpenVotes} 
+                      className="rounded-none bg-destructive hover:bg-destructive/90 uppercase font-bold text-xs"
+                      disabled={isBulkSubmitting}
+                    >
+                      {isBulkSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Oui, tout clôturer"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </div>
+          )}
+
           <div className="grid gap-6">
             {assemblies?.map((assembly) => {
               const sessionVote = allVotes?.find(v => v.assemblyId === assembly.id);
