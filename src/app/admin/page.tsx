@@ -74,7 +74,8 @@ import {
   Wrench,
   Trophy,
   ShieldAlert,
-  AlertTriangle
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Assembly, Vote, Project, MemberProfile, Ballot } from '@/types';
@@ -88,6 +89,8 @@ import { computeSchulzeResults } from '@/lib/tally';
 function AdminContent() {
   const { user } = useUser();
   const db = useFirestore();
+  const { isAdmin, member } = useAuthStatus();
+  
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -171,23 +174,43 @@ function AdminContent() {
   };
 
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
+    console.log("[CLOSE] Tally initiated", { assemblyId, voteId, isAdmin, memberStatus: member?.status });
+    
+    if (isSubmitting) return;
     setIsSubmitting(true);
+    
     try {
       const voteDoc = allVotes?.find(v => v.id === voteId);
-      if (!voteDoc) throw new Error("Vote introuvable");
+      if (!voteDoc) {
+        throw new Error("Document de vote introuvable dans le cache local.");
+      }
 
-      const ballotsSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots'));
+      // 1. Récupération physique de TOUS les bulletins
+      const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
+      const ballotsSnap = await getDocs(ballotsRef);
       const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
       
+      console.log(`[CLOSE] Found ${ballots.length} ballots.`);
+
       if (ballots.length === 0) {
-        toast({ variant: "destructive", title: "Aucun bulletin", description: "Impossible de calculer les résultats sans bulletins." });
+        toast({ 
+          variant: "destructive", 
+          title: "Aucun bulletin", 
+          description: "Impossible de calculer un résultat sans bulletins déposés." 
+        });
+        setIsSubmitting(false);
         return;
       }
 
-      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
+      // 2. Calcul Schulze
       const results = computeSchulzeResults(voteDoc.projectIds, ballots);
-      
+      console.log("[CLOSE] Tally computed", results);
+
+      // 3. Publication atomique
       const batch = writeBatch(db);
+      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
+      const assemblyRef = doc(db, 'assemblies', assemblyId);
+
       batch.update(voteRef, {
         results: { 
           winnerId: results.winnerId, 
@@ -195,18 +218,27 @@ function AdminContent() {
           computedAt: serverTimestamp(), 
           total: ballots.length 
         },
-        ballotCount: ballots.length, // Synchronisation forcée avec la réalité
+        ballotCount: ballots.length, // Synchronisation
         state: 'locked',
+        lockedAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
       
-      batch.update(doc(db, 'assemblies', assemblyId), { state: 'locked', updatedAt: serverTimestamp() });
+      batch.update(assemblyRef, { 
+        state: 'locked', 
+        updatedAt: serverTimestamp() 
+      });
       
       await batch.commit();
-      toast({ title: "Scrutin clôturé", description: "Les résultats officiels ont été publiés." });
+      console.log("[CLOSE] Success");
+      toast({ title: "Scrutin clôturé", description: "Les résultats officiels ont été publiés avec succès." });
     } catch (e: any) {
-      console.error("Tally error:", e);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de clôturer le scrutin." });
+      console.error("[CLOSE] Error:", e);
+      toast({ 
+        variant: "destructive", 
+        title: "Erreur de clôture", 
+        description: e.message || "Impossible de verrouiller le scrutin." 
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -272,7 +304,6 @@ function AdminContent() {
       let fixedCount = 0;
       snapshot.docs.forEach(memberDoc => {
         const data = memberDoc.data();
-        // Correction systématique : on s'assure que seul 'status' est utilisé
         if (!data.id || !data.email || !data.status || data.statut) {
           batch.update(memberDoc.ref, { 
             id: memberDoc.id, 
@@ -394,8 +425,13 @@ function AdminContent() {
                     )}
                     {assembly.state === 'open' && (
                       <Button onClick={() => sessionVote && handleTallyAndPublish(assembly.id, sessionVote.id)} disabled={isSubmitting} className="rounded-none bg-black text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        <Trophy className="h-3.5 w-3.5" /> Clôturer
+                        {isSubmitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trophy className="h-3.5 w-3.5" />} Clôturer
                       </Button>
+                    )}
+                    {assembly.state === 'locked' && (
+                       <div className="flex items-center gap-2 text-[#7DC092] text-xs font-bold uppercase tracking-widest">
+                         <CheckCircle2 className="h-4 w-4" /> Résultats publiés
+                       </div>
                     )}
                   </div>
                 </div>
