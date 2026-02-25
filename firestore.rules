@@ -25,9 +25,23 @@ service cloud.firestore {
     }
 
     match /members/{uid} {
+      // Un membre peut lire son propre profil, un admin peut tout lire.
       allow get: if isSignedIn() && (isOwner(uid) || isAdminActive());
       allow list: if isAdminActive();
-      allow write: if isAdminActive();
+      
+      // Permettre la création initiale du profil par l'utilisateur lui-même avec des valeurs par défaut sécurisées.
+      allow create: if isOwner(uid) 
+        && request.resource.data.status == "pending" 
+        && request.resource.data.role == "member";
+        
+      // Seul un admin peut modifier le rôle ou le statut.
+      // Un utilisateur peut seulement mettre à jour ses infos non-sensibles (email, displayName, lastLoginAt).
+      allow update: if isAdminActive() 
+        || (isOwner(uid) 
+            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
+           );
+           
+      allow delete: if isAdminActive();
     }
 
     match /projects/{projectId} {
@@ -45,7 +59,6 @@ service cloud.firestore {
 
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive();
-          // ⚠️ je te conseille de retirer "list" pour les membres (sinon un membre peut lister les bulletins)
           allow list: if isAdminActive();
 
           function isValidBallotRequest() {
@@ -53,7 +66,7 @@ service cloud.firestore {
             return isMemberActive()
               && uid == request.auth.uid
               && vote.state == "open"
-              && request.resource.data.keys().hasOnly(['ranking','castAt','updatedAt']);
+              && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
           }
 
           allow create: if isValidBallotRequest();
