@@ -11,8 +11,8 @@ import Link from 'next/link';
 import { Project, Vote, Assembly, Ballot } from '@/types';
 import { VoteModule } from '@/components/vote/VoteModule';
 
-// FLAG DEBUG - Mettre à true pour voir le panneau de diagnostic en bas de page
-const DEBUG_VOTE = true;
+// FLAG DEBUG
+const DEBUG_VOTE = false;
 
 function VoteGate() {
   const { user } = useUser();
@@ -60,40 +60,28 @@ function VoteGate() {
     );
   }
 
-  // --- RENDU DU PANNEAU DEBUG ---
   const debugPanel = DEBUG_VOTE && (
     <div className="fixed bottom-20 left-4 right-4 z-[100] bg-black text-white p-6 text-[10px] font-mono border-t-4 border-primary shadow-2xl space-y-2 opacity-90 hover:opacity-100 transition-opacity">
       <div className="flex items-center gap-2 text-primary font-bold mb-2">
         <Bug className="h-3 w-3" /> DIAGNOSTIC VOTE
       </div>
       <p>Assembly ID: {activeAssembly?.id || 'null'}</p>
-      <p>Assembly State: {activeAssembly?.state || 'null'}</p>
       <p>activeVoteId: {activeAssembly?.activeVoteId || 'null'}</p>
-      <p>Vote Path: {activeAssembly && activeAssembly.activeVoteId ? `assemblies/${activeAssembly.id}/votes/${activeAssembly.activeVoteId}` : 'N/A'}</p>
       <p>Vote Doc Exists: {activeVote ? 'YES' : 'NO'}</p>
-      <p>Vote State: {activeVote?.state || 'null'}</p>
       <p>Project IDs in Vote: {activeVote?.projectIds?.length || 0}</p>
       <p>Resolved Projects: {voteProjects.length}</p>
-      <p>Errors: {assemblyError?.message || voteError?.message || 'Aucune'}</p>
     </div>
   );
-
-  // --- LOGIQUE D'AFFICHAGE DES ÉTATS ---
 
   if (!activeAssembly) {
     return (
       <>
-        <div className="flex flex-col items-center justify-center py-32 text-center space-y-8 animate-in fade-in duration-700">
-          <div className="space-y-4">
-            <h1 className="text-4xl font-bold tracking-tight">Aucun vote ouvert</h1>
-            <p className="text-muted-foreground max-w-sm mx-auto">
-              Il n'y a pas d'assemblée active pour le moment.
-            </p>
-          </div>
+        <div className="flex flex-col items-center justify-center py-32 text-center space-y-8">
+          <h1 className="text-4xl font-bold tracking-tight">Aucun vote ouvert</h1>
+          <p className="text-muted-foreground max-w-sm mx-auto">Il n'y a pas d'assemblée active pour le moment.</p>
           <Link href="/assembly">
             <Button variant="outline" className="rounded-none h-14 px-8 uppercase font-bold text-xs tracking-widest gap-2">
-              <ArrowLeft className="h-4 w-4" />
-              Retour au Dashboard
+              <ArrowLeft className="h-4 w-4" /> Retour au Dashboard
             </Button>
           </Link>
         </div>
@@ -102,48 +90,12 @@ function VoteGate() {
     );
   }
 
-  if (!activeAssembly.activeVoteId) {
-    return (
-      <>
-        <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
-          <h1 className="text-2xl font-bold">Assemblée ouverte mais configuration incomplète</h1>
-          <p className="text-muted-foreground">Le document de vote n'est pas encore lié à cette assemblée (activeVoteId manquant).</p>
-        </div>
-        {debugPanel}
-      </>
-    );
-  }
-
-  if (!activeVote) {
+  if (!activeAssembly.activeVoteId || !activeVote) {
     return (
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
           <h1 className="text-2xl font-bold">Vote introuvable</h1>
-          <p className="text-muted-foreground">Le scrutin lié (ID: {activeAssembly.activeVoteId}) n'existe pas dans la sous-collection.</p>
-        </div>
-        {debugPanel}
-      </>
-    );
-  }
-
-  if (activeVote.state !== 'open') {
-    return (
-      <>
-        <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
-          <h1 className="text-2xl font-bold">Le vote est clos</h1>
-          <p className="text-muted-foreground">La session de vote pour cette assemblée est terminée (state: {activeVote.state}).</p>
-        </div>
-        {debugPanel}
-      </>
-    );
-  }
-
-  if (voteProjects.length === 0) {
-    return (
-      <>
-        <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
-          <h1 className="text-2xl font-bold">Aucun projet associé</h1>
-          <p className="text-muted-foreground">Ce vote ne contient aucun projet à classer (projectIds vides).</p>
+          <p className="text-muted-foreground">Le scrutin lié n'est pas encore prêt.</p>
         </div>
         {debugPanel}
       </>

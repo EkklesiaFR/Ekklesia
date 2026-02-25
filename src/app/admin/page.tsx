@@ -103,6 +103,7 @@ function AdminContent() {
       // Create Vote
       const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
       batch.set(voteRef, {
+        id: voteRef.id,
         assemblyId: assemblyRef.id,
         question: newVoteQuestion,
         projectIds: selectedProjectIds,
@@ -113,7 +114,7 @@ function AdminContent() {
         closesAt: endsAt ? new Date(endsAt) : null,
       });
 
-      // Link them
+      // Link them (on pré-remplit l'ID du vote même en brouillon pour la robustesse)
       batch.update(assemblyRef, {
         activeVoteId: voteRef.id
       });
@@ -130,10 +131,10 @@ function AdminContent() {
     }
   };
 
-  const updateSessionState = async (assemblyСегодняId: string, newState: 'open' | 'closed') => {
+  const updateSessionState = async (assemblyId: string, newState: 'open' | 'closed') => {
     try {
       // 1. Trouver le vote doc dans la sous-collection
-      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyСегодняId, 'votes'));
+      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
       if (votesSnap.empty) {
         toast({ variant: "destructive", title: "Erreur", description: "Aucun document de vote trouvé pour cette assemblée." });
         return;
@@ -144,8 +145,8 @@ function AdminContent() {
 
       const batch = writeBatch(db);
 
-      // 2. Mettre à jour l'assemblée (Source de vérité principale)
-      const assemblyRef = doc(db, 'assemblies', assemblyСегодняId);
+      // 2. Mettre à jour l'assemblée
+      const assemblyRef = doc(db, 'assemblies', assemblyId);
       batch.update(assemblyRef, { 
         state: newState,
         activeVoteId: newState === 'open' ? voteId : null,
@@ -153,7 +154,7 @@ function AdminContent() {
       });
       
       // 3. Mettre à jour le vote lié
-      const voteRef = doc(db, 'assemblies', assemblyСегодняId, 'votes', voteId);
+      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       batch.update(voteRef, { 
         state: newState,
         updatedAt: serverTimestamp()
@@ -163,7 +164,6 @@ function AdminContent() {
       
       toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'fermée'}` });
     } catch (e: any) {
-      console.error("Erreur mise à jour session:", e);
       toast({ variant: "destructive", title: "Erreur", description: "Action impossible." });
     }
   };
@@ -284,7 +284,7 @@ function AdminContent() {
               </div>
               <div className="space-y-4">
                 <Label htmlFor="question" className="text-xs uppercase font-black tracking-widest text-muted-foreground">Question</Label>
-                <Input id="question" value={newVoteQuestion} onChange={(e) => setNewVoteQuestion( сегодняE) => setNewVoteQuestion(e.target.value)} className="rounded-none h-12" />
+                <Input id="question" value={newVoteQuestion} onChange={(e) => setNewVoteQuestion(e.target.value)} className="rounded-none h-12" />
               </div>
               <div className="space-y-4">
                 <Label className="text-xs uppercase font-black tracking-widest text-muted-foreground block mb-4">Projets (Min. 2)</Label>
@@ -337,7 +337,7 @@ function AdminContent() {
                   <div className="flex flex-wrap items-center gap-3">
                     {assembly.state === 'draft' && (
                       <Button onClick={() => updateSessionState(assembly.id, 'open')} className="rounded-none bg-[#7DC092] hover:bg-[#6ab081] text-white font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
-                        <Play className="h-3.5 w-3.5" /> Ouvrer le vote
+                        <Play className="h-3.5 w-3.5" /> Ouvrir le vote
                       </Button>
                     )}
                     {assembly.state === 'open' && (
