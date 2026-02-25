@@ -233,7 +233,6 @@ function AdminContent() {
 
     const assemblyRef = doc(db, 'assemblies', assemblyId);
 
-    // DEBUG: On sépare les updates pour identifier le blocage
     try {
       console.log(`[CLOSE] Attempting Vote update...`);
       await updateDoc(voteRef, {
@@ -272,7 +271,6 @@ function AdminContent() {
   };
 
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    // PREFLIGHT LOGS
     console.log(`[CLOSE] Preflight:`, { 
       uid: user?.uid, 
       memberDocId: member?.id,
@@ -334,9 +332,9 @@ function AdminContent() {
       console.log(`[BULK CLOSE] Found ${snapshot.size} open votes`);
 
       for (const voteDoc of snapshot.docs) {
-        const voteData = voteDoc.data() as Vote;
-        const assemblyId = voteData.assemblyId;
         const voteId = voteDoc.id;
+        // Source de vérité : extraire assemblyId directement du chemin du document
+        const assemblyId = voteDoc.ref.parent.parent!.id;
 
         try {
           console.log(`[BULK CLOSE] Closing {assemblyId: ${assemblyId}, voteId: ${voteId}}`);
