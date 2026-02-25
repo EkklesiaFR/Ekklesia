@@ -16,7 +16,8 @@ import {
   getDocs,
   writeBatch,
   limit,
-  orderBy
+  orderBy,
+  where
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -100,7 +101,6 @@ function AdminContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRepairing, setIsRepairing] = useState(false);
-  const [selectedMember, setSelectedMember] = useState<MemberProfile | null>(null);
   
   // Promotion to Admin confirmation
   const [confirmAdminPromote, setConfirmAdminPromote] = useState<string | null>(null);
@@ -129,7 +129,7 @@ function AdminContent() {
   const membersQuery = useMemoFirebase(() => {
     return query(collection(db, 'members'), limit(150));
   }, [db]);
-  const { data: members, error: membersError, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
+  const { data: members, error: membersError } = useCollection<MemberProfile>(membersQuery);
 
   const filteredMembers = members?.filter(m => {
     const matchStatus = statusFilter === 'all' || m.status === statusFilter;
@@ -177,6 +177,7 @@ function AdminContent() {
         projectIds: selectedProjectIds,
         state: 'draft',
         ballotCount: 0,
+        eligibleCount: members?.length || 100,
         createdAt: serverTimestamp(),
         createdBy: user.uid,
       });
@@ -196,7 +197,6 @@ function AdminContent() {
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
     setIsSubmitting(true);
     try {
-      // 1. Récupérer tous les bulletins
       const ballotsSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots'));
       const ballots = ballotsSnap.docs.map(d => d.data() as Ballot);
       
@@ -205,15 +205,14 @@ function AdminContent() {
         return;
       }
 
-      // 2. Récupérer le vote pour avoir les IDs de projets
+      const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       const voteSnap = await getDocs(query(collection(db, 'assemblies', assemblyId, 'votes'), where('id', '==', voteId)));
       const voteData = voteSnap.docs[0].data() as Vote;
 
-      // 3. Calculer Schulze
       const results = computeSchulzeResults(voteData.projectIds, ballots);
 
-      // 4. Enregistrer les résultats officiels
-      await updateDoc(doc(db, 'assemblies', assemblyId, 'votes', voteId), {
+      const batch = writeBatch(db);
+      batch.update(voteRef, {
         results: {
           winnerId: results.winnerId,
           fullRanking: results.ranking,
@@ -221,22 +220,81 @@ function AdminContent() {
           total: ballots.length
         },
         ballotCount: ballots.length,
-        state: 'closed',
+        state: 'locked',
         updatedAt: serverTimestamp()
       });
 
-      // 5. Clôturer l'assemblée
-      await updateDoc(doc(db, 'assemblies', assemblyId), {
-        state: 'closed',
+      batch.update(doc(db, 'assemblies', assemblyId), {
+        state: 'locked',
         updatedAt: serverTimestamp()
       });
 
-      toast({ title: "Résultats publiés", description: "Le scrutin est clôturé et les résultats sont officiels." });
+      await batch.commit();
+      toast({ title: "Résultats publiés", description: "Le scrutin est verrouillé et les résultats sont officiels." });
     } catch (e: any) {
       console.error(e);
       toast({ variant: "destructive", title: "Erreur", description: "Impossible de publier les résultats." });
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const updateSessionState = async (assemblyId: string, newState: 'open' | 'locked') => {
+    try {
+      setIsSubmitting(true);
+      const assemblyRef = doc(db, 'assemblies', assemblyId);
+      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
+      
+      if (votesSnap.empty) {
+        toast({ variant: "destructive", title: "Erreur", description: "Aucun vote trouvé." });
+        return;
+      }
+
+      const voteDoc = votesSnap.docs[0];
+      const voteRef = voteDoc.ref;
+
+      const batch = writeBatch(db);
+      batch.update(assemblyRef, { 
+        state: newState,
+        activeVoteId: newState === 'open' ? voteDoc.id : null,
+        updatedAt: serverTimestamp()
+      });
+      
+      batch.update(voteRef, { 
+        state: newState,
+        updatedAt: serverTimestamp()
+      });
+
+      await batch.commit();
+      toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'verrouillée'}` });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Erreur", description: "Action impossible." });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const updateMemberStatus = async (uid: string, newStatus: string) => {
+    try {
+      await updateDoc(doc(db, 'members', uid), { 
+        status: newStatus, 
+        updatedAt: serverTimestamp() 
+      });
+      toast({ title: "Statut mis à jour" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erreur" });
+    }
+  };
+
+  const updateMemberRole = async (uid: string, newRole: string) => {
+    try {
+      await updateDoc(doc(db, 'members', uid), { 
+        role: newRole, 
+        updatedAt: serverTimestamp() 
+      });
+      toast({ title: "Rôle mis à jour" });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Erreur" });
     }
   };
 
@@ -287,65 +345,6 @@ function AdminContent() {
     }
   };
 
-  const updateSessionState = async (assemblyId: string, newState: 'open' | 'closed') => {
-    try {
-      setIsSubmitting(true);
-      const assemblyRef = doc(db, 'assemblies', assemblyId);
-      const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
-      
-      if (votesSnap.empty) {
-        toast({ variant: "destructive", title: "Erreur", description: "Aucun vote trouvé." });
-        return;
-      }
-
-      const voteDoc = votesSnap.docs[0];
-      const voteRef = voteDoc.ref;
-
-      const batch = writeBatch(db);
-      batch.update(assemblyRef, { 
-        state: newState,
-        activeVoteId: newState === 'open' ? voteDoc.id : null,
-        updatedAt: serverTimestamp()
-      });
-      
-      batch.update(voteRef, { 
-        state: newState,
-        updatedAt: serverTimestamp()
-      });
-
-      await batch.commit();
-      toast({ title: `Session ${newState === 'open' ? 'ouverte' : 'fermée'}` });
-    } catch (e: any) {
-      toast({ variant: "destructive", title: "Erreur", description: "Action impossible." });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const updateMemberStatus = async (uid: string, newStatus: string) => {
-    try {
-      await updateDoc(doc(db, 'members', uid), { 
-        status: newStatus, 
-        updatedAt: serverTimestamp() 
-      });
-      toast({ title: "Statut mis à jour" });
-    } catch (e) {
-      toast({ variant: "destructive", title: "Erreur" });
-    }
-  };
-
-  const updateMemberRole = async (uid: string, newRole: string) => {
-    try {
-      await updateDoc(doc(db, 'members', uid), { 
-        role: newRole, 
-        updatedAt: serverTimestamp() 
-      });
-      toast({ title: "Rôle mis à jour" });
-    } catch (e) {
-      toast({ variant: "destructive", title: "Erreur" });
-    }
-  };
-
   const generateDemoProjects = async () => {
     if (!user) return;
     setIsGenerating(true);
@@ -378,7 +377,7 @@ function AdminContent() {
   const getStatusBadge = (state: string) => {
     switch (state) {
       case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
-      case 'closed': return <Badge variant="secondary">Clos</Badge>;
+      case 'locked': return <Badge variant="secondary">Verrouillé</Badge>;
       case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>;
       case 'blocked': return <Badge variant="destructive">Bloqué</Badge>;
       default: return <Badge variant="outline">Brouillon</Badge>;
@@ -458,7 +457,7 @@ function AdminContent() {
                       <h3 className="text-2xl font-bold">{assembly.title}</h3>
                       {sessionVote && <p className="text-sm text-muted-foreground italic">{sessionVote.question}</p>}
                       <p className="text-[10px] uppercase font-bold text-muted-foreground mt-2">
-                        {sessionVote?.ballotCount || 0} bulletins reçus
+                        {sessionVote?.ballotCount || 0} bulletins reçus sur {sessionVote?.eligibleCount || '?'}
                       </p>
                     </div>
                   </div>
@@ -513,6 +512,16 @@ function AdminContent() {
         </TabsContent>
 
         <TabsContent value="members" className="py-12 space-y-8">
+          {membersError && (
+            <Alert variant="destructive" className="rounded-none">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle className="text-[10px] uppercase font-black tracking-widest">Erreur Firestore</AlertTitle>
+              <AlertDescription className="text-xs font-mono mt-2">
+                [{membersError.name}] {membersError.message}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <div className="p-4 bg-secondary/5 border border-border flex items-center justify-between">
             <div className="flex items-center gap-4 text-[10px] uppercase font-bold tracking-widest">
               <Database className="h-3 w-3 text-primary" />

@@ -34,7 +34,7 @@ export interface Project {
 export interface Assembly {
   id: string;
   title: string;
-  state: 'draft' | 'open' | 'closed';
+  state: 'draft' | 'open' | 'locked';
   createdAt: any;
   createdBy: string;
   startsAt?: any;
@@ -47,7 +47,7 @@ export interface Vote {
   assemblyId: string;
   question: string;
   projectIds: string[];
-  state: 'draft' | 'open' | 'closed';
+  state: 'draft' | 'open' | 'locked';
   opensAt?: any;
   closesAt?: any;
   createdAt?: any;

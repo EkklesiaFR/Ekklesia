@@ -63,7 +63,7 @@ service cloud.firestore {
         allow update: if isMemberActive()
           && resource.data.state == "open"
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ballotCount', 'updatedAt'])
-          && request.resource.data.ballotCount == (resource.data.ballotCount == Array([]) ? 1 : resource.data.ballotCount + 1)
+          && request.resource.data.ballotCount == (resource.data.ballotCount == null ? 1 : resource.data.ballotCount + 1)
           && !exists(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid))
           && existsAfter(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)/ballots/$(request.auth.uid));
 
