@@ -1,4 +1,3 @@
-
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +14,6 @@ import {
   limit, 
   orderBy,
   doc,
-  runTransaction,
   serverTimestamp,
   updateDoc
 } from 'firebase/firestore';
@@ -42,8 +40,6 @@ import {
   Settings,
   CheckCircle2,
   XCircle,
-  Clock,
-  LayoutGrid
 } from 'lucide-react';
 import { Assembly, Project, MemberProfile, Vote } from '@/types';
 import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
@@ -58,8 +54,10 @@ function AdminContent() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
 
   // Queries
-  const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies'), orderBy('createdAt', 'desc')), [db]);
-  const { data: assemblies } = useCollection<Assembly>(assembliesQuery);
+  const votesQuery = useMemoFirebase(() => {
+    return query(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'), orderBy('createdAt', 'desc'));
+  }, [db]);
+  const { data: votes } = useCollection<Vote>(votesQuery);
 
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), orderBy('createdAt', 'desc')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
@@ -81,12 +79,17 @@ function AdminContent() {
     }
   };
 
-  const closeSession = async (asm: Assembly) => {
-    if (!asm.activeVoteId) return;
+  const closeVote = async (vote: Vote) => {
     try {
-      await updateDoc(doc(db, 'assemblies', asm.id), { state: 'locked', updatedAt: serverTimestamp() });
-      await updateDoc(doc(db, 'assemblies', asm.id, 'votes', asm.activeVoteId), { state: 'locked' });
-      toast({ title: "Session clôturée", description: "Le scrutin est désormais archivé." });
+      await updateDoc(doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), { 
+        state: 'locked', 
+        updatedAt: serverTimestamp() 
+      });
+      await updateDoc(doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', vote.id), { 
+        state: 'locked',
+        updatedAt: serverTimestamp()
+      });
+      toast({ title: "Scrutin clôturé", description: "Le vote est désormais archivé." });
     } catch (e) {
       toast({ variant: "destructive", title: "Erreur", description: "Échec de la clôture." });
     }
@@ -101,7 +104,7 @@ function AdminContent() {
         </div>
         <div className="flex gap-4">
           <Button onClick={() => setIsSessionModalOpen(true)} className="rounded-none h-12 font-bold uppercase tracking-widest text-xs gap-2">
-            <Plus className="h-4 w-4" /> Créer une session
+            <Plus className="h-4 w-4" /> Nouvelle Session
           </Button>
         </div>
       </div>
@@ -115,30 +118,30 @@ function AdminContent() {
 
         <TabsContent value="sessions" className="space-y-6">
            <div className="grid gap-6">
-             {assemblies?.length === 0 && (
+             {votes?.length === 0 && (
                <div className="p-12 border border-dashed text-center italic text-muted-foreground bg-secondary/5">
-                 Aucune session configurée.
+                 Aucun scrutin configuré.
                </div>
              )}
-             {assemblies?.map(asm => (
-               <div key={asm.id} className="p-8 border border-border bg-white flex flex-col md:flex-row md:items-center justify-between gap-6">
+             {votes?.map(v => (
+               <div key={v.id} className="p-8 border border-border bg-white flex flex-col md:flex-row md:items-center justify-between gap-6">
                  <div className="space-y-3">
                    <div className="flex items-center gap-3">
-                     <Badge className={asm.state === 'open' ? "bg-green-600 rounded-none uppercase text-[9px]" : "bg-black rounded-none uppercase text-[9px]"}>
-                       {asm.state === 'open' ? 'Ouvert' : 'Clôturé'}
+                     <Badge className={v.state === 'open' ? "bg-green-600 rounded-none uppercase text-[9px]" : "bg-black rounded-none uppercase text-[9px]"}>
+                       {v.state === 'open' ? 'Ouvert' : 'Archives'}
                      </Badge>
-                     <span className="text-[10px] font-mono text-muted-foreground">ID: {asm.id}</span>
+                     <span className="text-[10px] font-mono text-muted-foreground">ID: {v.id}</span>
                    </div>
-                   <h3 className="text-2xl font-bold">{asm.title}</h3>
+                   <h3 className="text-2xl font-bold">{v.question}</h3>
                  </div>
                  <div className="flex gap-4">
-                   {asm.state === 'open' && (
-                     <Button variant="outline" onClick={() => closeSession(asm)} className="rounded-none h-10 border-destructive text-destructive hover:bg-destructive hover:text-white uppercase text-xs font-bold gap-2">
+                   {v.state === 'open' && (
+                     <Button variant="outline" onClick={() => closeVote(v)} className="rounded-none h-10 border-destructive text-destructive hover:bg-destructive hover:text-white uppercase text-xs font-bold gap-2">
                        <XCircle className="h-3 w-3" /> Clôturer
                      </Button>
                    )}
                    <Button variant="outline" className="rounded-none h-10 border-black uppercase text-xs font-bold gap-2">
-                     <Settings className="h-3 w-3" /> Paramètres
+                     <Settings className="h-3 w-3" /> Gérer
                    </Button>
                  </div>
                </div>

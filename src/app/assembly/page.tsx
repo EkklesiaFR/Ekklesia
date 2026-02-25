@@ -3,9 +3,9 @@
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
-import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { useAuthStatus, DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
 import { useFirestore, useCollection, useMemoFirebase, useDoc } from '@/firebase';
-import { collection, query, where, limit, doc } from 'firebase/firestore';
+import { collection, doc } from 'firebase/firestore';
 import Link from 'next/link';
 import { 
   LayoutGrid, 
@@ -22,7 +22,6 @@ import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
 import { LastVoteResultCard } from '@/components/voting/LastVoteResultCard';
-import { useEffect } from 'react';
 
 function ParticipationPanel({ 
   ballotCount, 
@@ -45,16 +44,7 @@ function ParticipationPanel({
     return (
       <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
         <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum en calcul…</p>
-        <p className="text-[9px] text-muted-foreground mt-1 italic">Le quorum doit être calculé par un administrateur à l'ouverture.</p>
-        <p className="text-[8px] text-muted-foreground/50 mt-2 font-mono">Bulletins: {ballotCount ?? "—"}</p>
-      </div>
-    );
-  }
-
-  if (eligibleCount === 0) {
-    return (
-      <div className="p-4 bg-secondary/10 border border-dashed border-border text-center">
-        <p className="text-[10px] uppercase font-bold text-muted-foreground">Aucun membre éligible</p>
+        <p className="text-[9px] text-muted-foreground mt-1 italic">Le quorum doit être calculé par un administrateur.</p>
       </div>
     );
   }
@@ -103,26 +93,23 @@ function AssemblyDashboardContent() {
   const { isAdmin, isMemberLoading } = useAuthStatus();
   const db = useFirestore();
 
-  // 1. Trouver l'assemblée ouverte (pour le vote actif)
-  const openAssemblyQuery = useMemoFirebase(() => {
-    return query(collection(db, 'assemblies'), where('state', '==', 'open'), limit(1));
-  }, [db]);
-  const { data: openAssemblies, isLoading: isAssemblyLoading } = useCollection<Assembly>(openAssemblyQuery);
-  const activeAssembly = openAssemblies?.[0];
+  // 1. Charger l'assemblée unique par défaut
+  const assemblyRef = useMemoFirebase(() => doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), [db]);
+  const { data: activeAssembly, isLoading: isAssemblyLoading } = useDoc<Assembly>(assemblyRef);
 
-  // 2. Charger le vote associé si une assemblée est ouverte
+  // 2. Charger le vote associé si l'assemblée est ouverte
   const voteRef = useMemoFirebase(() => {
-    if (!activeAssembly?.activeVoteId) return null;
-    return doc(db, 'assemblies', activeAssembly.id, 'votes', activeAssembly.activeVoteId);
+    if (!activeAssembly?.activeVoteId || activeAssembly.state !== 'open') return null;
+    return doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', activeAssembly.activeVoteId);
   }, [db, activeAssembly]);
   const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
-  // 3. Charger les projets pour l'affichage du vote
+  // 3. Charger les projets pour l'affichage
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
-  if (isAssemblyLoading || (activeAssembly && isVoteLoading)) {
+  if (isAssemblyLoading || (activeAssembly?.state === 'open' && isVoteLoading)) {
     return (
       <div className="flex flex-col items-center justify-center py-24 space-y-4">
         <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
@@ -130,7 +117,8 @@ function AssemblyDashboardContent() {
     );
   }
 
-  const showAdminTrends = !isMemberLoading && isAdmin && activeAssembly && activeVote;
+  const isOpen = activeAssembly?.state === 'open' && activeVote;
+  const showAdminTrends = !isMemberLoading && isAdmin && isOpen;
 
   return (
     <div className="space-y-16 animate-in fade-in duration-700">
@@ -141,7 +129,7 @@ function AssemblyDashboardContent() {
         </div>
       </header>
 
-      {!activeAssembly ? (
+      {!isOpen ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <section className="border border-border p-12 bg-secondary/5 text-center flex flex-col justify-center space-y-6 h-full">
             <Activity className="h-8 w-8 text-muted-foreground mx-auto" />
@@ -152,7 +140,6 @@ function AssemblyDashboardContent() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* PANNEAU GAUCHE : VOTE ACTIF */}
           <div className="border border-border p-8 bg-white space-y-8 flex flex-col justify-between">
             <div className="space-y-6">
               <div className="flex items-center justify-between">
@@ -162,7 +149,7 @@ function AssemblyDashboardContent() {
                 <span className="flex h-2 w-2 rounded-full bg-green-500 animate-pulse" />
               </div>
               <div className="space-y-4">
-                <p className="text-2xl font-bold leading-tight">{activeVote?.question || activeAssembly.title}</p>
+                <p className="text-2xl font-bold leading-tight">{activeVote?.question}</p>
                 <div className="flex flex-wrap items-center gap-6 text-sm text-muted-foreground">
                   <span className="flex items-center gap-2 font-medium">
                     <Users className="h-4 w-4 text-primary" /> <strong>{activeVote?.ballotCount ?? 0}</strong> bulletins
@@ -181,11 +168,10 @@ function AssemblyDashboardContent() {
             </Link>
           </div>
 
-          {/* PANNEAU DROIT : PARTICIPATION OU TENDANCES ADMIN */}
           <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
             {showAdminTrends ? (
               <AdminTrendsPanel 
-                assemblyId={activeAssembly.id} 
+                assemblyId={DEFAULT_ASSEMBLY_ID} 
                 voteId={activeVote.id} 
                 projects={activeProjects} 
               />
@@ -203,21 +189,18 @@ function AssemblyDashboardContent() {
         </div>
       )}
 
-      {/* RÉSULTATS PASSÉS (Toujours visibles en bas si un scrutin est ouvert, ou à droite sinon) */}
-      {activeAssembly && (
-        <div className="pt-8">
-          <header className="mb-8">
-            <h2 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Dernière décision actée</h2>
-          </header>
-          <div className="max-w-md">
-            <LastVoteResultCard />
-          </div>
+      {/* RÉSULTATS PASSÉS */}
+      <div className="pt-8">
+        <header className="mb-8">
+          <h2 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Dernière décision actée</h2>
+        </header>
+        <div className="max-w-md">
+          <LastVoteResultCard />
         </div>
-      )}
+      </div>
 
-      {/* RACCOURCIS */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-16 border-t border-border">
-        <Link href={activeAssembly ? "/vote" : "#"} className={cn("group h-full", !activeAssembly && "opacity-50 pointer-events-none")}>
+        <Link href={isOpen ? "/vote" : "#"} className={cn("group h-full", !isOpen && "opacity-50 pointer-events-none")}>
           <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
             <Activity className="h-6 w-6" />
             <h3 className="text-xl font-bold">Je vote</h3>

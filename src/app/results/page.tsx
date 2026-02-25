@@ -4,177 +4,35 @@ import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { collection, query, orderBy, limit } from 'firebase/firestore';
-import { Assembly, Vote, Project } from '@/types';
+import { Vote, Project } from '@/types';
 import { Badge } from '@/components/ui/badge';
 import { FileText, PieChart, Trophy, Calendar, ChevronRight, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
-import { useState, useEffect, useRef } from 'react';
-
-/**
- * Composant pour afficher le PV détaillé d'une assemblée.
- * Implémente une logique de cache ISOLÉ par assemblyId pour éviter les disparitions de données.
- */
-function AssemblyVotesPV({ assembly, projects }: { assembly: Assembly; projects: Project[] }) {
-  const db = useFirestore();
-  const [cachedVotes, setCachedVotes] = useState<Vote[]>([]);
-  const hasLoadedOnce = useRef(false);
-  const lastAssemblyId = useRef<string | null>(null);
-  
-  // RESET DU CACHE si on change d'assemblée
-  if (lastAssemblyId.current !== assembly.id) {
-    console.log(`[ARCHIVES] Assembly changed from ${lastAssemblyId.current} to ${assembly.id}. Resetting cache.`);
-    setCachedVotes([]);
-    hasLoadedOnce.current = false;
-    lastAssemblyId.current = assembly.id;
-  }
-
-  // Requête stable pour les votes de cette assemblée
-  const votesQuery = useMemoFirebase(() => {
-    const path = `assemblies/${assembly.id}/votes`;
-    console.log(`[ARCHIVES] Preparing query for path: ${path}`);
-    return query(
-      collection(db, 'assemblies', assembly.id, 'votes'),
-      orderBy('updatedAt', 'desc'),
-      limit(50)
-    );
-  }, [db, assembly.id]);
-  
-  const { data: fetchedVotes, isLoading } = useCollection<Vote>(votesQuery);
-
-  // Mise à jour du cache uniquement quand on reçoit des données valides pour la MÊME assembly
-  useEffect(() => {
-    if (fetchedVotes && fetchedVotes.length > 0) {
-      setCachedVotes(fetchedVotes);
-      hasLoadedOnce.current = true;
-      console.log(`[ARCHIVES] [PV] Cache updated for ${assembly.id}: ${fetchedVotes.length} votes.`);
-    }
-  }, [fetchedVotes, assembly.id]);
-
-  // Détermination des votes à afficher (priorité au fetch, fallback au cache de la MÊME assembly)
-  const allVotes = fetchedVotes || cachedVotes;
-  const closedVotes = allVotes
-    ?.filter(v => (v.results || v.state === 'locked' || v.state === 'closed'))
-    .sort((a, b) => {
-      const dateA = a.results?.computedAt?.seconds || a.updatedAt?.seconds || 0;
-      const dateB = b.results?.computedAt?.seconds || b.updatedAt?.seconds || 0;
-      return dateB - dateA;
-    }) || [];
-
-  if (isLoading && !hasLoadedOnce.current) {
-    return (
-      <div className="h-32 flex flex-col items-center justify-center border border-dashed border-border mt-4 space-y-2">
-        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Récupération des scrutins...</p>
-      </div>
-    );
-  }
-
-  if (!isLoading && closedVotes.length === 0) {
-    return (
-      <div className="p-12 text-center border border-dashed border-border mt-4 bg-secondary/5">
-        <p className="text-xs text-muted-foreground italic">Aucun procès-verbal publié pour cette session.</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="px-8 pb-12 pt-4 border-t border-border animate-in slide-in-from-top-2 duration-300 space-y-12 bg-white">
-      {closedVotes.map((vote) => {
-        const results = vote.results;
-        if (!results) return null;
-        const winner = projects.find(p => p.id === results.winnerId);
-
-        return (
-          <div key={vote.id} className="space-y-8 first:mt-4">
-            <h4 className="text-sm font-bold uppercase tracking-widest border-l-4 border-primary pl-4 py-1">
-              {vote.question || "Scrutin sans titre"}
-            </h4>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-12 py-8 border-b border-border/50">
-              <div className="space-y-2">
-                <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground flex items-center gap-2">
-                  <PieChart className="h-3.5 w-3.5" /> Participation
-                </p>
-                <p className="text-xl font-black">{vote.ballotCount || 0} / {vote.eligibleCount || 0}</p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground flex items-center gap-2">
-                  <Trophy className="h-3.5 w-3.5" /> Projet Élu
-                </p>
-                <p className="text-xl font-black uppercase text-primary">
-                  {winner?.title || results.winnerId || 'Calculé'}
-                </p>
-              </div>
-              <div className="space-y-2">
-                <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground flex items-center gap-2">
-                  <FileText className="h-3.5 w-3.5" /> Statut
-                </p>
-                <p className="text-xl font-black uppercase">Archives Scellées</p>
-              </div>
-            </div>
-
-            <div className="space-y-6 bg-secondary/5 p-8 border border-dashed border-border">
-              <h5 className="text-[9px] uppercase font-black tracking-[0.2em] text-center mb-6">Classement Schulze Certifié</h5>
-              <div className="max-w-md mx-auto space-y-2">
-                {results.fullRanking?.map((rankItem) => {
-                  const project = projects.find(p => p.id === rankItem.id);
-                  return (
-                    <div key={rankItem.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
-                      <div className="flex items-center gap-4">
-                        <span className={cn(
-                          "w-5 h-5 flex items-center justify-center text-[9px] font-black",
-                          rankItem.rank === 1 ? "bg-primary text-white" : "bg-muted text-muted-foreground"
-                        )}>
-                          {rankItem.rank}
-                        </span>
-                        <span className={cn("text-xs", rankItem.rank === 1 ? "font-bold" : "text-muted-foreground")}>
-                          {project?.title || rankItem.id}
-                        </span>
-                      </div>
-                      {rankItem.rank === 1 && <Trophy className="h-3 w-3 text-primary" />}
-                    </div>
-                  );
-                })}
-              </div>
-              <p className="text-[9px] text-center text-muted-foreground italic leading-relaxed pt-6 border-t border-border/50 mt-6">
-                Le procès-verbal de ce scrutin ({vote.id}) a été validé par le conseil.
-              </p>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
+import { useState } from 'react';
+import { DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
 
 function ResultsContent() {
   const db = useFirestore();
-  const [selectedAssemblyId, setSelectedAssemblyId] = useState<string | null>(null);
-  const assembliesLoadedOnce = useRef(false);
+  const [selectedVoteId, setSelectedVoteId] = useState<string | null>(null);
 
-  // Requête stable pour toutes les assemblées accessibles
-  const assembliesQuery = useMemoFirebase(() => 
-    query(collection(db, 'assemblies'), orderBy('createdAt', 'desc'), limit(50)), 
+  // Charger les votes archivés de l'assemblée par défaut
+  const votesQuery = useMemoFirebase(() => 
+    query(
+      collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'), 
+      where('state', '==', 'locked'),
+      orderBy('updatedAt', 'desc'), 
+      limit(50)
+    ), 
   [db]);
-  const { data: assemblies, isLoading: isAsmLoading } = useCollection<Assembly>(assembliesQuery);
+  const { data: votes, isLoading: isVotesLoading } = useCollection<Vote>(votesQuery);
 
-  // Charger les projets pour les libellés (global pour éviter N requêtes)
+  // Charger les projets pour les libellés
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(100)), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // SÉLECTION STABLE de l'assemblée par défaut (ne change plus après le premier load)
-  useEffect(() => {
-    if (!isAsmLoading && assemblies && assemblies.length > 0 && !assembliesLoadedOnce.current) {
-      // On prend la première de la liste de manière stable
-      setSelectedAssemblyId(assemblies[0].id);
-      assembliesLoadedOnce.current = true;
-      console.log(`[ARCHIVES] Initial stable assembly selected: ${assemblies[0].id}`);
-    }
-  }, [assemblies, isAsmLoading]);
-
-  if (isAsmLoading && !assemblies) {
+  if (isVotesLoading && !votes) {
     return (
       <div className="flex flex-col items-center justify-center py-24 space-y-4">
         <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
@@ -193,18 +51,20 @@ function ResultsContent() {
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-black">Décisions de l'Assemblée</h1>
         </div>
         <p className="text-xl text-muted-foreground max-w-2xl font-medium leading-relaxed">
-          Consultez les procès-verbaux officiels et les résultats certifiés des sessions de vote.
+          Consultez les procès-verbaux officiels et les résultats certifiés des sessions de vote passées.
         </p>
       </header>
 
-      {assemblies && assemblies.length > 0 ? (
+      {votes && votes.length > 0 ? (
         <div className="grid gap-8">
-          {assemblies.map((assembly) => {
-            const isSelected = selectedAssemblyId === assembly.id;
+          {votes.map((vote) => {
+            const isSelected = selectedVoteId === vote.id;
+            const results = vote.results;
+            const winner = projects?.find(p => p.id === results?.winnerId);
             
             return (
               <div 
-                key={assembly.id} 
+                key={vote.id} 
                 className={cn(
                   "border border-border bg-white transition-all overflow-hidden",
                   isSelected ? "border-black shadow-lg" : "hover:border-black/50"
@@ -212,28 +72,73 @@ function ResultsContent() {
               >
                 <div 
                   className="p-8 cursor-pointer flex flex-col md:flex-row md:items-center justify-between gap-6"
-                  onClick={() => setSelectedAssemblyId(isSelected ? null : assembly.id)}
+                  onClick={() => setSelectedVoteId(isSelected ? null : vote.id)}
                 >
                   <div className="space-y-2 text-left">
                     <div className="flex items-center gap-3">
-                      <Badge className={cn(
-                        "rounded-none uppercase font-bold text-[9px] tracking-widest",
-                        assembly.state === 'locked' ? "bg-black text-white" : "bg-[#7DC092] text-white"
-                      )}>
-                        {assembly.state === 'locked' ? 'Archives' : 'Session Active'}
+                      <Badge className="bg-black text-white rounded-none uppercase font-bold text-[9px] tracking-widest">
+                        Scrutin Archivé
                       </Badge>
                       <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1">
                         <Calendar className="h-3.5 w-3.5" />
-                        {assembly.createdAt?.seconds ? format(new Date(assembly.createdAt.seconds * 1000), 'dd MMMM yyyy', { locale: fr }) : 'Date inconnue'}
+                        {vote.updatedAt?.seconds ? format(new Date(vote.updatedAt.seconds * 1000), 'dd MMMM yyyy', { locale: fr }) : 'Date inconnue'}
                       </span>
                     </div>
-                    <h3 className="text-2xl font-bold">{assembly.title}</h3>
+                    <h3 className="text-2xl font-bold">{vote.question}</h3>
                   </div>
                   <ChevronRight className={cn("h-5 w-5 text-muted-foreground transition-transform", isSelected && "rotate-90")} />
                 </div>
 
-                {isSelected && (
-                  <AssemblyVotesPV assembly={assembly} projects={projects || []} />
+                {isSelected && results && (
+                  <div className="px-8 pb-12 pt-4 border-t border-border animate-in slide-in-from-top-2 duration-300 space-y-12 bg-white">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-12 py-8 border-b border-border/50">
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground flex items-center gap-2">
+                          <PieChart className="h-3.5 w-3.5" /> Participation
+                        </p>
+                        <p className="text-xl font-black">{vote.ballotCount || 0} / {vote.eligibleCount || 0}</p>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground flex items-center gap-2">
+                          <Trophy className="h-3.5 w-3.5" /> Projet Élu
+                        </p>
+                        <p className="text-xl font-black uppercase text-primary">
+                          {winner?.title || results.winnerId}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground flex items-center gap-2">
+                          <FileText className="h-3.5 w-3.5" /> Statut
+                        </p>
+                        <p className="text-xl font-black uppercase">PV Certifié</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6 bg-secondary/5 p-8 border border-dashed border-border">
+                      <h5 className="text-[9px] uppercase font-black tracking-[0.2em] text-center mb-6">Classement Schulze</h5>
+                      <div className="max-w-md mx-auto space-y-2">
+                        {results.fullRanking?.map((rankItem) => {
+                          const project = projects?.find(p => p.id === rankItem.id);
+                          return (
+                            <div key={rankItem.id} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+                              <div className="flex items-center gap-4">
+                                <span className={cn(
+                                  "w-5 h-5 flex items-center justify-center text-[9px] font-black",
+                                  rankItem.rank === 1 ? "bg-primary text-white" : "bg-muted text-muted-foreground"
+                                )}>
+                                  {rankItem.rank}
+                                </span>
+                                <span className={cn("text-xs", rankItem.rank === 1 ? "font-bold" : "text-muted-foreground")}>
+                                  {project?.title || rankItem.id}
+                                </span>
+                              </div>
+                              {rankItem.rank === 1 && <Trophy className="h-3 w-3 text-primary" />}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 )}
               </div>
             );
@@ -242,7 +147,7 @@ function ResultsContent() {
       ) : (
         <div className="text-center py-32 border border-dashed border-border bg-secondary/5 space-y-4">
           <FileText className="h-12 w-12 text-muted-foreground mx-auto opacity-20" />
-          <p className="text-muted-foreground italic font-medium">Aucune archive n'a pu être récupérée.</p>
+          <p className="text-muted-foreground italic font-medium">Aucun procès-verbal archivé.</p>
         </div>
       )}
     </div>
@@ -258,3 +163,5 @@ export default function ResultsPage() {
     </RequireActiveMember>
   );
 }
+
+import { where } from 'firebase/firestore';

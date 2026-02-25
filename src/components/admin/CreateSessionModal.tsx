@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -24,6 +23,7 @@ import { toast } from '@/hooks/use-toast';
 import { Loader2, Calendar } from 'lucide-react';
 import { Project } from '@/types';
 import { Checkbox } from '@/components/ui/checkbox';
+import { DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
 
 interface CreateSessionModalProps {
   isOpen: boolean;
@@ -54,38 +54,40 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
     setIsSubmitting(true);
     try {
       await runTransaction(db, async (transaction) => {
-        const assemblyRef = doc(collection(db, 'assemblies'));
-        const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
+        const assemblyRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
+        const votesCollectionRef = collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes');
+        const voteRef = doc(votesCollectionRef);
 
         const now = serverTimestamp();
 
-        // 1. Créer l'assemblée
-        transaction.set(assemblyRef, {
-          title,
+        // 1. Mettre à jour l'assemblée existante (Source de vérité)
+        transaction.update(assemblyRef, {
+          title: title, // Le titre de l'assemblée reflète la session actuelle
           state: 'open',
-          createdAt: now,
           updatedAt: now,
-          createdBy: user.uid,
           activeVoteId: voteRef.id
         });
 
         // 2. Créer le vote associé
         transaction.set(voteRef, {
-          assemblyId: assemblyRef.id,
+          id: voteRef.id,
+          assemblyId: DEFAULT_ASSEMBLY_ID,
           question: `Vote préférentiel : ${title}`,
           projectIds: selectedProjectIds,
           state: 'open',
           createdAt: now,
+          updatedAt: now,
           ballotCount: 0,
-          eligibleCount: 0, // À calculer par admin plus tard si besoin de quorum strict
+          eligibleCount: 0,
+          createdBy: user.uid
         });
       });
 
-      toast({ title: "Session créée", description: "L'assemblée et le vote sont maintenant ouverts." });
+      toast({ title: "Session lancée", description: "Le scrutin est désormais ouvert pour tous les membres." });
       onClose();
     } catch (e) {
       console.error(e);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer la session." });
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de créer la session. Vérifiez vos droits admin." });
     } finally {
       setIsSubmitting(false);
     }
@@ -95,9 +97,9 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-none p-10">
         <DialogHeader className="space-y-4">
-          <DialogTitle className="text-3xl font-bold">Nouvelle Assemblée</DialogTitle>
+          <DialogTitle className="text-3xl font-bold">Nouvelle Session</DialogTitle>
           <DialogDescription className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
-            Configurez une session de vote préférentiel.
+            Configurez un nouveau scrutin pour l'assemblée en cours.
           </DialogDescription>
         </DialogHeader>
 
@@ -131,7 +133,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
                 </div>
               ))}
               {availableProjects.length === 0 && (
-                <p className="text-xs italic text-muted-foreground p-4 text-center">Aucun projet avec le statut "candidat" n'est disponible.</p>
+                <p className="text-xs italic text-muted-foreground p-4 text-center">Aucun projet "candidat" n'est disponible.</p>
               )}
             </div>
           </div>
@@ -146,7 +148,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
               className="rounded-none h-14 px-10 uppercase font-bold text-xs gap-2"
             >
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
-              Lancer la session
+              Lancer le scrutin
             </Button>
           </DialogFooter>
         </form>

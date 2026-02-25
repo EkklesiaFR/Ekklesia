@@ -3,13 +3,13 @@
 import { ReactNode } from 'react';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { collection, query, where, limit } from 'firebase/firestore';
+import { useFirestore, useMemoFirebase, useDoc } from '@/firebase';
+import { doc } from 'firebase/firestore';
 import { Assembly } from '@/types';
-import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { useAuthStatus, DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
 
 /**
- * MainLayout gère désormais dynamiquement l'état "Vote Ouvert" pour toute l'application.
+ * MainLayout gère dynamiquement l'état "Vote Ouvert" basé sur l'assemblée unique.
  */
 export function MainLayout({ 
   children, 
@@ -23,14 +23,14 @@ export function MainLayout({
   const db = useFirestore();
   const { isActiveMember, isMemberLoading } = useAuthStatus();
 
-  // Détection d'un vote ouvert : on regarde si une assemblée a l'état 'open'
-  const openAssemblyQuery = useMemoFirebase(() => {
+  // Détection d'un vote ouvert sur l'assemblée par défaut
+  const assemblyRef = useMemoFirebase(() => {
     if (isMemberLoading || !isActiveMember) return null;
-    return query(collection(db, 'assemblies'), where('state', '==', 'open'), limit(1));
+    return doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
   }, [db, isActiveMember, isMemberLoading]);
 
-  const { data: openAssemblies } = useCollection<Assembly>(openAssemblyQuery);
-  const isVoteOpen = !!(openAssemblies && openAssemblies.length > 0);
+  const { data: assembly } = useDoc<Assembly>(assemblyRef);
+  const isVoteOpen = !!(assembly && assembly.state === 'open' && assembly.activeVoteId);
 
   return (
     <div className="min-h-screen bg-white flex flex-col">
