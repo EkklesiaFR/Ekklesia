@@ -34,26 +34,25 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [isMemberLoading, setIsMemberLoading] = useState(true);
 
-  // L'UID de l'utilisateur est la clé pivot
   const uid = user?.uid;
 
   useEffect(() => {
-    // Si l'authentification Firebase est encore en cours, on ne fait rien
+    // 1. Toujours réinitialiser l'état au changement d'UID ou pendant le chargement initial d'Auth
+    setMember(null);
+    setIsMemberLoading(true);
+
     if (isUserLoading) return;
 
-    // Reset immédiat au changement d'UID ou déconnexion
-    setMember(null);
-    
     if (!uid) {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[AuthStatus] Aucun UID détecté (déconnecté)");
+      }
       setIsMemberLoading(false);
       return;
     }
 
-    // On commence le chargement du profil membre
-    setIsMemberLoading(true);
-    
     if (process.env.NODE_ENV !== "production") {
-      console.log("[AuthStatus] Démarrage de la surveillance pour UID:", uid);
+      console.log("[AuthStatus] Démarrage surveillance pour UID:", uid);
     }
 
     const memberRef = doc(db, 'members', uid);
@@ -66,35 +65,57 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           role: data.role || 'member',
           joinedAt: data.joinedAt || null,
         };
+        
+        if (process.env.NODE_ENV !== "production") {
+          console.log("[AuthStatus] Document trouvé:", { 
+            uid, 
+            status: profile.status, 
+            role: profile.role 
+          });
+        }
         setMember(profile);
       } else {
+        if (process.env.NODE_ENV !== "production") {
+          console.warn("[AuthStatus] Document members/" + uid + " INTROUVABLE. Accès refusé par défaut.");
+        }
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
-      console.error("[AuthStatus] Erreur Firestore:", error);
+      if (process.env.NODE_ENV !== "production") {
+        console.error("[AuthStatus] Erreur critique Firestore:", {
+          code: error.code,
+          message: error.message,
+          hint: error.code === 'permission-denied' ? "Vérifiez les Security Rules ou si le projet est correct." : "Erreur inconnue"
+        });
+      }
       setMember(null);
       setIsMemberLoading(false);
     });
 
-    return () => unsubscribe();
+    return () => {
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[AuthStatus] Cleanup listener pour UID:", uid);
+      }
+      unsubscribe();
+    };
   }, [uid, isUserLoading, db]);
 
   const isActiveMember = member?.status === 'active';
   const isAdmin = member?.role === 'admin' && isActiveMember;
 
-  // Log de diagnostic protégé par environnement
-  if (process.env.NODE_ENV !== "production") {
-    useEffect(() => {
-      console.log("[AuthStatus State Update]", { 
+  // Log de diagnostic (Appelé systématiquement, condition interne)
+  useEffect(() => {
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[AuthStatus State Sync]", { 
         uid, 
         isMemberLoading, 
         isActiveMember, 
-        role: member?.role,
-        status: member?.status 
+        memberStatus: member?.status,
+        memberRole: member?.role 
       });
-    }, [uid, isMemberLoading, isActiveMember, member]);
-  }
+    }
+  }, [uid, isMemberLoading, isActiveMember, member]);
 
   return (
     <AuthStatusContext.Provider value={{ 
