@@ -4,16 +4,19 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuth, useUser } from '@/firebase';
+import { useAuth, useUser, useFirestore } from '@/firebase';
 import { signUpEmail } from '@/firebase/non-blocking-login';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { UserPlus, Mail, Lock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import Link from 'next/link';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
 
 export default function SignupPage() {
   const auth = useAuth();
+  const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -42,6 +45,22 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       await signUpEmail(auth, email, password);
+      
+      // Après l'inscription, on crée le profil membre en statut 'pending'
+      const currentUser = auth.currentUser;
+      if (currentUser) {
+        const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', currentUser.uid);
+        await setDoc(memberRef, {
+          id: currentUser.uid,
+          email: email,
+          role: 'member',
+          status: 'pending',
+          displayName: email.split('@')[0],
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+
       toast({ 
         title: "Compte créé !", 
         description: "Un email de vérification vous a été envoyé. Vérifiez vos spams.",
