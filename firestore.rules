@@ -58,12 +58,23 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
         
-        // Règle simplifiée pour débloquer l'admin actif lors de la clôture et de l'ouverture
+        function isMemberTallyUpdate() {
+          let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data;
+          let affected = request.resource.data.diff(resource.data).affectedKeys();
+          return isMemberActive() 
+            && vote.state == "open"
+            && (
+              (affected.hasOnly(['ballotCount', 'updatedAt']) && request.resource.data.ballotCount == resource.data.ballotCount + 1)
+              || (affected.hasOnly(['updatedAt']))
+            );
+        }
+
         allow update: if isAdminActive() 
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'state', 'results', 'closedAt', 'updatedAt', 'publishedAt', 
             'lockedAt', 'ballotCount', 'eligibleCount', 'openedAt'
-          ]);
+          ])
+          || isMemberTallyUpdate();
 
         allow create: if isAdminActive();
         allow delete: if isAdminActive();
@@ -72,16 +83,20 @@ service cloud.firestore {
           allow get: if isOwner(uid) || isAdminActive();
           allow list: if isAdminActive(); 
 
-          function isValidBallotRequest() {
-            let vote = get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data;
-            return isMemberActive()
-              && uid == request.auth.uid
-              && vote.state == "open"
-              && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
+          function isVoteOpen() {
+            return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
           }
 
-          allow create: if isValidBallotRequest();
-          allow update: if isValidBallotRequest();
+          allow create: if isMemberActive() 
+            && uid == request.auth.uid 
+            && isVoteOpen() 
+            && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
+            
+          allow update: if isMemberActive() 
+            && uid == request.auth.uid 
+            && isVoteOpen() 
+            && request.resource.data.keys().hasOnly(['ranking', 'updatedAt']);
+
           allow delete: if false;
         }
       }
