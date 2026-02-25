@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
@@ -7,8 +8,9 @@ import { Trophy, Users, BarChart3, ChevronRight, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Skeleton } from '@/components/skeleton';
 import Link from 'next/link';
+import { useEffect } from 'react';
 
 interface PublicResultDoc {
   voteId: string;
@@ -31,7 +33,18 @@ interface LastVoteResultCardProps {
 export function LastVoteResultCard({ assemblyId }: LastVoteResultCardProps) {
   const db = useFirestore();
   const resultRef = useMemoFirebase(() => doc(db, 'assemblies', assemblyId, 'public', 'lastResult'), [db, assemblyId]);
-  const { data: result, isLoading } = useDoc<PublicResultDoc>(resultRef);
+  const { data: result, isLoading, error } = useDoc<PublicResultDoc>(resultRef);
+
+  useEffect(() => {
+    if (assemblyId) {
+      console.log("[DASH] reading lastResult", { 
+        assemblyId, 
+        path: `assemblies/${assemblyId}/public/lastResult`,
+        exists: !!result,
+        isLoading
+      });
+    }
+  }, [assemblyId, result, isLoading]);
 
   if (isLoading) {
     return (
@@ -53,6 +66,7 @@ export function LastVoteResultCard({ assemblyId }: LastVoteResultCardProps) {
       <div className="p-8 border border-dashed border-border bg-secondary/5 text-center space-y-4">
         <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
         <p className="text-xs uppercase font-bold tracking-widest text-muted-foreground">Aucun résultat publié</p>
+        {error && <p className="text-[8px] text-destructive">Erreur : {error.message}</p>}
       </div>
     );
   }

@@ -1,3 +1,4 @@
+
 'use client';
 
 export const dynamic = 'force-dynamic';
@@ -380,6 +381,13 @@ function AdminContent() {
       const publicResultRef = doc(db, 'assemblies', assemblyId, 'public', 'lastResult');
       const winner = projects?.find(p => p.id === schulzeResults.winnerId);
       
+      console.log("[CLOSE] publishing lastResult", { 
+        assemblyId, 
+        voteId, 
+        path: `assemblies/${assemblyId}/public/lastResult`,
+        winner: winner?.title || schulzeResults.winnerId
+      });
+
       batch.set(publicResultRef, {
         voteId: voteId,
         voteTitle: voteData.question || assemblyData?.title || "Scrutin",
@@ -396,11 +404,10 @@ function AdminContent() {
           };
         }),
         publishedBy: user?.uid || 'system'
-      });
+      }, { merge: true });
 
-      console.log(`[CLOSE] Committing batch for ${assemblyId}/${voteId}...`);
       await batch.commit();
-      console.log(`[CLOSE] Batch committed OK`);
+      console.log(`[CLOSE] Batch committed OK for ${assemblyId}/${voteId}`);
 
       return { winnerId: schulzeResults.winnerId, ballotCount: ballots.length };
     } catch (e: any) {
