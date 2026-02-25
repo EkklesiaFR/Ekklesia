@@ -231,40 +231,56 @@ function AdminContent() {
 
     const results = computeSchulzeResults(voteData.projectIds, ballots);
 
-    const batch = writeBatch(db);
     const assemblyRef = doc(db, 'assemblies', assemblyId);
 
-    batch.update(voteRef, {
-      results: {
-        winnerId: results.winnerId,
-        fullRanking: results.ranking,
-        computedAt: serverTimestamp(),
-        total: ballots.length
-      },
-      ballotCount: ballots.length,
-      state: 'locked',
-      lockedAt: serverTimestamp(),
-      closedAt: serverTimestamp(),
-      publishedAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
-    });
+    // DEBUG: On sépare les updates pour identifier le blocage
+    try {
+      console.log(`[CLOSE] Attempting Vote update...`);
+      await updateDoc(voteRef, {
+        results: {
+          winnerId: results.winnerId,
+          fullRanking: results.ranking,
+          computedAt: serverTimestamp(),
+          total: ballots.length
+        },
+        ballotCount: ballots.length,
+        state: 'locked',
+        lockedAt: serverTimestamp(),
+        closedAt: serverTimestamp(),
+        publishedAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      console.log(`[CLOSE] Vote update OK`);
+    } catch (e: any) {
+      console.error(`[CLOSE] Vote update FAILED:`, e.code, e.message);
+      throw e;
+    }
 
-    batch.update(assemblyRef, {
-      state: 'locked',
-      updatedAt: serverTimestamp()
-    });
+    try {
+      console.log(`[CLOSE] Attempting Assembly update...`);
+      await updateDoc(assemblyRef, {
+        state: 'locked',
+        updatedAt: serverTimestamp()
+      });
+      console.log(`[CLOSE] Assembly update OK`);
+    } catch (e: any) {
+      console.error(`[CLOSE] Assembly update FAILED:`, e.code, e.message);
+      throw e;
+    }
 
-    await batch.commit();
     return { winnerId: results.winnerId, ballotCount: ballots.length };
   };
 
   const handleTallyAndPublish = async (assemblyId: string, voteId: string) => {
-    console.log(`[CLOSE] Initiation`, { 
-      assemblyId, 
-      voteId, 
+    // PREFLIGHT LOGS
+    console.log(`[CLOSE] Preflight:`, { 
       uid: user?.uid, 
-      isAdmin, 
-      memberStatus: member?.status 
+      memberDocId: member?.id,
+      role: member?.role, 
+      status: member?.status,
+      isAdmin,
+      assemblyId,
+      voteId
     });
     
     if (!isAdmin || member?.status !== 'active') {
@@ -280,10 +296,12 @@ function AdminContent() {
     setIsSubmitting(true);
     
     try {
+      console.log(`[CLOSE] Initiation depouillement...`);
       const result = await performVoteTally(assemblyId, voteId);
       if (result.skipped) {
         toast({ title: "Déjà clôturé" });
       } else {
+        console.log(`[CLOSE] Success - Scrutin publié { winnerId: ${result.winnerId}, ballots: ${result.ballotCount} }`);
         toast({ title: "Scrutin clôturé", description: "Les résultats ont été publiés." });
       }
     } catch (e: any) {

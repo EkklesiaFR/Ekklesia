@@ -58,7 +58,6 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
         
-        // Autorise les admins et les membres (uniquement pour l'incrémentation du ballotCount lors du premier vote)
         allow update: if (isAdminActive() 
                         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['state', 'results', 'closedAt', 'updatedAt', 'publishedAt', 'lockedAt', 'ballotCount', 'eligibleCount', 'openedAt']))
                       || (isMemberActive()
