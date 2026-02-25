@@ -92,7 +92,7 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     );
   }
 
-  // Email verification check
+  // Vérification de l'email (requis pour Email/Password, automatique pour Google)
   const isEmailVerified = user?.emailVerified || user?.providerData[0]?.providerId === 'google.com';
   if (user && !isEmailVerified && !isPublicPage) {
     return (
@@ -105,7 +105,7 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     );
   }
 
-  // Active or Admin check
+  // Un membre actif ou un admin a accès
   const hasAccess = isActiveMember || isAdmin;
 
   if (user && member && !hasAccess && !isPublicPage) {

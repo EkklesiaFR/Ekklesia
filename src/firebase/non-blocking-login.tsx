@@ -16,7 +16,7 @@ export function initiateAnonymousSignIn(authInstance: Auth): void {
   signInAnonymously(authInstance);
 }
 
-/** Initiate email/password sign-up (non-blocking). */
+/** Initiate email/password sign-up with email verification (non-blocking). */
 export async function signUpEmail(authInstance: Auth, email: string, password: string): Promise<void> {
   const userCredential = await createUserWithEmailAndPassword(authInstance, email, password);
   if (userCredential.user) {
@@ -24,7 +24,7 @@ export async function signUpEmail(authInstance: Auth, email: string, password: s
   }
 }
 
-/** Initiate email/password sign-in (non-blocking). */
+/** Initiate email/password sign-in. */
 export function signInEmail(authInstance: Auth, email: string, password: string): Promise<any> {
   return signInWithEmailAndPassword(authInstance, email, password);
 }

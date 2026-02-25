@@ -46,7 +46,7 @@ export default function SignupPage() {
     try {
       await signUpEmail(auth, email, password);
       
-      // Après l'inscription, on crée le profil membre en statut 'pending'
+      // Après l'inscription, on crée le profil membre en statut 'pending' de manière sécurisée
       const currentUser = auth.currentUser;
       if (currentUser) {
         const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', currentUser.uid);

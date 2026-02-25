@@ -48,7 +48,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', uid);
     const legacyMemberRef = doc(db, 'members', uid);
     
-    // Vérification passive uniquement
+    // Vérification passive uniquement pour éviter les créations automatiques destructives
     const checkStatus = async () => {
       try {
         const docSnap = await getDoc(memberRef);
