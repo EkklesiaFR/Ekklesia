@@ -9,12 +9,10 @@ import { useEffect } from 'react';
 import { LogIn } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { getRedirectResult } from 'firebase/auth';
-import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 export default function LoginPage() {
   const auth = useAuth();
   const { user, isUserLoading } = useUser();
-  const { isActiveMember, isMemberLoading } = useAuthStatus();
   const router = useRouter();
 
   useEffect(() => {
@@ -34,18 +32,13 @@ export default function LoginPage() {
     handleRedirectResult();
   }, [auth]);
 
-  // Redirection automatique si déjà connecté et membre actif
+  // After successful login, always try to go to assembly
+  // The guard on /assembly will decide if restricted or not
   useEffect(() => {
-    if (!isUserLoading && !isMemberLoading) {
-      if (user) {
-        if (isActiveMember) {
-          router.replace('/assembly');
-        } else {
-          router.replace('/access-denied?reason=member');
-        }
-      }
+    if (!isUserLoading && user) {
+      router.replace('/assembly');
     }
-  }, [user, isUserLoading, isMemberLoading, isActiveMember, router]);
+  }, [user, isUserLoading, router]);
 
   const handleGoogleSignIn = async () => {
     try {
@@ -72,7 +65,7 @@ export default function LoginPage() {
         <div className="w-full max-w-sm space-y-6">
           <Button
             onClick={handleGoogleSignIn}
-            disabled={isUserLoading || isMemberLoading}
+            disabled={isUserLoading}
             className="w-full h-14 bg-white hover:bg-secondary text-black border border-border rounded-none font-bold flex items-center justify-center gap-3 transition-all"
           >
             <LogIn className="h-5 w-5" />
