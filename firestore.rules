@@ -41,15 +41,13 @@ service cloud.firestore {
 
       match /members/{uid} {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
-        allow list: if isAdminActive(assemblyId);
+        allow list: if isAdminActive(assemblyId); 
         
-        // Création : membre pending uniquement + whitelist stricte
         allow create: if isOwner(uid) 
           && request.resource.data.role == "member"
           && request.resource.data.status == "pending"
           && request.resource.data.keys().hasOnly(['id', 'role', 'status', 'email', 'createdAt', 'updatedAt', 'displayName', 'lastLoginAt']);
           
-        // Mise à jour : Admin complet ou Owner restreint (uniquement displayName et updatedAt)
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
@@ -65,28 +63,33 @@ service cloud.firestore {
 
       match /votes/{voteId} {
         allow read: if isMemberActive(assemblyId);
-        // Permettre aux membres actifs d'incrémenter le compteur lors du vote
-        allow update: if isAdminActive(assemblyId) 
-          || (isMemberActive(assemblyId) 
-              && isVoteOpen(assemblyId, voteId)
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['ballotCount', 'updatedAt'])
-             );
+        // MODIFICATION : Seuls les admins peuvent modifier le document de vote (ballotCount, etc.)
+        allow update: if isAdminActive(assemblyId);
         allow create, delete: if isAdminActive(assemblyId);
 
         match /ballots/{uid} {
           allow get: if isOwner(uid) || isAdminActive(assemblyId);
           allow list: if isAdminActive(assemblyId); 
 
-          // Schéma validé : ranking, castAt, updatedAt
+          // Validation stricte du bulletin
+          function ballotValid() {
+            let data = request.resource.data;
+            return data.ranking is list 
+              && data.ranking.size() > 0
+              && data.castAt is timestamp
+              && data.updatedAt is timestamp
+              && data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
+          }
+
           allow create: if isMemberActive(assemblyId) 
-            && uid == request.auth.uid 
+            && isOwner(uid) 
             && isVoteOpen(assemblyId, voteId)
-            && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
+            && ballotValid();
             
           allow update: if isMemberActive(assemblyId) 
-            && uid == request.auth.uid 
+            && isOwner(uid) 
             && isVoteOpen(assemblyId, voteId)
-            && request.resource.data.keys().hasOnly(['ranking', 'castAt', 'updatedAt'])
+            && ballotValid()
             && request.resource.data.castAt == resource.data.castAt;
 
           allow delete: if false;

@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
-import { doc, serverTimestamp, runTransaction, increment } from 'firebase/firestore';
+import { doc, serverTimestamp, runTransaction } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { CheckCircle2, Info, Loader2, Lock, BarChart3, PieChart } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -109,19 +109,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     if (!user) return;
     setIsSaving(true);
 
-    const voteRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id);
     const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
-
-    // Prepare payloads for logging
-    const ballotPayload = {
-      ranking: currentRanking,
-      castAt: 'SERVER_TIMESTAMP',
-      updatedAt: 'SERVER_TIMESTAMP',
-    };
-    const voteUpdatePayload = {
-      ballotCount: 'INCREMENT_BY_1',
-      updatedAt: 'SERVER_TIMESTAMP',
-    };
 
     try {
       await runTransaction(db, async (transaction) => {
@@ -137,36 +125,20 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
             castAt: timestamp,
             updatedAt: timestamp,
           });
-          transaction.update(voteRef, {
-            ballotCount: increment(1),
-            updatedAt: timestamp
-          });
-          console.log(`[VOTE] [BALLOT] ballotCount incremented`);
+          // Le compteur ballotCount sera désormais mis à jour lors du dépouillement admin
+          // pour des raisons de sécurité et d'intégrité des données.
         } else {
           console.log(`[VOTE] [BALLOT] updating for ${user.uid}`);
           transaction.update(userBallotRef, {
             ranking: currentRanking,
             updatedAt: timestamp,
           });
-          transaction.update(voteRef, {
-            updatedAt: timestamp
-          });
         }
       });
       
       toast({ title: "Vote enregistré", description: "Votre classement a été pris en compte." });
     } catch (e: any) {
-      // Detailed error logging
       console.error("[VOTE] Submission error:", e.code, e.message);
-      console.log("[VOTE] Context:", {
-        uid: user.uid,
-        assemblyId: assemblyId,
-        voteId: vote.id,
-        isNewBallot: !userBallot,
-        ballotPayloadKeys: Object.keys(ballotPayload),
-        votePayloadKeys: Object.keys(voteUpdatePayload)
-      });
-
       toast({ 
         variant: "destructive", 
         title: `Erreur (${e.code || 'UNKNOWN'})`, 
@@ -195,6 +167,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
             <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
             <p className="text-xs text-muted-foreground leading-relaxed italic">
               Classez les projets par préférence (1 = favori). Glissez les cartes pour réorganiser.
+              Votre vote est secret et peut être modifié jusqu'à la clôture.
             </p>
           </div>
         </header>
