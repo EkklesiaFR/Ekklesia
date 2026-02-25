@@ -91,6 +91,10 @@ function AdminContent() {
 
       // Create Assembly
       const assemblyRef = doc(collection(db, 'assemblies'));
+      
+      // Create Vote doc reference first to have its ID
+      const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
+
       batch.set(assemblyRef, {
         title: newSessionTitle,
         state: 'draft',
@@ -98,10 +102,9 @@ function AdminContent() {
         createdBy: user.uid,
         startsAt: startsAt ? new Date(startsAt) : null,
         endsAt: endsAt ? new Date(endsAt) : null,
+        activeVoteId: voteRef.id, // Direct link on creation
       });
 
-      // Create Vote
-      const voteRef = doc(collection(db, 'assemblies', assemblyRef.id, 'votes'));
       batch.set(voteRef, {
         id: voteRef.id,
         assemblyId: assemblyRef.id,
@@ -112,11 +115,6 @@ function AdminContent() {
         createdBy: user.uid,
         opensAt: startsAt ? new Date(startsAt) : null,
         closesAt: endsAt ? new Date(endsAt) : null,
-      });
-
-      // Link them (on pré-remplit l'ID du vote même en brouillon pour la robustesse)
-      batch.update(assemblyRef, {
-        activeVoteId: voteRef.id
       });
 
       await batch.commit();
@@ -133,7 +131,7 @@ function AdminContent() {
 
   const updateSessionState = async (assemblyId: string, newState: 'open' | 'closed') => {
     try {
-      // 1. Trouver le vote doc dans la sous-collection
+      // 1. Find the vote doc in the sub-collection
       const votesSnap = await getDocs(collection(db, 'assemblies', assemblyId, 'votes'));
       if (votesSnap.empty) {
         toast({ variant: "destructive", title: "Erreur", description: "Aucun document de vote trouvé pour cette assemblée." });
@@ -145,15 +143,16 @@ function AdminContent() {
 
       const batch = writeBatch(db);
 
-      // 2. Mettre à jour l'assemblée
+      // 2. Update assembly with explicit activeVoteId and state
       const assemblyRef = doc(db, 'assemblies', assemblyId);
       batch.update(assemblyRef, { 
         state: newState,
         activeVoteId: newState === 'open' ? voteId : null,
-        updatedAt: serverTimestamp()
+        updatedAt: serverTimestamp(),
+        openedAt: newState === 'open' ? serverTimestamp() : null
       });
       
-      // 3. Mettre à jour le vote lié
+      // 3. Update linked vote doc state
       const voteRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       batch.update(voteRef, { 
         state: newState,

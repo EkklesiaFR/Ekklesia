@@ -38,6 +38,7 @@ function VoteGate() {
   }, [db]);
   const { data: allProjects, isLoading: isProjectsLoading } = useCollection<Project>(projectsQuery);
 
+  // Filtrage des projets autorisés pour ce vote
   const voteProjects = allProjects?.filter(p => activeVote?.projectIds?.includes(p.id)) || [];
 
   // 4. Charger le bulletin de l'utilisateur
@@ -66,8 +67,10 @@ function VoteGate() {
         <Bug className="h-3 w-3" /> DIAGNOSTIC VOTE
       </div>
       <p>Assembly ID: {activeAssembly?.id || 'null'}</p>
+      <p>Assembly State: {activeAssembly?.state || 'null'}</p>
       <p>activeVoteId: {activeAssembly?.activeVoteId || 'null'}</p>
-      <p>Vote Doc Exists: {activeVote ? 'YES' : 'NO'}</p>
+      <p>Vote Doc Found: {activeVote ? 'YES' : 'NO'}</p>
+      <p>Vote Doc State: {activeVote?.state || 'null'}</p>
       <p>Project IDs in Vote: {activeVote?.projectIds?.length || 0}</p>
       <p>Resolved Projects: {voteProjects.length}</p>
     </div>
@@ -90,12 +93,14 @@ function VoteGate() {
     );
   }
 
+  // Cas où l'assemblée est ouverte mais le vote n'est pas lié ou introuvable
   if (!activeAssembly.activeVoteId || !activeVote) {
     return (
       <>
         <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
-          <h1 className="text-2xl font-bold">Vote introuvable</h1>
-          <p className="text-muted-foreground">Le scrutin lié n'est pas encore prêt.</p>
+          <h1 className="text-2xl font-bold text-destructive">Scrutin non configuré</h1>
+          <p className="text-muted-foreground">L'assemblée est ouverte mais le document de vote est introuvable ou mal lié.</p>
+          <p className="text-xs text-muted-foreground font-mono">activeVoteId: {activeAssembly.activeVoteId || 'null'}</p>
         </div>
         {debugPanel}
       </>
