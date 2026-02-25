@@ -28,7 +28,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const uid = user?.uid;
 
   useEffect(() => {
-    // Immediate reset on UID change to avoid cross-account leaks
+    // Reset state immediately on UID change to prevent access leak/flicker
     setMember(null);
     setIsMemberLoading(true);
 
@@ -48,7 +48,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         
         if (docSnap.exists()) {
           // Existing user: Update last login and basic info only
-          // This avoids overwriting role or status
           await updateDoc(memberRef, {
             email: user.email,
             displayName: user.displayName || '',
@@ -56,7 +55,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
             updatedAt: serverTimestamp()
           });
         } else {
-          // New user: Create profile with defaults
+          // New user: Create profile with default 'pending' status
           await setDoc(memberRef, {
             email: user.email,
             displayName: user.displayName || '',
@@ -98,7 +97,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       setIsMemberLoading(false);
 
       if (process.env.NODE_ENV !== "production") {
-        console.log("[AuthStatus] Data Received:", { uid, status: docSnap.data()?.status, exists: docSnap.exists() });
+        console.log("[AuthStatus] Member data resolved:", { uid, status: docSnap.data()?.status });
       }
     }, (error) => {
       if (process.env.NODE_ENV !== "production") {

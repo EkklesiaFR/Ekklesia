@@ -65,7 +65,7 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     }
   }, [user, isUserLoading, isMemberLoading, router, isPublicPage]);
 
-  // While loading auth or member profile
+  // 1. While loading auth or member profile, show institutional loader
   if ((isUserLoading || isMemberLoading) && !isPublicPage) {
     return (
       <MainLayout statusText="Vérification">
@@ -77,10 +77,10 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     );
   }
 
-  // No user -> wait for useEffect redirect or render nothing
+  // No user -> handle redirect via useEffect
   if (!user && !isPublicPage) return null;
 
-  // Authenticated but no member profile
+  // 2. Authenticated but NO member profile found (should not happen with auto-creation, but safe-check)
   if (user && !member && !isPublicPage) {
     return (
       <RestrictedUI 
@@ -90,17 +90,17 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     );
   }
 
-  // Member found but not active
+  // 3. Member found but status is NOT 'active'
   if (user && member && !isActiveMember && !isPublicPage) {
     return (
       <RestrictedUI 
         title="Compte non activé" 
-        description="Votre accès est en attente de validation ou a été révoqué." 
+        description="Votre accès est en attente de validation ou a été révoqué par un administrateur." 
       />
     );
   }
 
-  // Admin section protection
+  // 4. Admin section protection
   if (pathname.startsWith('/admin') && !isAdmin && !isPublicPage) {
     return (
       <RestrictedUI 
