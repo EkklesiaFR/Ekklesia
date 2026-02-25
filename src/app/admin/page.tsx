@@ -461,16 +461,9 @@ export default function AdminPage() {
   return (
     <RequireActiveMember>
       <MainLayout statusText="Administration">
-        {isMemberLoading ? (
-          <div className="flex flex-col items-center justify-center py-32 space-y-6">
-            <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
-              Vérification des accès...
-            </p>
-          </div>
-        ) : isAdmin ? (
+        {!isMemberLoading && isAdmin === true ? (
           <AdminContent />
-        ) : (
+        ) : !isMemberLoading ? (
           <div className="flex flex-col items-center justify-center py-32 space-y-8 text-center animate-in fade-in duration-700">
             <div className="relative">
               <ShieldAlert className="h-20 w-20 text-destructive" />
@@ -484,6 +477,13 @@ export default function AdminPage() {
                 Cette section nécessite des privilèges d'administration certifiés par le conseil.
               </p>
             </header>
+          </div>
+        ) : (
+          <div className="flex flex-col items-center justify-center py-32 space-y-6">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
+              Vérification des accès...
+            </p>
           </div>
         )}
       </MainLayout>

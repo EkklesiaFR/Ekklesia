@@ -114,7 +114,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     .map(id => projects.find(p => p.id === id))
     .filter((p): p is Project => !!p);
 
-  const showAdminTrends = !isMemberLoading && isAdmin && vote.state === 'open';
+  const canShowAdminTrends = !isMemberLoading && isAdmin === true && vote.state === 'open';
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -166,7 +166,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
           </div>
         ) : vote.state === 'open' ? (
           <div className="space-y-12">
-            {showAdminTrends ? (
+            {canShowAdminTrends ? (
               <AdminTrendsPanel 
                 assemblyId={assemblyId} 
                 voteId={vote.id} 

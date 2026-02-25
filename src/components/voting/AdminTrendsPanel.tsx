@@ -23,7 +23,7 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
   const db = useFirestore();
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin === true) {
       console.log("🛡️ [DIAGNOSTIC] ADMIN identifié : Lancement du LIST ballots...");
     }
   }, [isAdmin]);
@@ -33,8 +33,7 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
   const ballotsQuery = useMemoFirebase(() => {
     // Si isAdmin est faux ou non encore résolu, on renvoie strictement null.
     // useCollection(null) n'émettra jamais de requête Firestore.
-    if (isMemberLoading || !isAdmin) {
-      console.warn("⚠️ [SÉCURITÉ] Tentative de LIST ballots bloquée côté client (non-admin).");
+    if (isMemberLoading || isAdmin !== true) {
       return null;
     }
     return collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
@@ -49,7 +48,7 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
   const winnerProject = results?.winnerId ? projects.find(p => p.id === results.winnerId) : null;
 
   // Double protection : Si un membre forçait le montage du composant
-  if (isMemberLoading || !isAdmin) return null;
+  if (isMemberLoading || isAdmin !== true) return null;
   
   if (isLoading) return <p className="text-[10px] text-gray-400 animate-pulse uppercase tracking-widest font-bold">Calcul des tendances...</p>;
 
