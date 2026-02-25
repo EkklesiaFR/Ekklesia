@@ -107,8 +107,6 @@ function AdminContent() {
   const [newSessionTitle, setNewSessionTitle] = useState('');
   const [newVoteQuestion, setNewVoteQuestion] = useState('');
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
-  const [startsAt, setStartsAt] = useState('');
-  const [endsAt, setEndsAt] = useState('');
 
   // Requêtes Firestore
   const assembliesQuery = useMemoFirebase(() => query(collection(db, 'assemblies')), [db]);
@@ -447,12 +445,17 @@ export default function AdminPage() {
     <RequireActiveMember>
       <MainLayout role="admin" statusText="Administration">
         {/* Isolation "Béton" : on ne monte AdminContent QUE si l'utilisateur est admin */}
-        {!isMemberLoading && isAdmin ? <AdminContent /> : (
+        {!isMemberLoading && isAdmin ? (
+          <AdminContent />
+        ) : (
           <div className="flex flex-col items-center justify-center py-32 space-y-6">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
-            <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">Vérification des accès...</p>
+            <p className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground">
+              Vérification des accès...
+            </p>
           </div>
         )}
-      </RequireActiveMember>
-    );
+      </MainLayout>
+    </RequireActiveMember>
+  );
 }
