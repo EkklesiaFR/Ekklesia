@@ -8,7 +8,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 
 /**
  * Composant Guard pour protéger l'accès aux pages privées.
- * Amélioré pour fournir des raisons spécifiques lors de la redirection.
+ * Empêche les redirections hâtives pendant le chargement des profils.
  */
 export function RequireActiveMember({ children }: { children: ReactNode }) {
   const router = useRouter();
@@ -17,51 +17,58 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
   const { isMemberLoading, isActiveMember, isAdmin, member } = useAuthStatus();
 
   useEffect(() => {
+    // RÈGLE D'OR : On ne redirige JAMAIS tant qu'on n'a pas fini de charger
     if (isUserLoading || isMemberLoading) return;
 
-    // 1. Non connecté
+    // Ne pas protéger les pages qui gèrent elles-mêmes le refus ou le login
+    const isPublicPage = pathname === '/login' || pathname === '/access-denied';
+    if (isPublicPage) return;
+
+    // 1. Utilisateur non authentifié
     if (!user) {
       router.replace('/login');
       return;
     }
 
-    // 2. Pas de doc membre du tout
-    if (!member && pathname !== '/access-denied') {
+    // 2. Utilisateur authentifié mais profil membre inexistant dans Firestore
+    if (!member) {
       router.replace('/access-denied?reason=no_member');
       return;
     }
 
-    // 3. Membre existe mais pas actif
-    if (!isActiveMember && pathname !== '/access-denied') {
+    // 3. Profil membre trouvé mais état non actif (ex: pending ou revoked)
+    if (!isActiveMember) {
       router.replace('/access-denied?reason=inactive');
       return;
     }
 
-    // 4. Protection route admin
+    // 4. Protection spécifique de la section Administration
     if (pathname.startsWith('/admin') && !isAdmin) {
       router.replace('/access-denied?reason=admin');
       return;
     }
   }, [user, isUserLoading, isMemberLoading, isActiveMember, isAdmin, member, router, pathname]);
 
-  // Détermination de l'autorisation finale pour l'affichage conditionnel
+  // Autorisation finale pour le rendu
   const isAuthorized = user && isActiveMember && (!pathname.startsWith('/admin') || isAdmin);
+  const isSpecialPage = pathname === '/login' || pathname === '/access-denied';
 
-  if (isUserLoading || isMemberLoading || !isAuthorized) {
+  if ((isUserLoading || isMemberLoading) && !isSpecialPage) {
     return (
       <MainLayout statusText="Vérification">
         <div className="flex flex-col items-center justify-center py-32 space-y-6">
           <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
           <div className="text-center space-y-2">
             <p className="text-[10px] uppercase tracking-[0.3em] text-muted-foreground font-bold">
-              Vérification des Accès
+              Identification en cours
             </p>
-            <p className="text-xs text-muted-foreground italic">Sécurisation de la session en cours...</p>
+            <p className="text-xs text-muted-foreground italic">Sécurisation de l'accès à l'assemblée...</p>
           </div>
         </div>
       </MainLayout>
     );
   }
 
-  return <>{children}</>;
+  // Si on est sur une page publique ou autorisé, on affiche les enfants
+  return <>{(isAuthorized || isSpecialPage) ? children : null}</>;
 }

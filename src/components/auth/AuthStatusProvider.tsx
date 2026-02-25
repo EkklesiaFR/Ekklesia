@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
@@ -27,6 +26,7 @@ const AuthStatusContext = createContext<AuthStatusContextType>({
 
 /**
  * Provider global pour l'état d'authentification et de membre.
+ * Gère le cycle de vie du document 'members/{uid}' de manière robuste.
  */
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useUser();
@@ -34,41 +34,67 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [isMemberLoading, setIsMemberLoading] = useState(true);
 
+  // L'UID de l'utilisateur est la clé pivot
+  const uid = user?.uid;
+
   useEffect(() => {
+    // Si l'authentification Firebase est encore en cours, on ne fait rien
     if (isUserLoading) return;
 
-    if (!user) {
-      setMember(null);
+    // Reset immédiat au changement d'UID ou déconnexion
+    setMember(null);
+    
+    if (!uid) {
       setIsMemberLoading(false);
       return;
     }
 
+    // On commence le chargement du profil membre
     setIsMemberLoading(true);
-    const memberRef = doc(db, 'members', user.uid);
+    
+    if (process.env.NODE_ENV !== "production") {
+      console.log("[AuthStatus] Démarrage de la surveillance pour UID:", uid);
+    }
+
+    const memberRef = doc(db, 'members', uid);
     
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        setMember({
+        const profile: MemberProfile = {
           status: data.status || 'pending',
           role: data.role || 'member',
           joinedAt: data.joinedAt || null,
-        } as MemberProfile);
+        };
+        setMember(profile);
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
-      console.error("Erreur lors de la récupération du statut membre:", error);
+      console.error("[AuthStatus] Erreur Firestore:", error);
       setMember(null);
       setIsMemberLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user, isUserLoading, db]);
+  }, [uid, isUserLoading, db]);
 
   const isActiveMember = member?.status === 'active';
   const isAdmin = member?.role === 'admin' && isActiveMember;
+
+  // Log de diagnostic protégé par environnement
+  if (process.env.NODE_ENV !== "production") {
+    useEffect(() => {
+      console.log("[AuthStatus State Update]", { 
+        uid, 
+        isMemberLoading, 
+        isActiveMember, 
+        role: member?.role,
+        status: member?.status 
+      });
+    }, [uid, isMemberLoading, isActiveMember, member]);
+  }
 
   return (
     <AuthStatusContext.Provider value={{ 
