@@ -29,6 +29,7 @@ service cloud.firestore {
     }
 
     // PROTECTION DES ANCIENNES DONNÉES (LEGACY)
+    // Seul le propriétaire peut lire son ancien profil pour diagnostic
     match /members/{uid} {
       allow get: if isOwner(uid);
       allow list: if false; 
@@ -43,11 +44,13 @@ service cloud.firestore {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
         allow list: if isAdminActive(assemblyId); 
         
+        // Auto-création sécurisée (status pending, role member uniquement)
         allow create: if isOwner(uid) 
           && request.resource.data.role == "member"
           && request.resource.data.status == "pending"
           && request.resource.data.keys().hasOnly(['id', 'role', 'status', 'email', 'createdAt', 'updatedAt', 'displayName', 'lastLoginAt']);
           
+        // Seul l'admin peut changer role/status. Le membre ne change que son profil public.
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
@@ -63,7 +66,6 @@ service cloud.firestore {
 
       match /votes/{voteId} {
         allow read: if isMemberActive(assemblyId);
-        // MODIFICATION : Seuls les admins peuvent modifier le document de vote (ballotCount, etc.)
         allow update: if isAdminActive(assemblyId);
         allow create, delete: if isAdminActive(assemblyId);
 
@@ -71,7 +73,7 @@ service cloud.firestore {
           allow get: if isOwner(uid) || isAdminActive(assemblyId);
           allow list: if isAdminActive(assemblyId); 
 
-          // Validation stricte du bulletin
+          // Validation structurelle du bulletin
           function ballotValid() {
             let data = request.resource.data;
             return data.ranking is list 
