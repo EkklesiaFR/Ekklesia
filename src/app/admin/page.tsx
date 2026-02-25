@@ -55,7 +55,7 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from '@/components/ui/table';
+} from '@/table';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -126,15 +126,22 @@ function AdminContent() {
 
   // MEMBRES: Requête simplifiée sur la collection 'members'
   const membersQuery = useMemoFirebase(() => {
-    return query(collection(db, 'members'), limit(100));
+    return query(collection(db, 'members'), limit(150));
   }, [db]);
   const { data: members, error: membersError, isLoading: isMembersLoading } = useCollection<MemberProfile>(membersQuery);
 
+  // Filtrage et Tri (Pending en premier)
   const filteredMembers = members?.filter(m => {
     const matchStatus = statusFilter === 'all' || m.status === statusFilter;
     const matchRole = roleFilter === 'all' || m.role === roleFilter;
     return matchStatus && matchRole;
+  }).sort((a, b) => {
+    if (a.status === 'pending' && b.status !== 'pending') return -1;
+    if (a.status !== 'pending' && b.status === 'pending') return 1;
+    return 0;
   });
+
+  const pendingCount = members?.filter(m => m.status === 'pending').length || 0;
 
   // 2. Actions
   const handleCreateSession = async () => {
@@ -329,7 +336,7 @@ function AdminContent() {
       case 'open': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Ouvert</Badge>;
       case 'active': return <Badge className="bg-[#7DC092] hover:bg-[#7DC092]">Actif</Badge>;
       case 'closed': return <Badge variant="secondary">Clos</Badge>;
-      case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500">En attente</Badge>;
+      case 'pending': return <Badge variant="outline" className="border-orange-500 text-orange-500 font-bold">En attente</Badge>;
       case 'blocked': return <Badge variant="destructive">Bloqué</Badge>;
       default: return <Badge variant="outline">Brouillon</Badge>;
     }
@@ -495,7 +502,13 @@ function AdminContent() {
           <div className="flex flex-col md:flex-row gap-6 items-center justify-between border-b border-border pb-6">
             <h2 className="text-xl font-bold flex items-center gap-2">
               <Users className="h-5 w-5" />
-              Gestion des Membres ({filteredMembers?.length || 0})
+              Gestion des Membres ({members?.length || 0}
+              {pendingCount > 0 && (
+                <span className="text-sm font-normal text-orange-600 ml-2 italic">
+                  (dont {pendingCount} en attente)
+                </span>
+              )}
+              )
             </h2>
             <div className="flex gap-4 w-full md:w-auto">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
