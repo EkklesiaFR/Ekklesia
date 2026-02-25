@@ -24,21 +24,24 @@ service cloud.firestore {
       return isMemberActive(assemblyId) && getMemberData(assemblyId).role == "admin";
     }
 
+    // LEGACY: Support for root members collection during migration
+    match /members/{uid} {
+      allow get: if isOwner(uid) || (isSignedIn() && exists(/databases/$(database)/documents/assemblies/default-assembly/members/$(request.auth.uid)) && get(/databases/$(database)/documents/assemblies/default-assembly/members/$(request.auth.uid)).data.role == "admin");
+      allow list: if false; 
+    }
+
     match /assemblies/{assemblyId} {
-      allow read: if isMemberActive(assemblyId);
+      allow read: if isSignedIn(); // Allow reading assembly metadata to find the right one
       allow write: if isAdminActive(assemblyId);
 
       match /members/{uid} {
         allow get: if isOwner(uid) || isAdminActive(assemblyId);
         allow list: if isAdminActive(assemblyId);
         
-        // Users can create their own "pending" profile
         allow create: if isOwner(uid) 
           && request.resource.data.status == "pending" 
-          && request.resource.data.role == "member"
-          && request.resource.data.keys().hasAll(['role', 'status', 'email', 'createdAt']);
+          && request.resource.data.role == "member";
           
-        // Only admins can update status/role. Members can only update inert fields.
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
               && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
@@ -66,13 +69,11 @@ service cloud.firestore {
 
           allow create: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
-            && isVoteOpen() 
-            && request.resource.data.keys().hasAll(['ranking', 'castAt', 'updatedAt']);
+            && isVoteOpen();
             
           allow update: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
-            && isVoteOpen() 
-            && request.resource.data.keys().hasAll(['ranking', 'updatedAt']);
+            && isVoteOpen();
 
           allow delete: if false;
         }
@@ -80,10 +81,8 @@ service cloud.firestore {
     }
 
     match /projects/{projectId} {
-      // For simplicity, we assume projects are globally visible to any active member of the default assembly
-      // In a multi-tenant world, projects should belong to an assembly.
       allow read: if isSignedIn(); 
-      allow write: if isSignedIn(); // Add more strict rules here if needed
+      allow write: if isSignedIn();
     }
   }
 }

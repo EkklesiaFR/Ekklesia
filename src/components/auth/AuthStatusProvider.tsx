@@ -29,10 +29,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [isMemberLoading, setIsMemberLoading] = useState(true);
 
-  if (!process.env.NEXT_PUBLIC_DEFAULT_ASSEMBLY_ID && process.env.NODE_ENV === 'development') {
-    console.warn("NEXT_PUBLIC_DEFAULT_ASSEMBLY_ID is missing in your environment variables.");
-  }
-
   const uid = user?.uid;
 
   useEffect(() => {
@@ -45,24 +41,51 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Path updated to: assemblies/{assemblyId}/members/{uid}
     const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', uid);
+    const legacyMemberRef = doc(db, 'members', uid);
     
     const syncProfile = async () => {
       try {
         const docSnap = await getDoc(memberRef);
-        
+        let currentData = docSnap.exists() ? docSnap.data() : null;
+
+        // RECOVERY LOGIC: If new profile is missing or just "pending member", check legacy root
+        if (!currentData || (currentData.status === 'pending' && currentData.role === 'member')) {
+          console.log(`[AuthStatus] Checking legacy recovery for ${uid}...`);
+          try {
+            const legacySnap = await getDoc(legacyMemberRef);
+            if (legacySnap.exists()) {
+              const legacyData = legacySnap.data();
+              console.log(`[AuthStatus] Found legacy profile (Status: ${legacyData.status}, Role: ${legacyData.role}). Migrating...`);
+              
+              // Only migrate if legacy is more "privileged" or if new doc was totally missing
+              if (!currentData || legacyData.status === 'active' || legacyData.role === 'admin') {
+                const migrationData = {
+                  ...legacyData,
+                  id: uid,
+                  email: user.email || legacyData.email || '',
+                  updatedAt: serverTimestamp(),
+                  migratedAt: serverTimestamp(),
+                  lastLoginAt: serverTimestamp()
+                };
+                await setDoc(memberRef, migrationData, { merge: true });
+                console.log(`[AuthStatus] Migration successful.`);
+                return; // onSnapshot will pick up the changes
+              }
+            }
+          } catch (legacyErr) {
+            console.warn("[AuthStatus] Legacy check failed (probably no root doc exists):", legacyErr);
+          }
+        }
+
         if (docSnap.exists()) {
-          const data = docSnap.data();
           await updateDoc(memberRef, {
-            email: user.email || '',
-            displayName: user.displayName || '',
+            email: user.email || currentData?.email || '',
             lastLoginAt: serverTimestamp(),
-            updatedAt: serverTimestamp(),
-            status: data.status || 'pending'
+            updatedAt: serverTimestamp()
           });
         } else {
-          // Creating the initial profile as "pending" / "member"
+          // No legacy, no new doc: Create fresh pending
           await setDoc(memberRef, {
             id: uid,
             email: user.email || '',
@@ -73,10 +96,8 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
             lastLoginAt: serverTimestamp(),
             updatedAt: serverTimestamp()
           });
-          console.log(`[AuthStatus] Created new pending profile for ${user.email}`);
         }
       } catch (error: any) {
-        // Permissions rules will prevent non-pending or non-member creation
         console.error("[AuthStatus] Sync Error:", error.code, error.message);
       }
     };
@@ -86,7 +107,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const profile = {
+        setMember({
           id: docSnap.id,
           email: data.email || user.email || '',
           displayName: data.displayName || user.displayName || '',
@@ -95,16 +116,12 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           createdAt: data.createdAt || null,
           lastLoginAt: data.lastLoginAt || null,
           updatedAt: data.updatedAt || null,
-        } as MemberProfile;
-        
-        setMember(profile);
+        } as MemberProfile);
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
-      console.error("[AuthStatus] Snapshot Error:", error.code, error.message);
-      setMember(null);
       setIsMemberLoading(false);
     });
 
