@@ -21,6 +21,7 @@ import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
+import { LastVoteResultCard } from '@/components/voting/LastVoteResultCard';
 import { useEffect } from 'react';
 
 function ParticipationPanel({ 
@@ -121,6 +122,12 @@ function AssemblyDashboardContent() {
   const { data: allProjects } = useCollection<Project>(projectsQuery);
   const activeProjects = allProjects?.filter(p => activeVote?.projectIds.includes(p.id)) || [];
 
+  // 4. Trouver l'ID de n'importe quelle assemblée pour les résultats passés
+  // (En attendant d'avoir une gestion de session active globale)
+  const anyAssemblyQuery = useMemoFirebase(() => query(collection(db, 'assemblies'), limit(1)), [db]);
+  const { data: anyAssemblies } = useCollection<Assembly>(anyAssemblyQuery);
+  const currentAssemblyId = activeAssembly?.id || anyAssemblies?.[0]?.id;
+
   // Log de diagnostic
   useEffect(() => {
     if (activeVote) {
@@ -153,10 +160,14 @@ function AssemblyDashboardContent() {
       </header>
 
       {!activeAssembly ? (
-        <section className="border border-border p-12 bg-secondary/5 text-center space-y-6">
-          <Activity className="h-8 w-8 text-muted-foreground mx-auto" />
-          <h2 className="text-2xl font-bold">Aucun vote ouvert</h2>
-        </section>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <section className="border border-border p-12 bg-secondary/5 text-center flex flex-col justify-center space-y-6 h-full">
+            <Activity className="h-8 w-8 text-muted-foreground mx-auto" />
+            <h2 className="text-2xl font-bold">Aucun scrutin ouvert</h2>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto">Vous serez notifié dès qu'une nouvelle session de vote débutera.</p>
+          </section>
+          {currentAssemblyId && <LastVoteResultCard assemblyId={currentAssemblyId} />}
+        </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* PANNEAU GAUCHE : VOTE */}
@@ -188,7 +199,7 @@ function AssemblyDashboardContent() {
             </Link>
           </div>
 
-          {/* PANNEAU DROIT : PARTICIPATION */}
+          {/* PANNEAU DROIT : PARTICIPATION OU RÉSULTATS D'ADMIN */}
           <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
             {showAdminTrends ? (
               <AdminTrendsPanel 
@@ -196,16 +207,6 @@ function AssemblyDashboardContent() {
                 voteId={activeVote.id} 
                 projects={activeProjects} 
               />
-            ) : activeVote?.state === 'locked' && activeVote.results ? (
-              <div className="space-y-6">
-                <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400">Résultats officiels</h3>
-                <div className="space-y-2">
-                  <p className="text-[10px] uppercase font-bold text-primary tracking-widest">Élu à l&apos;unanimité</p>
-                  <p className="text-2xl font-bold">
-                    {activeProjects.find(p => p.id === activeVote.results?.winnerId)?.title || "Calculé"}
-                  </p>
-                </div>
-              </div>
             ) : (
               <ParticipationPanel 
                 ballotCount={activeVote?.ballotCount} 
@@ -220,8 +221,20 @@ function AssemblyDashboardContent() {
         </div>
       )}
 
+      {/* RÉSULTATS PUBLIÉS (Si session ouverte, on affiche quand même les derniers résultats en dessous) */}
+      {activeAssembly && currentAssemblyId && (
+        <div className="pt-8">
+          <header className="mb-8">
+            <h2 className="text-xs uppercase tracking-widest font-bold text-muted-foreground">Dernière décision actée</h2>
+          </header>
+          <div className="max-w-md">
+            <LastVoteResultCard assemblyId={currentAssemblyId} />
+          </div>
+        </div>
+      )}
+
       {/* RACCOURCIS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-8 border-t border-border">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-16 border-t border-border">
         <Link href={activeAssembly ? "/vote" : "#"} className={cn("group h-full", !activeAssembly && "opacity-50 pointer-events-none")}>
           <div className="h-full border border-border p-8 bg-white hover:border-black transition-all space-y-6">
             <Activity className="h-6 w-6" />

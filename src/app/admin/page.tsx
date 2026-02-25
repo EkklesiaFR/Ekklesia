@@ -345,17 +345,20 @@ function AdminContent() {
       throw new Error("Impossible de clôturer sans aucun bulletin.");
     }
 
-    const results = computeSchulzeResults(voteData.projectIds, ballots);
+    const schulzeResults = computeSchulzeResults(voteData.projectIds, ballots);
     const assemblyRef = doc(db, 'assemblies', assemblyId);
+    const assemblySnap = await getDoc(assemblyRef);
+    const assemblyData = assemblySnap.exists() ? assemblySnap.data() as Assembly : null;
 
     try {
       const batch = writeBatch(db);
       const timestamp = serverTimestamp();
 
+      // 1. Update the Vote document
       batch.update(voteRef, {
         results: {
-          winnerId: results.winnerId,
-          fullRanking: results.ranking,
+          winnerId: schulzeResults.winnerId,
+          fullRanking: schulzeResults.ranking,
           computedAt: timestamp,
           total: ballots.length
         },
@@ -367,16 +370,39 @@ function AdminContent() {
         updatedAt: timestamp
       });
 
+      // 2. Update the Assembly document
       batch.update(assemblyRef, {
         state: 'locked',
         updatedAt: timestamp
+      });
+
+      // 3. Create the Public Snapshot for all members
+      const publicResultRef = doc(db, 'assemblies', assemblyId, 'public', 'lastResult');
+      const winner = projects?.find(p => p.id === schulzeResults.winnerId);
+      
+      batch.set(publicResultRef, {
+        voteId: voteId,
+        voteTitle: voteData.question || assemblyData?.title || "Scrutin",
+        closedAt: timestamp,
+        winnerId: schulzeResults.winnerId,
+        winnerLabel: winner?.title || schulzeResults.winnerId || "Inconnu",
+        totalBallots: ballots.length,
+        ranking: schulzeResults.ranking.map(r => {
+          const p = projects?.find(proj => proj.id === r.id);
+          return {
+            optionId: r.id,
+            label: p?.title || r.id,
+            rank: r.rank
+          };
+        }),
+        publishedBy: user?.uid || 'system'
       });
 
       console.log(`[CLOSE] Committing batch for ${assemblyId}/${voteId}...`);
       await batch.commit();
       console.log(`[CLOSE] Batch committed OK`);
 
-      return { winnerId: results.winnerId, ballotCount: ballots.length };
+      return { winnerId: schulzeResults.winnerId, ballotCount: ballots.length };
     } catch (e: any) {
       console.error(`[CLOSE] Batch FAILED:`, e.code, e.message);
       throw e;
@@ -430,7 +456,6 @@ function AdminContent() {
 
       for (const voteDoc of snapshot.docs) {
         const voteId = voteDoc.id;
-        // On récupère l'assemblyId depuis le chemin Firestore pour garantir la cohérence
         const assemblyId = voteDoc.ref.parent.parent!.id;
 
         try {
