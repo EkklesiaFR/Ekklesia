@@ -50,41 +50,7 @@
         "email",
         "role",
         "status",
-        "createdAt",
-        "updatedAt",
-        "lastLoginAt"
-      ]
-    },
-    "EmailAllowlistEntry": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "EmailAllowlistEntry",
-      "type": "object",
-      "description": "Represents a single email address that is officially allowed to register and participate in voting sessions.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the EmailAllowlistEntry entity."
-        },
-        "email": {
-          "type": "string",
-          "description": "The email address allowed to register and vote.",
-          "format": "email"
-        },
-        "addedByUserId": {
-          "type": "string",
-          "description": "Reference to the UserProfile ID of the administrator who added this email."
-        },
-        "addedAt": {
-          "type": "string",
-          "description": "Timestamp when the email was added to the allowlist.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "email",
-        "addedByUserId",
-        "addedAt"
+        "createdAt"
       ]
     },
     "VotingSession": {
@@ -108,69 +74,12 @@
         "activeVoteId": {
           "type": "string",
           "description": "Reference to the currently active vote document."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the session was created.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the session was last updated.",
-          "format": "date-time"
         }
       },
       "required": [
         "id",
         "title",
-        "state",
-        "createdAt"
-      ]
-    },
-    "Project": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Project",
-      "type": "object",
-      "description": "Represents a single project proposed for consideration within a voting session.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the Project."
-        },
-        "title": {
-          "type": "string",
-          "description": "The title of the project."
-        },
-        "summary": {
-          "type": "string",
-          "description": "A brief summary of the project."
-        },
-        "budget": {
-          "type": "string",
-          "description": "The allocated budget for the project."
-        },
-        "status": {
-          "type": "string",
-          "description": "Status of the project (e.g., 'candidate', 'elected')."
-        },
-        "imageUrl": {
-          "type": "string",
-          "description": "URL to a project image.",
-          "format": "uri"
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp when the project was created.",
-          "format": "date-time"
-        }
-      },
-      "required": [
-        "id",
-        "title",
-        "summary",
-        "budget",
-        "status",
-        "createdAt"
+        "state"
       ]
     },
     "Ballot": {
@@ -179,103 +88,56 @@
       "type": "object",
       "description": "Represents a member's submitted ranked vote.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier (user UID)."
-        },
         "ranking": {
           "type": "array",
-          "description": "An ordered array of Project IDs.",
-          "items": {
-            "type": "string"
-          }
+          "items": { "type": "string" }
         },
-        "castAt": {
-          "type": "string",
-          "description": "Timestamp when the ballot was first cast.",
-          "format": "date-time"
-        },
-        "updatedAt": {
-          "type": "string",
-          "description": "Timestamp when the ballot was last updated.",
-          "format": "date-time"
-        }
+        "castAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
       },
-      "required": [
-        "id",
-        "ranking",
-        "updatedAt"
-      ]
+      "required": ["ranking", "updatedAt"]
     }
   },
   "auth": {
     "providers": [
-      "google.com"
+      "google.com",
+      "password"
     ]
   },
   "firestore": {
     "structure": [
       {
-        "path": "/members/{userId}",
+        "path": "/assemblies/{assemblyId}/members/{userId}",
         "definition": {
           "entityName": "UserProfile",
-          "schema": {
-            "$ref": "#/backend/entities/UserProfile"
-          },
-          "description": "Stores member-specific data, including their role and membership status."
-        }
-      },
-      {
-        "path": "/emailAllowlist/{emailEntryId}",
-        "definition": {
-          "entityName": "EmailAllowlistEntry",
-          "schema": {
-            "$ref": "#/backend/entities/EmailAllowlistEntry"
-          },
-          "description": "Manages the list of email addresses permitted to register and vote."
+          "schema": { "$ref": "#/backend/entities/UserProfile" },
+          "description": "Stores member-specific data within a specific assembly."
         }
       },
       {
         "path": "/assemblies/{assemblyId}",
         "definition": {
           "entityName": "VotingSession",
-          "schema": {
-            "$ref": "#/backend/entities/VotingSession"
-          },
-          "description": "The primary collection for managing all voting sessions."
+          "schema": { "$ref": "#/backend/entities/VotingSession" },
+          "description": "Main assembly document."
         }
       },
       {
         "path": "/assemblies/{assemblyId}/votes/{voteId}",
         "definition": {
           "entityName": "VotingSession",
-          "schema": {
-            "$ref": "#/backend/entities/VotingSession"
-          },
-          "description": "Contains specific vote configurations for an assembly."
+          "schema": { "$ref": "#/backend/entities/VotingSession" },
+          "description": "Individual vote configuration."
         }
       },
       {
         "path": "/assemblies/{assemblyId}/votes/{voteId}/ballots/{userId}",
         "definition": {
           "entityName": "Ballot",
-          "schema": {
-            "$ref": "#/backend/entities/Ballot"
-          },
-          "description": "Stores individual member ballots for a specific vote."
-        }
-      },
-      {
-        "path": "/projects/{projectId}",
-        "definition": {
-          "entityName": "Project",
-          "schema": {
-            "$ref": "#/backend/entities/Project"
-          },
-          "description": "Contains projects submitted for the assembly."
+          "schema": { "$ref": "#/backend/entities/Ballot" },
+          "description": "Member's ballot for a specific vote."
         }
       }
-    ],
-    "reasoning": "The Firestore structure uses a hierarchical approach for votes and ballots within assemblies to maintain clear session boundaries and security scoping."
+    ]
   }
 }

@@ -8,7 +8,7 @@ import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
-import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { useAuthStatus, DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
 import { 
   collection, 
   query, 
@@ -142,12 +142,6 @@ function AssemblySessionRow({
 
   const handleCloseClick = () => {
     if (!vote || !user) return;
-    console.log("[CLOSE CLICK]", { 
-      assemblyId: assembly.id, 
-      voteId: vote.id, 
-      voteState: vote.state, 
-      uid: user.uid 
-    });
     onTally(assembly.id, vote.id);
   };
 
@@ -309,8 +303,9 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
+  // Path updated to: assemblies/{id}/members
   const membersQuery = useMemoFirebase(() => {
-    return query(collection(db, 'members'), limit(150));
+    return query(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members'), limit(150));
   }, [db]);
   const { data: members } = useCollection<MemberProfile>(membersQuery);
 
@@ -355,7 +350,6 @@ function AdminContent() {
       const batch = writeBatch(db);
       const timestamp = serverTimestamp();
 
-      // 1. Update the Vote document
       batch.update(voteRef, {
         results: {
           winnerId: schulzeResults.winnerId,
@@ -371,29 +365,20 @@ function AdminContent() {
         updatedAt: timestamp
       });
 
-      // 2. Update the Assembly document
       batch.update(assemblyRef, {
         state: 'locked',
         updatedAt: timestamp
       });
 
-      // 3. Create the Public Snapshot for all members
       const publicResultRef = doc(db, 'assemblies', assemblyId, 'public', 'lastResult');
       const winner = projects?.find(p => p.id === schulzeResults.winnerId);
       
-      console.log("[CLOSE] publishing lastResult", { 
-        assemblyId, 
-        voteId, 
-        path: `assemblies/${assemblyId}/public/lastResult`,
-        winner: winner?.title || schulzeResults.winnerId
-      });
-
       batch.set(publicResultRef, {
         voteId: voteId,
         voteTitle: voteData.question || assemblyData?.title || "Scrutin",
         closedAt: timestamp,
         winnerId: schulzeResults.winnerId,
-        winnerLabel: winner?.title || schulzeResults.winnerId || "Inconnu",
+        winnerLabel: winner?.title || schulzeResults.winnerId,
         totalBallots: ballots.length,
         ranking: schulzeResults.ranking.map(r => {
           const p = projects?.find(proj => proj.id === r.id);
@@ -408,8 +393,6 @@ function AdminContent() {
       }, { merge: true });
 
       await batch.commit();
-      console.log(`[CLOSE] Batch committed OK for ${assemblyId}/${voteId}`);
-
       return { winnerId: schulzeResults.winnerId, ballotCount: ballots.length };
     } catch (e: any) {
       console.error(`[CLOSE] Batch FAILED:`, e.code, e.message);
@@ -563,7 +546,7 @@ function AdminContent() {
       const batch = writeBatch(db);
 
       if (newState === 'open') {
-        const activeMembersSnap = await getDocs(query(collection(db, 'members'), where('status', '==', 'active')));
+        const activeMembersSnap = await getDocs(query(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members'), where('status', '==', 'active')));
         const eligibleCount = activeMembersSnap.size;
 
         batch.update(voteRef, { 
@@ -592,14 +575,14 @@ function AdminContent() {
 
   const updateMemberStatus = async (uid: string, newStatus: string) => {
     try {
-      await updateDoc(doc(db, 'members', uid), { status: newStatus, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', uid), { status: newStatus, updatedAt: serverTimestamp() });
       toast({ title: "Statut mis à jour" });
     } catch (e) { toast({ variant: "destructive", title: "Erreur" }); }
   };
 
   const updateMemberRole = async (uid: string, newRole: string) => {
     try {
-      await updateDoc(doc(db, 'members', uid), { role: newRole, updatedAt: serverTimestamp() });
+      await updateDoc(doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', uid), { role: newRole, updatedAt: serverTimestamp() });
       toast({ title: "Rôle mis à jour" });
     } catch (e) { toast({ variant: "destructive", title: "Erreur" }); }
   };
@@ -607,15 +590,14 @@ function AdminContent() {
   const handleRepairMembers = async () => {
     setIsRepairing(true);
     try {
-      const snapshot = await getDocs(collection(db, 'members'));
+      const snapshot = await getDocs(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members'));
       const batch = writeBatch(db);
       snapshot.docs.forEach(memberDoc => {
         const data = memberDoc.data();
-        if (!data.id || !data.email || !data.status || data.statut) {
+        if (!data.id || !data.email || !data.status) {
           batch.update(memberDoc.ref, { 
             id: memberDoc.id, 
-            status: data.status || data.statut || "pending", 
-            statut: deleteField(),
+            status: data.status || "pending", 
             updatedAt: serverTimestamp() 
           });
         }

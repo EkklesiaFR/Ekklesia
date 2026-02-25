@@ -5,11 +5,11 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useUser, useAuth } from '@/firebase';
 import { useAuthStatus } from './AuthStatusProvider';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { ShieldAlert, LogOut, ArrowLeft } from 'lucide-react';
+import { ShieldAlert, LogOut, ArrowLeft, MailWarning } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { signOut } from 'firebase/auth';
 
-function RestrictedUI({ title, description }: { title: string; description: string }) {
+function RestrictedUI({ title, description, icon: Icon = ShieldAlert, showEmailWarning = false }: { title: string; description: string, icon?: any, showEmailWarning?: boolean }) {
   const auth = useAuth();
   const router = useRouter();
 
@@ -21,10 +21,15 @@ function RestrictedUI({ title, description }: { title: string; description: stri
   return (
     <MainLayout statusText="Accès Restreint">
       <div className="flex flex-col items-center justify-center py-24 space-y-8 text-center animate-in fade-in duration-700">
-        <ShieldAlert className="h-16 w-16 text-destructive" />
+        <Icon className="h-16 w-16 text-destructive" />
         <header className="space-y-4">
           <h1 className="text-4xl font-bold tracking-tight">{title}</h1>
           <p className="text-muted-foreground max-w-md mx-auto">{description}</p>
+          {showEmailWarning && (
+            <p className="text-sm font-bold text-primary bg-primary/5 p-4 mt-4 border border-primary/20">
+              Veuillez vérifier votre boîte mail avant de continuer.
+            </p>
+          )}
         </header>
         <div className="pt-8 space-y-4 w-full max-w-sm">
           <Button 
@@ -55,7 +60,7 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useUser();
   const { isMemberLoading, isActiveMember, isAdmin, member } = useAuthStatus();
   
-  const isPublicPage = pathname === '/login' || pathname === '/access-denied';
+  const isPublicPage = pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password' || pathname === '/access-denied';
 
   useEffect(() => {
     if (isUserLoading || isMemberLoading || isPublicPage) return;
@@ -82,19 +87,32 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     return (
       <RestrictedUI 
         title="Profil introuvable" 
-        description="Votre compte n'est pas encore enregistré dans l'annuaire de l'assemblée." 
+        description="Votre compte n'est pas encore enregistré dans l'annuaire de cette assemblée." 
       />
     );
   }
 
-  // On autorise l'accès si le membre est actif OU s'il est admin
+  // Email verification check
+  const isEmailVerified = user?.emailVerified || user?.providerData[0]?.providerId === 'google.com';
+  if (user && !isEmailVerified && !isPublicPage) {
+    return (
+      <RestrictedUI 
+        title="Email non vérifié" 
+        description="Votre adresse email doit être validée pour accéder aux scrutins."
+        icon={MailWarning}
+        showEmailWarning={true}
+      />
+    );
+  }
+
+  // Active or Admin check
   const hasAccess = isActiveMember || isAdmin;
 
   if (user && member && !hasAccess && !isPublicPage) {
     return (
       <RestrictedUI 
         title="Compte non activé" 
-        description="Votre accès est en attente de validation par un administrateur." 
+        description="Votre adhésion est en attente de validation par un administrateur." 
       />
     );
   }
@@ -103,7 +121,7 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
     return (
       <RestrictedUI 
         title="Accès réservé" 
-        description="Cette section est strictement réservée aux administrateurs certifiés." 
+        description="Cette section nécessite des privilèges d'administration." 
       />
     );
   }

@@ -7,6 +7,8 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  sendPasswordResetEmail,
+  sendEmailVerification,
 } from 'firebase/auth';
 
 /** Initiate anonymous sign-in (non-blocking). */
@@ -15,13 +17,21 @@ export function initiateAnonymousSignIn(authInstance: Auth): void {
 }
 
 /** Initiate email/password sign-up (non-blocking). */
-export function initiateEmailSignUp(authInstance: Auth, email: string, password: string): void {
-  createUserWithEmailAndPassword(authInstance, email, password);
+export async function signUpEmail(authInstance: Auth, email: string, password: string): Promise<void> {
+  const userCredential = await createUserWithEmailAndPassword(authInstance, email, password);
+  if (userCredential.user) {
+    await sendEmailVerification(userCredential.user);
+  }
 }
 
 /** Initiate email/password sign-in (non-blocking). */
-export function initiateEmailSignIn(authInstance: Auth, email: string, password: string): void {
-  signInWithEmailAndPassword(authInstance, email, password);
+export function signInEmail(authInstance: Auth, email: string, password: string): Promise<any> {
+  return signInWithEmailAndPassword(authInstance, email, password);
+}
+
+/** Reset password. */
+export function initiatePasswordReset(authInstance: Auth, email: string): Promise<void> {
+  return sendPasswordResetEmail(authInstance, email);
 }
 
 /** 

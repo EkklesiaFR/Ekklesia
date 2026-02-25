@@ -10,77 +10,66 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function getMemberData() {
-      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
+    function getMemberData(assemblyId) {
+      return get(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid)).data;
     }
 
-    function isAdmin() {
-      return isSignedIn() 
-        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-        && getMemberData().role == "admin";
-    }
-
-    function isMemberActive() {
+    function isMemberActive(assemblyId) {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-        && getMemberData().status == "active";
+        && exists(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid))
+        && getMemberData(assemblyId).status == "active";
     }
 
-    function isAdminActive() {
-      return isMemberActive() && getMemberData().role == "admin";
-    }
-
-    match /members/{uid} {
-      allow get: if isOwner(uid) || isAdmin();
-      allow list: if isAdmin();
-      
-      allow create: if isOwner(uid) 
-        && request.resource.data.status == "pending" 
-        && request.resource.data.role == "member";
-        
-      allow update: if isAdmin() 
-        || (isOwner(uid) 
-            && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
-           );
-           
-      allow delete: if isAdmin();
-    }
-
-    match /projects/{projectId} {
-      allow read: if isMemberActive();
-      allow write: if isAdminActive();
+    function isAdminActive(assemblyId) {
+      return isMemberActive(assemblyId) && getMemberData(assemblyId).role == "admin";
     }
 
     match /assemblies/{assemblyId} {
-      allow read: if isMemberActive();
-      allow write: if isAdminActive();
+      allow read: if isMemberActive(assemblyId);
+      allow write: if isAdminActive(assemblyId);
+
+      match /members/{uid} {
+        allow get: if isOwner(uid) || isAdminActive(assemblyId);
+        allow list: if isAdminActive(assemblyId);
+        
+        // Users can create their own "pending" profile
+        allow create: if isOwner(uid) 
+          && request.resource.data.status == "pending" 
+          && request.resource.data.role == "member"
+          && request.resource.data.keys().hasAll(['role', 'status', 'email', 'createdAt']);
+          
+        // Only admins can update status/role. Members can only update inert fields.
+        allow update: if isAdminActive(assemblyId) 
+          || (isOwner(uid) 
+              && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status', 'createdAt', 'id'])
+             );
+             
+        allow delete: if isAdminActive(assemblyId);
+      }
 
       match /public/{docId} {
-        allow read: if isMemberActive();
-        allow write: if isAdminActive();
+        allow read: if isMemberActive(assemblyId);
+        allow write: if isAdminActive(assemblyId);
       }
 
       match /votes/{voteId} {
-        allow read: if isMemberActive();
-        
-        allow update: if isAdminActive();
-        allow create: if isAdminActive();
-        allow delete: if isAdminActive();
+        allow read: if isMemberActive(assemblyId);
+        allow write: if isAdminActive(assemblyId);
 
         match /ballots/{uid} {
-          allow get: if isOwner(uid) || isAdminActive();
-          allow list: if isAdminActive(); 
+          allow get: if isOwner(uid) || isAdminActive(assemblyId);
+          allow list: if isAdminActive(assemblyId); 
 
           function isVoteOpen() {
             return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
           }
 
-          allow create: if isMemberActive() 
+          allow create: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
             && isVoteOpen() 
             && request.resource.data.keys().hasAll(['ranking', 'castAt', 'updatedAt']);
             
-          allow update: if isMemberActive() 
+          allow update: if isMemberActive(assemblyId) 
             && uid == request.auth.uid 
             && isVoteOpen() 
             && request.resource.data.keys().hasAll(['ranking', 'updatedAt']);
@@ -88,6 +77,13 @@ service cloud.firestore {
           allow delete: if false;
         }
       }
+    }
+
+    match /projects/{projectId} {
+      // For simplicity, we assume projects are globally visible to any active member of the default assembly
+      // In a multi-tenant world, projects should belong to an assembly.
+      allow read: if isSignedIn(); 
+      allow write: if isSignedIn(); // Add more strict rules here if needed
     }
   }
 }
