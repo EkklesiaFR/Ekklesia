@@ -1,6 +1,7 @@
 'use client';
 
-import { useFirestore, useCollection, useMemoFirebase, useAuthStatus } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { collection } from 'firebase/firestore';
 import { Ballot, Project } from '@/types';
 import { computeSchulzeResults } from '@/lib/tally';

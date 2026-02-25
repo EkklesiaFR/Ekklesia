@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useUser, useFirestore, useAuthStatus } from '@/firebase';
+import { useUser, useFirestore } from '@/firebase';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { doc, serverTimestamp, writeBatch, increment, getDoc } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
-import { CheckCircle2, Info, Loader2, Lock, BarChart3, Users, PieChart } from 'lucide-react';
+import { CheckCircle2, Info, Loader2, Lock, BarChart3, PieChart } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import { Project, Vote, Ballot } from '@/types';
 import { RankedList } from '@/components/voting/RankedList';
