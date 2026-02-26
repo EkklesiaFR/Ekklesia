@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useUser, useFirestore } from '@/firebase';
-import { doc, onSnapshot, getDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { MemberProfile } from '@/types';
 import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
@@ -11,8 +11,6 @@ interface AuthStatusContextType {
   isMemberLoading: boolean;
   isActiveMember: boolean;
   isAdmin: boolean;
-  hasLegacyProfile: boolean;
-  defaultAssemblyId: string;
 }
 
 const AuthStatusContext = createContext<AuthStatusContextType>({
@@ -20,8 +18,6 @@ const AuthStatusContext = createContext<AuthStatusContextType>({
   isMemberLoading: true,
   isActiveMember: false,
   isAdmin: false,
-  hasLegacyProfile: false,
-  defaultAssemblyId: DEFAULT_ASSEMBLY_ID,
 });
 
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
@@ -29,44 +25,20 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const db = useFirestore();
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [isMemberLoading, setIsMemberLoading] = useState(true);
-  const [hasLegacyProfile, setHasLegacyProfile] = useState(false);
-
-  const uid = user?.uid;
 
   useEffect(() => {
-    setMember(null);
-    setHasLegacyProfile(false);
-    setIsMemberLoading(true);
-
     if (isUserLoading) return;
-    if (!uid) {
+    if (!user) {
+      setMember(null);
       setIsMemberLoading(false);
       return;
     }
 
-    const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', uid);
-    const legacyMemberRef = doc(db, 'members', uid);
+    const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', user.uid);
     
-    const checkLegacy = async () => {
-      try {
-        const legacySnap = await getDoc(legacyMemberRef);
-        if (legacySnap.exists()) setHasLegacyProfile(true);
-      } catch (e) {}
-    };
-
-    checkLegacy();
-
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data();
-        setMember({
-          id: docSnap.id,
-          email: data.email || user.email || '',
-          displayName: data.displayName || user.displayName || '',
-          status: data.status || 'pending',
-          role: data.role || 'member',
-          createdAt: data.createdAt || null,
-        } as MemberProfile);
+        setMember({ id: docSnap.id, ...docSnap.data() } as MemberProfile);
       } else {
         setMember(null);
       }
@@ -74,16 +46,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     }, () => setIsMemberLoading(false));
 
     return () => unsubscribe();
-  }, [uid, isUserLoading, db, user?.email, user?.displayName]);
+  }, [user, isUserLoading, db]);
 
   return (
     <AuthStatusContext.Provider value={{ 
       member, 
       isMemberLoading, 
       isActiveMember: member?.status === 'active', 
-      isAdmin: member?.role === 'admin',
-      hasLegacyProfile,
-      defaultAssemblyId: DEFAULT_ASSEMBLY_ID
+      isAdmin: member?.role === 'admin' 
     }}>
       {children}
     </AuthStatusContext.Provider>

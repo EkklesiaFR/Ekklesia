@@ -6,92 +6,41 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
-    }
-
-    function getMemberData(assemblyId) {
-      return get(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid)).data;
-    }
-
     function isMemberActive(assemblyId) {
       return isSignedIn()
         && exists(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid))
-        && getMemberData(assemblyId).status == "active";
+        && get(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid)).data.status == "active";
     }
 
     function isAdminActive(assemblyId) {
-      return isMemberActive(assemblyId) && getMemberData(assemblyId).role == "admin";
-    }
-
-    function isVoteOpen(assemblyId, voteId) {
-      return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+      return isMemberActive(assemblyId) 
+        && get(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid)).data.role == "admin";
     }
 
     match /assemblies/{assemblyId} {
       allow read: if isSignedIn();
-      allow update, delete: if isAdminActive(assemblyId);
-      allow create: if false;
+      allow update: if isAdminActive(assemblyId);
 
       match /members/{uid} {
-        allow get: if isOwner(uid) || isAdminActive(assemblyId);
-        allow list: if isAdminActive(assemblyId); 
-        
-        allow create: if isOwner(uid) 
-          && request.resource.data.role == "member"
-          && request.resource.data.status == "pending"
-          && request.resource.data.keys().hasOnly(['id', 'role', 'status', 'email', 'createdAt', 'updatedAt', 'displayName']);
-          
-        allow update: if isAdminActive(assemblyId) 
-          || (isOwner(uid) 
-              && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
-              && (request.resource.data.email == resource.data.email || request.auth.token.email == request.resource.data.email)
-             );
-             
-        allow delete: if isAdminActive(assemblyId);
-      }
-
-      match /public/{docId} {
-        allow read: if isSignedIn();
+        allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive(assemblyId));
+        allow list: if isAdminActive(assemblyId);
         allow write: if isAdminActive(assemblyId);
       }
 
       match /votes/{voteId} {
         allow read: if isMemberActive(assemblyId);
-        allow create, update, delete: if isAdminActive(assemblyId);
+        allow write: if isAdminActive(assemblyId);
 
         match /ballots/{uid} {
-          allow get: if isOwner(uid) || isAdminActive(assemblyId);
-          allow list: if isAdminActive(assemblyId); 
-
-          function ballotValid() {
-            let data = request.resource.data;
-            return data.ranking is list 
-              && data.ranking.size() > 0
-              && data.castAt is timestamp
-              && data.updatedAt is timestamp
-              && data.keys().hasOnly(['ranking', 'castAt', 'updatedAt']);
-          }
-
-          allow create: if isMemberActive(assemblyId) 
-            && isOwner(uid) 
-            && isVoteOpen(assemblyId, voteId)
-            && ballotValid();
-            
-          allow update: if isMemberActive(assemblyId) 
-            && isOwner(uid) 
-            && isVoteOpen(assemblyId, voteId)
-            && ballotValid()
-            && request.resource.data.castAt == resource.data.castAt;
-
-          allow delete: if false;
+          allow get, write: if isSignedIn() && request.auth.uid == uid && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+          allow list: if isAdminActive(assemblyId);
         }
       }
     }
 
     match /projects/{projectId} {
-      allow read: if isSignedIn(); 
-      allow write: if isSignedIn();
+      allow read: if isSignedIn();
+      allow write: if isAdminActive('default-assembly'); // Ou via une vérification plus large
     }
   }
 }
