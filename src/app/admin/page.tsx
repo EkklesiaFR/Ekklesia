@@ -101,7 +101,9 @@ function AdminContent() {
         ...resultsData,
         voteId: vote.id,
         voteTitle: vote.question,
-        closedAt: serverTimestamp()
+        closedAt: serverTimestamp(),
+        totalBallots: ballots.length,
+        winnerLabel: projects?.find(p => p.id === results.winnerId)?.title || "Vainqueur"
       });
 
       await batch.commit();
