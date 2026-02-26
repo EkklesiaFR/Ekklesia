@@ -25,7 +25,7 @@ function LoginForm() {
     try {
       await signInEmail(auth, email, password);
       toast({ title: "Connexion réussie" });
-      // Redirection is handled globally by AuthStatusProvider
+      // La redirection est gérée globalement par AuthStatusProvider
     } catch (error: any) {
       console.error('[AUTH] Email login error', error.code);
       let message = "Identifiants incorrects.";
@@ -40,6 +40,7 @@ function LoginForm() {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
+      console.log('[AUTH] Starting Google Redirect flow');
       await signInWithGoogle(auth);
     } catch (error) {
       console.error('[AUTH] Google start error', error);
@@ -60,7 +61,7 @@ function LoginForm() {
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <div className="relative">
-              <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <)Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input 
                 id="email" 
                 type="email" 
