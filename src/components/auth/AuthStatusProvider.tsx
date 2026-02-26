@@ -64,6 +64,8 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         await setDoc(memberRef, {
           ...safeData,
           id: user.uid,
+          role: 'member', // Default safe role
+          status: 'pending', // Default safe status
           createdAt: serverTimestamp(),
         });
       } else {
@@ -80,11 +82,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     if (isUserLoading) return;
 
     if (!user) {
+      console.log('[AUTH] user null -> stay /login or root');
       setMember(null);
       setIsMemberLoading(false);
       return;
     }
 
+    console.log('[AUTH] user detected -> loading member profile');
+    
     // Always bootstrap on successful auth if not done by redirect
     bootstrapUser(user);
 
@@ -99,6 +104,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       
       // Auto-redirect from login to assembly if user is authenticated
       if (pathname === '/login') {
+        console.log('[AUTH] Redirecting to /assembly');
         router.replace('/assembly');
       }
     }, (error) => {

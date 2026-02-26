@@ -41,15 +41,25 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useUser();
   const { isMemberLoading, isActiveMember, isAdmin, member } = useAuthStatus();
   
-  const isPublicPage = ['/login', '/access-denied'].includes(pathname);
+  const isPublicPage = ['/login', '/signup', '/forgot-password', '/access-denied'].includes(pathname);
 
   useEffect(() => {
     if (isUserLoading || isMemberLoading || isPublicPage) return;
-    if (!user) router.replace('/login');
+    if (!user) {
+      console.log('[GUARD] No user -> redirecting to /login');
+      router.replace('/login');
+    }
   }, [user, isUserLoading, isMemberLoading, router, isPublicPage]);
 
   if ((isUserLoading || isMemberLoading) && !isPublicPage) {
-    return <MainLayout statusText="Vérification"><div className="flex flex-col items-center justify-center py-32 space-y-6"><div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div></div></MainLayout>;
+    return (
+      <MainLayout statusText="Vérification">
+        <div className="flex flex-col items-center justify-center py-32 space-y-6">
+          <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
+          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Chargement du profil...</p>
+        </div>
+      </MainLayout>
+    );
   }
 
   if (!user && !isPublicPage) return null;

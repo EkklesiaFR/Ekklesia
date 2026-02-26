@@ -5,7 +5,7 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuth } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 import { signInEmail, signInWithGoogle } from '@/firebase/non-blocking-login';
 import Link from 'next/link';
 import { Mail, Lock, LogIn, Loader2 } from 'lucide-react';
@@ -13,6 +13,7 @@ import { toast } from '@/hooks/use-toast';
 
 function LoginForm() {
   const auth = useAuth();
+  const { user, isUserLoading } = useUser();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -25,7 +26,7 @@ function LoginForm() {
     try {
       await signInEmail(auth, email, password);
       toast({ title: "Connexion réussie" });
-      // Redirection handled by AuthStatusProvider
+      // Redirection is handled globally by AuthStatusProvider
     } catch (error: any) {
       console.error('[AUTH] Email login error', error.code);
       let message = "Identifiants incorrects.";
