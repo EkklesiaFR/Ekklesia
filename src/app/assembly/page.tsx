@@ -159,7 +159,7 @@ function LoginForm() {
     <div className="flex flex-col items-center justify-center py-12 space-y-10 animate-in fade-in duration-700">
       <header className="space-y-4 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-black">Ekklesia Vote</h1>
-        <p className="text-muted-foreground max-w-sm mx-auto">Accédez à l'assemblée pour participer aux décisions.</p>
+        <p className="text-muted-foreground max-w-sm mx-auto">Connectez-vous pour participer aux décisions de l'assemblée.</p>
       </header>
 
       <div className="w-full max-w-sm space-y-8">
@@ -180,7 +180,10 @@ function LoginForm() {
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Mot de passe</Label>
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Mot de passe</Label>
+              <Link href="/forgot-password" opacity-60 className="text-[10px] uppercase font-bold text-muted-foreground hover:text-black">Oublié ?</Link>
+            </div>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
               <Input 
@@ -193,7 +196,7 @@ function LoginForm() {
               />
             </div>
           </div>
-          <Button type="submit" disabled={isLoading} className="w-full h-12 rounded-none font-bold uppercase tracking-widest text-xs">
+          <Button type="submit" disabled={isLoading} className="w-full h-12 bg-primary hover:bg-primary/90 rounded-none font-bold uppercase tracking-widest text-xs">
             {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Se connecter"}
           </Button>
         </form>
@@ -212,9 +215,8 @@ function LoginForm() {
           <LogIn className="h-4 w-4" /> Continuer avec Google
         </Button>
 
-        <div className="flex flex-col items-center gap-4 pt-4 text-xs font-bold uppercase tracking-widest">
-          <Link href="/signup" className="text-muted-foreground hover:text-black">Créer un compte</Link>
-          <Link href="/forgot-password" opacity-60 className="text-muted-foreground hover:text-black opacity-60">Mot de passe oublié ?</Link>
+        <div className="flex flex-col items-center gap-4 pt-4 text-[10px] font-bold uppercase tracking-widest">
+          <p className="text-muted-foreground">Pas encore membre ? <Link href="/signup" className="text-black hover:underline">Créer un compte</Link></p>
         </div>
       </div>
     </div>
