@@ -15,15 +15,47 @@ import {
   orderBy,
   doc,
   serverTimestamp,
-  updateDoc
+  updateDoc,
+  where
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, ShieldAlert, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, ShieldAlert, Trophy, Settings, Users, Activity } from 'lucide-react';
 import { Project, MemberProfile, Vote } from '@/types';
 import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
 import { toast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { computeSchulzeResults } from '@/lib/tally';
+
+function ResultsTabContent() {
+  const db = useFirestore();
+  const votesQuery = useMemoFirebase(() => 
+    query(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'), orderBy('createdAt', 'desc')), 
+  [db]);
+  const { data: votes } = useCollection<Vote>(votesQuery);
+
+  const handlePublishResults = async (vote: Vote) => {
+    // Logique de clôture et calcul des résultats
+    toast({ title: "Calcul en cours", description: "Dépouillement des bulletins..." });
+  };
+
+  return (
+    <div className="space-y-6">
+      {votes?.filter(v => v.state !== 'draft').map(v => (
+        <div key={v.id} className="p-8 border bg-white flex justify-between items-center">
+          <div className="space-y-1">
+            <Badge className={v.state === 'open' ? "bg-green-600" : "bg-black"}>{v.state}</Badge>
+            <h3 className="text-xl font-bold">{v.question}</h3>
+            <p className="text-sm text-muted-foreground">{v.ballotCount || 0} bulletins reçus</p>
+          </div>
+          {v.state === 'open' && (
+            <Button variant="outline" onClick={() => handlePublishResults(v)} className="font-bold uppercase tracking-widest text-xs">Clôturer & Publier</Button>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function AdminContent() {
   const db = useFirestore();
@@ -58,9 +90,10 @@ function AdminContent() {
       
       <Tabs defaultValue="sessions">
         <TabsList className="rounded-none bg-transparent border-b h-auto p-0 gap-8 mb-8">
-          <TabsTrigger value="sessions" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none">Sessions</TabsTrigger>
-          <TabsTrigger value="projects" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none">Projets</TabsTrigger>
-          <TabsTrigger value="members" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none">Membres</TabsTrigger>
+          <TabsTrigger value="sessions" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Activity className="h-3 w-3" /> Sessions</TabsTrigger>
+          <TabsTrigger value="results" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Trophy className="h-3 w-3" /> Résultats</TabsTrigger>
+          <TabsTrigger value="projects" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Settings className="h-3 w-3" /> Projets</TabsTrigger>
+          <TabsTrigger value="members" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Users className="h-3 w-3" /> Membres</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sessions" className="space-y-6">
@@ -72,6 +105,10 @@ function AdminContent() {
               </div>
             </div>
           ))}
+        </TabsContent>
+
+        <TabsContent value="results">
+          <ResultsTabContent />
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-6">

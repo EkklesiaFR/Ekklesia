@@ -51,7 +51,7 @@ export default function LoginPage() {
       <div className="flex flex-col items-center justify-center py-24 space-y-10 animate-in fade-in duration-700">
         <header className="space-y-4 text-center">
           <h1 className="text-4xl font-bold tracking-tight text-black">Ekklesia Vote</h1>
-          <p className="text-muted-foreground max-w-sm mx-auto">Connectez-vous avec votre compte institutionnel pour accéder à l'assemblée.</p>
+          <p className="text-muted-foreground max-w-sm mx-auto">Connectez-vous avec votre compte Google institutionnel pour accéder à l'assemblée.</p>
         </header>
 
         <div className="w-full max-w-sm">
