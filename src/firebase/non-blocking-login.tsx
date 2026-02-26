@@ -31,8 +31,7 @@ export function initiatePasswordReset(authInstance: Auth, email: string): Promis
 /** Connexion Google. */
 export const signInWithGoogle = async (authInstance: Auth) => {
   const provider = new GoogleAuthProvider();
-  const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || 
-                   (typeof window !== 'undefined' && window.innerWidth < 768);
+  const isMobile = typeof window !== 'undefined' && (/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768);
 
   if (isMobile) {
     return signInWithRedirect(authInstance, provider);

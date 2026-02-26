@@ -24,29 +24,13 @@ service cloud.firestore {
       return isMemberActive(assemblyId) && getMemberData(assemblyId).role == "admin";
     }
 
-    // Vérifie si l'utilisateur est admin dans l'assemblée par défaut pour autoriser la création globale
-    function isGlobalAdmin() {
-      let defaultPath = /databases/$(database)/documents/assemblies/default-assembly/members/$(request.auth.uid);
-      return isSignedIn() && exists(defaultPath) && get(defaultPath).data.role == "admin" && get(defaultPath).data.status == "active";
-    }
-
     function isVoteOpen(assemblyId, voteId) {
       return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
     }
 
-    // Accès restreint aux anciens profils (lecture seule propriétaire)
-    match /members/{uid} {
-      allow get: if isOwner(uid);
-      allow list, write: if false;
-    }
-
     match /assemblies/{assemblyId} {
       allow read: if isSignedIn();
-      
-      // On autorise l'update uniquement si on est admin de cette assemblée
       allow update, delete: if isAdminActive(assemblyId);
-      
-      // On n'autorise plus la création d'assemblies aléatoires par les clients
       allow create: if false;
 
       match /members/{uid} {
@@ -61,6 +45,7 @@ service cloud.firestore {
         allow update: if isAdminActive(assemblyId) 
           || (isOwner(uid) 
               && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'updatedAt'])
+              && (request.resource.data.email == resource.data.email || request.auth.token.email == request.resource.data.email)
              );
              
         allow delete: if isAdminActive(assemblyId);

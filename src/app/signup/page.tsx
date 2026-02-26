@@ -12,7 +12,7 @@ import { UserPlus, Mail, Lock } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import Link from 'next/link';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { DEFAULT_ASSEMBLY_ID } from '@/components/auth/AuthStatusProvider';
+import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
 export default function SignupPage() {
   const auth = useAuth();
@@ -70,7 +70,7 @@ export default function SignupPage() {
       <div className="flex flex-col items-center justify-center py-12 space-y-10 animate-in fade-in duration-700">
         <header className="space-y-4 text-center">
           <h1 className="text-4xl font-bold tracking-tight text-black">Rejoindre l'Assemblée</h1>
-          <p className="text-muted-foreground max-sm mx-auto">Créez votre compte pour participer.</p>
+          <p className="text-muted-foreground max-w-sm mx-auto">Créez votre compte pour participer.</p>
         </header>
 
         <div className="w-full max-w-sm space-y-8">
