@@ -39,6 +39,12 @@ service cloud.firestore {
       allow read: if isSignedIn();
       allow update: if isAdminActive();
 
+      // Ajout de la règle pour la sous-collection membres de l'assemblée
+      match /members/{uid} {
+        allow read: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
+        allow write: if isAdminActive();
+      }
+
       match /public/{docId} {
         allow read: if true;
         allow write: if isAdminActive();
