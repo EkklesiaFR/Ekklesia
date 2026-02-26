@@ -24,7 +24,14 @@ service cloud.firestore {
       match /members/{uid} {
         allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive(assemblyId));
         allow list: if isAdminActive(assemblyId);
-        allow write: if isAdminActive(assemblyId);
+        
+        // Autoriser l'utilisateur à créer son propre profil initial comme 'pending' et 'member'
+        allow create: if isSignedIn() && request.auth.uid == uid 
+                      && request.resource.data.role == "member"
+                      && request.resource.data.status == "pending";
+        
+        // Seuls les admins peuvent valider les profils ou changer les rôles
+        allow update, delete: if isAdminActive(assemblyId);
       }
 
       match /public/{docId} {

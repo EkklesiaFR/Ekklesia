@@ -4,6 +4,9 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
 } from 'firebase/auth';
 
 /**
@@ -34,4 +37,25 @@ export const signInWithGoogle = async (authInstance: Auth) => {
     }
     throw error;
   }
+};
+
+/**
+ * Creates a new user with email and password.
+ */
+export const signUpEmail = (authInstance: Auth, email: string, pass: string) => {
+  return createUserWithEmailAndPassword(authInstance, email, pass);
+};
+
+/**
+ * Signs in an existing user with email and password.
+ */
+export const signInEmail = (authInstance: Auth, email: string, pass: string) => {
+  return signInWithEmailAndPassword(authInstance, email, pass);
+};
+
+/**
+ * Initiates a password reset email.
+ */
+export const initiatePasswordReset = (authInstance: Auth, email: string) => {
+  return sendPasswordResetEmail(authInstance, email);
 };
