@@ -2,59 +2,47 @@
 import {
   Auth,
   GoogleAuthProvider,
-  signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
 } from 'firebase/auth';
 
 /**
- * Initiates a Google Sign-In operation.
- * Switches to redirect mode on mobile devices for better compatibility.
+ * [AUTH] Initiates Google Sign-In with Redirect.
+ * This is the most stable method for Cloud Workstations / Firebase Studio.
  */
 export const signInWithGoogle = async (authInstance: Auth) => {
+  console.log('[AUTH] Google redirect start');
   const provider = new GoogleAuthProvider();
-  
-  const isMobile = typeof window !== 'undefined' && (
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-    window.innerWidth < 768
-  );
-
-  if (isMobile) {
-    return signInWithRedirect(authInstance, provider);
-  }
-
-  try {
-    await signInWithPopup(authInstance, provider);
-  } catch (error: any) {
-    if (
-      error.code === 'auth/popup-blocked' || 
-      error.code === 'auth/cancelled-popup-request' ||
-      error.code === 'auth/popup-closed-by-user'
-    ) {
-      return signInWithRedirect(authInstance, provider);
-    }
-    throw error;
-  }
+  // Always use redirect for stability in restricted environments
+  return signInWithRedirect(authInstance, provider);
 };
 
 /**
- * Creates a new user with email and password.
+ * [AUTH] Consumes the redirect result.
+ */
+export const handleGoogleRedirectResult = (authInstance: Auth) => {
+  return getRedirectResult(authInstance);
+};
+
+/**
+ * [AUTH] Creates a new user with email and password.
  */
 export const signUpEmail = (authInstance: Auth, email: string, pass: string) => {
   return createUserWithEmailAndPassword(authInstance, email, pass);
 };
 
 /**
- * Signs in an existing user with email and password.
+ * [AUTH] Signs in an existing user with email and password.
  */
 export const signInEmail = (authInstance: Auth, email: string, pass: string) => {
   return signInWithEmailAndPassword(authInstance, email, pass);
 };
 
 /**
- * Initiates a password reset email.
+ * [AUTH] Initiates a password reset email.
  */
 export const initiatePasswordReset = (authInstance: Auth, email: string) => {
   return sendPasswordResetEmail(authInstance, email);

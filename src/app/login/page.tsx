@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useUser, useAuth, useFirestore } from '@/firebase';
-import { signInEmail, signInWithGoogle } from '@/firebase/non-blocking-login';
+import { signInEmail, signInWithGoogle, handleGoogleRedirectResult } from '@/firebase/non-blocking-login';
 import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import Link from 'next/link';
 import { 
@@ -15,7 +15,7 @@ import {
   LogIn, 
   Loader2
 } from 'lucide-react';
-import { signOut, User } from 'firebase/auth';
+import { User } from 'firebase/auth';
 import { toast } from '@/hooks/use-toast';
 import { useRouter } from 'next/navigation';
 
@@ -26,40 +26,80 @@ function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isRedirectProcessing, setIsRedirectProcessing] = useState(true);
+
+  // 1. Handle Redirect Result on mount
+  useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        const result = await handleGoogleRedirectResult(auth);
+        if (result?.user) {
+          console.log('[AUTH] Redirect result success', { uid: result.user.uid, email: result.user.email });
+          await bootstrapUser(result.user);
+          router.replace('/assembly');
+        } else {
+          setIsRedirectProcessing(false);
+        }
+      } catch (error: any) {
+        console.error('[AUTH] Redirect result error', { code: error.code, message: error.message });
+        toast({ 
+          variant: "destructive", 
+          title: "Échec de connexion Google", 
+          description: error.message 
+        });
+        setIsRedirectProcessing(false);
+      }
+    };
+    checkRedirect();
+  }, [auth, router]);
 
   const bootstrapUser = async (user: User) => {
     const memberRef = doc(db, 'members', user.uid);
-    const snap = await getDoc(memberRef);
-    if (!snap.exists()) {
-      await setDoc(memberRef, {
-        id: user.uid,
-        email: user.email || email,
-        displayName: user.displayName || (user.email || email).split('@')[0],
-        role: 'member',
-        status: 'pending',
-        createdAt: serverTimestamp(),
-        joinedAt: serverTimestamp(),
-        lastLoginAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await updateDoc(memberRef, {
-        lastLoginAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
+    try {
+      const snap = await getDoc(memberRef);
+      if (!snap.exists()) {
+        console.log('[AUTH] Creating initial member profile', user.uid);
+        await setDoc(memberRef, {
+          id: user.uid,
+          email: user.email || email,
+          displayName: user.displayName || (user.email || email)?.split('@')[0] || "Membre",
+          role: 'member',
+          status: 'pending',
+          createdAt: serverTimestamp(),
+          joinedAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        console.log('[AUTH] Updating last login', user.uid);
+        await updateDoc(memberRef, {
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch (e) {
+      console.error('[AUTH] Bootstrap error', e);
     }
   };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email || !password) return;
+    
     setIsLoading(true);
     try {
+      console.log('[AUTH] Email login start', email);
       const cred = await signInEmail(auth, email, password);
       await bootstrapUser(cred.user);
       toast({ title: "Connexion réussie" });
-      router.push('/assembly');
+      router.replace('/assembly');
     } catch (error: any) {
-      toast({ variant: "destructive", title: "Erreur", description: "Identifiants incorrects." });
+      console.error('[AUTH] Email login error', error.code);
+      let message = "Identifiants incorrects.";
+      if (error.code === 'auth/user-not-found') message = "Utilisateur introuvable.";
+      if (error.code === 'auth/wrong-password') message = "Mot de passe erroné.";
+      
+      toast({ variant: "destructive", title: "Erreur", description: message });
     } finally {
       setIsLoading(false);
     }
@@ -68,22 +108,27 @@ function LoginForm() {
   const handleGoogleLogin = async () => {
     setIsLoading(true);
     try {
-      const cred: any = await signInWithGoogle(auth);
-      if (cred?.user) {
-        await bootstrapUser(cred.user);
-        router.push('/assembly');
-      }
+      await signInWithGoogle(auth);
     } catch (error) {
-      toast({ variant: "destructive", title: "Erreur", description: "Échec de la connexion Google." });
-    } finally {
+      console.error('[AUTH] Google start error', error);
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de lancer le flux Google." });
       setIsLoading(false);
     }
   };
 
+  if (isRedirectProcessing) {
+    return (
+      <div className="flex flex-col items-center justify-center py-24 space-y-4">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
+        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Authentification en cours...</p>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col items-center justify-center py-12 space-y-10 animate-in fade-in duration-700">
       <header className="space-y-4 text-center">
-        <h1 className="text-4xl font-bold tracking-tight text-black">Ekklesia Vote</h1>
+        <h1 className="text-4xl font-bold tracking-tight text-black font-headline">Ekklesia Vote</h1>
         <p className="text-muted-foreground max-w-sm mx-auto">Connectez-vous pour participer aux décisions de l'assemblée.</p>
       </header>
 
@@ -101,13 +146,14 @@ function LoginForm() {
                 value={email} 
                 onChange={(e) => setEmail(e.target.value)} 
                 required 
+                disabled={isLoading}
               />
             </div>
           </div>
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Mot de passe</Label>
-              <Link href="/forgot-password" className="text-[10px] opacity-60 uppercase font-bold text-muted-foreground hover:text-black">Oublié ?</Link>
+              <Link href="/forgot-password" size="sm" className="text-[10px] opacity-60 uppercase font-bold text-muted-foreground hover:text-black">Oublié ?</Link>
             </div>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
@@ -118,6 +164,7 @@ function LoginForm() {
                 value={password} 
                 onChange={(e) => setPassword(e.target.value)} 
                 required 
+                disabled={isLoading}
               />
             </div>
           </div>
@@ -137,7 +184,7 @@ function LoginForm() {
           variant="outline" 
           className="w-full h-12 border-2 border-black rounded-none font-bold flex items-center justify-center gap-3 text-[10px] uppercase tracking-widest"
         >
-          <LogIn className="h-4 w-4" /> Continuer avec Google
+          {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><LogIn className="h-4 w-4" /> Continuer avec Google</>}
         </Button>
 
         <div className="flex flex-col items-center gap-4 pt-4 text-[10px] font-bold uppercase tracking-widest">
@@ -154,6 +201,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isUserLoading && user) {
+      console.log('[AUTH] User already logged in, redirecting to assembly');
       router.replace('/assembly');
     }
   }, [user, isUserLoading, router]);
