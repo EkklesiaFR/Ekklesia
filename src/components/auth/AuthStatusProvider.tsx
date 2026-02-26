@@ -40,6 +40,9 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   // Guard for double bootstrap per session
   const didBootstrap = useRef(false);
 
+  // Diagnostic log on every render
+  console.log('[AUTH] render', { pathname, isUserLoading, uid: user?.uid });
+
   // 1. Early Redirect Logic
   useEffect(() => {
     if (!isUserLoading && user && pathname === '/login') {
@@ -54,6 +57,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const processRedirect = async () => {
       try {
+        console.log('[AUTH] Checking currentUser before redirect result', auth.currentUser?.uid);
         const result = await handleGoogleRedirectResult(auth);
         if (result?.user) {
           console.log('[AUTH] Redirect result success', {
@@ -64,9 +68,11 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           bootstrapUser(result.user);
         }
       } catch (error: any) {
-        console.error('[AUTH] Redirect result error', {
-          code: error.code,
-          message: error.message
+        console.error('[AUTH][REDIRECT][ERROR]', { 
+          code: error.code, 
+          message: error.message, 
+          email: error.customData?.email, 
+          full: error 
         });
 
         // Handle the "account already exists" case
