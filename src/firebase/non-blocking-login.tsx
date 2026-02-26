@@ -11,12 +11,11 @@ import {
 
 /**
  * [AUTH] Initiates Google Sign-In with Redirect.
- * This is the most stable method for Cloud Workstations / Firebase Studio.
+ * Stable for restricted environments like Cloud Workstations.
  */
 export const signInWithGoogle = async (authInstance: Auth) => {
   console.log('[AUTH] Google redirect start');
   const provider = new GoogleAuthProvider();
-  // Always use redirect for stability in restricted environments
   return signInWithRedirect(authInstance, provider);
 };
 

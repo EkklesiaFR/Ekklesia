@@ -1,86 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useUser, useAuth, useFirestore } from '@/firebase';
-import { signInEmail, signInWithGoogle, handleGoogleRedirectResult } from '@/firebase/non-blocking-login';
-import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useAuth } from '@/firebase';
+import { signInEmail, signInWithGoogle } from '@/firebase/non-blocking-login';
 import Link from 'next/link';
-import { 
-  Mail, 
-  Lock, 
-  LogIn, 
-  Loader2
-} from 'lucide-react';
-import { User } from 'firebase/auth';
+import { Mail, Lock, LogIn, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
-import { useRouter } from 'next/navigation';
 
 function LoginForm() {
   const auth = useAuth();
-  const db = useFirestore();
-  const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isRedirectProcessing, setIsRedirectProcessing] = useState(true);
-
-  // 1. Handle Redirect Result on mount
-  useEffect(() => {
-    const checkRedirect = async () => {
-      try {
-        const result = await handleGoogleRedirectResult(auth);
-        if (result?.user) {
-          console.log('[AUTH] Redirect result success', { uid: result.user.uid, email: result.user.email });
-          await bootstrapUser(result.user);
-          router.replace('/assembly');
-        } else {
-          setIsRedirectProcessing(false);
-        }
-      } catch (error: any) {
-        console.error('[AUTH] Redirect result error', { code: error.code, message: error.message });
-        toast({ 
-          variant: "destructive", 
-          title: "Échec de connexion Google", 
-          description: error.message 
-        });
-        setIsRedirectProcessing(false);
-      }
-    };
-    checkRedirect();
-  }, [auth, router]);
-
-  const bootstrapUser = async (user: User) => {
-    const memberRef = doc(db, 'members', user.uid);
-    try {
-      const snap = await getDoc(memberRef);
-      if (!snap.exists()) {
-        console.log('[AUTH] Creating initial member profile', user.uid);
-        await setDoc(memberRef, {
-          id: user.uid,
-          email: user.email || email,
-          displayName: user.displayName || (user.email || email)?.split('@')[0] || "Membre",
-          role: 'member',
-          status: 'pending',
-          createdAt: serverTimestamp(),
-          joinedAt: serverTimestamp(),
-          lastLoginAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      } else {
-        console.log('[AUTH] Updating last login', user.uid);
-        await updateDoc(memberRef, {
-          lastLoginAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
-    } catch (e) {
-      console.error('[AUTH] Bootstrap error', e);
-    }
-  };
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -88,17 +23,14 @@ function LoginForm() {
     
     setIsLoading(true);
     try {
-      console.log('[AUTH] Email login start', email);
-      const cred = await signInEmail(auth, email, password);
-      await bootstrapUser(cred.user);
+      await signInEmail(auth, email, password);
       toast({ title: "Connexion réussie" });
-      router.replace('/assembly');
+      // Redirection handled by AuthStatusProvider
     } catch (error: any) {
       console.error('[AUTH] Email login error', error.code);
       let message = "Identifiants incorrects.";
       if (error.code === 'auth/user-not-found') message = "Utilisateur introuvable.";
       if (error.code === 'auth/wrong-password') message = "Mot de passe erroné.";
-      
       toast({ variant: "destructive", title: "Erreur", description: message });
     } finally {
       setIsLoading(false);
@@ -111,19 +43,10 @@ function LoginForm() {
       await signInWithGoogle(auth);
     } catch (error) {
       console.error('[AUTH] Google start error', error);
-      toast({ variant: "destructive", title: "Erreur", description: "Impossible de lancer le flux Google." });
+      toast({ variant: "destructive", title: "Erreur", description: "Impossible de lancer la connexion Google." });
       setIsLoading(false);
     }
   };
-
-  if (isRedirectProcessing) {
-    return (
-      <div className="flex flex-col items-center justify-center py-24 space-y-4">
-        <Loader2 className="h-10 w-10 animate-spin text-primary" />
-        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Authentification en cours...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col items-center justify-center py-12 space-y-10 animate-in fade-in duration-700">
@@ -196,16 +119,6 @@ function LoginForm() {
 }
 
 export default function LoginPage() {
-  const { user, isUserLoading } = useUser();
-  const router = useRouter();
-
-  useEffect(() => {
-    if (!isUserLoading && user) {
-      console.log('[AUTH] User already logged in, redirecting to assembly');
-      router.replace('/assembly');
-    }
-  }, [user, isUserLoading, router]);
-
   return (
     <MainLayout statusText="Connexion">
       <LoginForm />
