@@ -46,7 +46,7 @@ export default function SignupPage() {
       
       // 2. Création immédiate du document de profil membre
       if (newUser) {
-        const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', newUser.uid);
+        const memberRef = doc(db, 'members', newUser.uid);
         await setDoc(memberRef, {
           id: newUser.uid,
           email: email,
