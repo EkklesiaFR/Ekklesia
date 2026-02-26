@@ -21,15 +21,16 @@ service cloud.firestore {
       allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
       allow list: if isAdminActive();
       
-      // Bootstrap : Permettre à l'utilisateur de créer son profil initial SANS fixer son rôle ou statut
+      // Bootstrap creation: Allow user to create profile ONLY with default role/status
       allow create: if isSignedIn() && request.auth.uid == uid 
-                    && !request.resource.data.keys().hasAny(['role', 'status']);
+                    && request.resource.data.role == "member"
+                    && request.resource.data.status == "pending";
       
-      // Update Safe : Permettre à l'utilisateur de mettre à jour ses infos personnelles sans toucher aux droits
+      // Self update: Disallow changing role or status
       allow update: if isSignedIn() && request.auth.uid == uid
                     && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']);
 
-      // Les admins gèrent les privilèges (role, status)
+      // Admin control for privileges
       allow update, delete: if isAdminActive();
     }
 

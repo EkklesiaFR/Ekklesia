@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { useUser, useFirestore, useAuth } from '@/firebase';
 import { doc, onSnapshot, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { MemberProfile } from '@/types';
@@ -30,15 +30,27 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [isMemberLoading, setIsMemberLoading] = useState(true);
+  
+  // Guard for double bootstrap
+  const didBootstrap = useRef(false);
 
-  // 1. Handle OAuth Redirect Result & Bootstrap on Mount
+  // 1. Early Redirect Logic (as soon as user is detected)
+  useEffect(() => {
+    if (!isUserLoading && user && pathname === '/login') {
+      console.log('[AUTH] Early redirect /login -> /assembly');
+      router.replace('/assembly');
+    }
+  }, [user, isUserLoading, pathname, router]);
+
+  // 2. Handle OAuth Redirect Result on Mount
   useEffect(() => {
     const processRedirect = async () => {
       try {
         const result = await handleGoogleRedirectResult(auth);
         if (result?.user) {
           console.log('[AUTH] Redirect result success', result.user.uid);
-          await bootstrapUser(result.user);
+          // If we handled a redirect, we definitely want to bootstrap
+          bootstrapUser(result.user);
         }
       } catch (error: any) {
         console.error('[AUTH] Redirect result error', error.code, error.message);
@@ -47,29 +59,32 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     processRedirect();
   }, [auth]);
 
-  // 2. Bootstrap User (Safe fields only)
+  // 3. Secure Bootstrap Function
   const bootstrapUser = async (user: User) => {
+    if (didBootstrap.current) return;
+    didBootstrap.current = true;
+
     const memberRef = doc(db, 'members', user.uid);
     try {
       const snap = await getDoc(memberRef);
       const safeData = {
         email: user.email,
-        displayName: user.displayName,
+        displayName: user.displayName || user.email?.split('@')[0],
         lastLoginAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       };
 
       if (!snap.exists()) {
-        console.log('[AUTH] Creating initial member profile (safe fields)');
+        console.log('[AUTH] Creating initial member profile with safe defaults');
         await setDoc(memberRef, {
           ...safeData,
           id: user.uid,
-          role: 'member', // Default safe role
-          status: 'pending', // Default safe status
+          role: 'member',    // Forced safe default
+          status: 'pending',   // Forced safe default
           createdAt: serverTimestamp(),
         });
       } else {
-        console.log('[AUTH] Updating member last login');
+        console.log('[AUTH] Updating member last login (safe fields only)');
         await updateDoc(memberRef, safeData);
       }
     } catch (e) {
@@ -77,20 +92,18 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  // 3. Listen to Member Profile & Auto-redirect
+  // 4. Listen to Member Profile & Bootstrap
   useEffect(() => {
     if (isUserLoading) return;
 
     if (!user) {
-      console.log('[AUTH] user null -> stay /login or root');
       setMember(null);
       setIsMemberLoading(false);
+      didBootstrap.current = false; // Reset if user signs out
       return;
     }
 
-    console.log('[AUTH] user detected -> loading member profile');
-    
-    // Always bootstrap on successful auth if not done by redirect
+    // Attempt bootstrap if not already done
     bootstrapUser(user);
 
     const memberRef = doc(db, 'members', user.uid);
@@ -101,19 +114,13 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         setMember(null);
       }
       setIsMemberLoading(false);
-      
-      // Auto-redirect from login to assembly if user is authenticated
-      if (pathname === '/login') {
-        console.log('[AUTH] Redirecting to /assembly');
-        router.replace('/assembly');
-      }
     }, (error) => {
-      console.error("AuthStatusProvider listener error:", error);
+      console.error("AuthStatusProvider member listener error:", error);
       setIsMemberLoading(false);
     });
 
     return () => unsubscribe();
-  }, [user, isUserLoading, db, pathname, router]);
+  }, [user, isUserLoading, db]);
 
   return (
     <AuthStatusContext.Provider value={{ 
