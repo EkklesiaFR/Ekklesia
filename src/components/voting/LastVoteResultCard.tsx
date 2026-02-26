@@ -1,66 +1,32 @@
-
 'use client';
 
 import { useFirestore, useMemoFirebase, useCollection, useDoc } from '@/firebase';
 import { collection, query, orderBy, limit, doc } from 'firebase/firestore';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Trophy, Users, BarChart3, ChevronRight, Calendar, Info } from 'lucide-react';
+import { Trophy, Users, BarChart3, ChevronRight, Calendar } from 'lucide-react';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { useEffect } from 'react';
 import { Assembly, Project } from '@/types';
 import { cn } from '@/lib/utils';
+import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
-/**
- * LastVoteResultCard - Affiche le dernier résultat officiel (PV) publié.
- * Lit l'instantané certifié dans /public/lastResult de l'assemblée la plus récente.
- */
 export function LastVoteResultCard() {
   const db = useFirestore();
 
-  // 1. Récupérer l'assemblée la plus récente (quelle que soit son état)
-  const assembliesQuery = useMemoFirebase(() => 
-    query(collection(db, 'assemblies'), orderBy('updatedAt', 'desc'), limit(1)), 
-  [db]);
-  const { data: assemblies, isLoading: isAsmLoading } = useCollection<Assembly>(assembliesQuery);
-  
-  const latestAssembly = assemblies?.[0];
-
-  // 2. Tenter de lire l'instantané public directement
   const publicResultRef = useMemoFirebase(() => {
-    if (!latestAssembly) return null;
-    return doc(db, 'assemblies', latestAssembly.id, 'public', 'lastResult');
-  }, [db, latestAssembly]);
+    return doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'public', 'lastResult');
+  }, [db]);
   
-  const { data: publicSnapshot, isLoading: isPubLoading, error: pubError } = useDoc<any>(publicResultRef);
+  const { data: results, isLoading: isPubLoading } = useDoc<any>(publicResultRef);
 
-  // 3. Fallback Projets (si besoin de titres non résolus, bien que le snapshot doive les contenir)
-  const projectsQuery = useMemoFirebase(() => {
-    if (publicSnapshot) return null;
-    return collection(db, 'projects');
-  }, [db, publicSnapshot]);
+  const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // DIAGNOSTICS
-  useEffect(() => {
-    if (latestAssembly) {
-      console.log("[DASH] latestAssembly found:", latestAssembly.id, "state:", latestAssembly.state);
-    }
-    if (pubError) {
-      console.error("[DASH] publicResult read failed:", pubError.code, pubError.message);
-    }
-    if (publicSnapshot) {
-      console.log("[DASH] publicSnapshot loaded:", publicSnapshot.voteId);
-    }
-  }, [latestAssembly, publicSnapshot, pubError]);
-
-  const isLoading = isAsmLoading || isPubLoading;
-
-  if (isLoading) {
+  if (isPubLoading) {
     return (
       <Card className="rounded-none border-border overflow-hidden bg-white h-full">
         <CardHeader className="p-8 pb-6 border-b border-border">
@@ -75,46 +41,22 @@ export function LastVoteResultCard() {
     );
   }
 
-  const renderDebug = () => {
-    if (process.env.NODE_ENV !== 'development') return null;
-    if (publicSnapshot) return null;
-    return (
-      <div className="mt-4 p-4 bg-muted/50 border border-dashed text-[9px] font-mono space-y-1">
-        <p className="font-bold flex items-center gap-1"><Info className="h-2 w-2" /> DIAGNOSTIC</p>
-        <p>Latest assembly: {latestAssembly?.id || 'NONE'}</p>
-        <p>Snapshot exists: {publicSnapshot ? 'YES' : 'NO'}</p>
-        <p>Read Error: {pubError ? pubError.code : 'NONE'}</p>
-      </div>
-    );
-  };
-
-  if (!publicSnapshot) {
+  if (!results) {
     return (
       <div className="p-8 border border-dashed border-border bg-secondary/5 text-center space-y-4 h-full flex flex-col justify-center">
         <BarChart3 className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
         <p className="text-xs uppercase font-bold tracking-widest text-muted-foreground">Aucun résultat publié</p>
-        {renderDebug()}
       </div>
     );
   }
 
-  // Résolution des données du snapshot
-  const results = publicSnapshot;
-  const voteTitle = results.voteTitle || latestAssembly?.title || "Scrutin";
+  const voteTitle = results.voteTitle || "Scrutin";
   const winnerLabel = results.winnerLabel || projects?.find(p => p.id === results.winnerId)?.title || "Projet retenu";
-  const fullRanking = results.ranking || [];
-  
-  const topRanking = fullRanking.slice(0, 5).map((r: any, idx: number) => ({
-    ...r,
-    label: r.label || projects?.find(p => p.id === (r.optionId || r.id))?.title || (r.optionId || r.id),
-    rank: r.rank || (idx + 1),
-    score: r.score ?? null
-  }));
-
+  const topRanking = results.fullRanking?.slice(0, 3) || [];
   const closedDate = results.closedAt?.seconds;
 
   return (
-    <Card className="rounded-none border-border overflow-hidden bg-white hover:border-black transition-all group flex flex-col justify-between h-full">
+    <Card className="rounded-none border-border overflow-hidden bg-white hover:border-black transition-all group flex flex-col justify-between h-full min-h-[400px]">
       <div>
         <CardHeader className="p-8 pb-6 border-b border-border">
           <div className="flex items-center justify-between mb-4">
@@ -148,26 +90,20 @@ export function LastVoteResultCard() {
 
           {topRanking.length > 0 && (
             <div className="space-y-4 pt-4">
-              <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted-foreground">Tête du classement</p>
+              <p className="text-[10px] uppercase font-bold tracking-[0.2em] text-muted-foreground">Top 3 classement</p>
               <div className="space-y-2">
-                {topRanking.map((item: any) => (
-                  <div key={item.optionId || item.id} className="flex items-center gap-4 text-sm py-1">
-                    <span className={cn(
-                      "w-6 h-6 flex items-center justify-center font-black text-[10px]",
-                      item.rank === 1 ? "bg-primary text-white" : "bg-secondary text-muted-foreground"
-                    )}>
-                      {item.rank}
-                    </span>
-                    <div className="flex-1 flex justify-between items-center gap-4 min-w-0">
-                      <span className={cn("truncate", item.rank === 1 ? "font-bold" : "text-muted-foreground")}>
-                        {item.label}
+                {topRanking.map((item: any, idx: number) => (
+                  <div key={item.id} className="flex items-center justify-between text-sm py-1">
+                    <span className="flex items-center gap-3">
+                      <span className={cn(
+                        "w-5 h-5 flex items-center justify-center font-black text-[9px]",
+                        idx === 0 ? "bg-primary text-white" : "bg-secondary text-muted-foreground"
+                      )}>
+                        {idx + 1}
                       </span>
-                      {item.score !== null && (
-                        <span className="text-[9px] font-mono text-muted-foreground/50 shrink-0">
-                          {item.score} pts
-                        </span>
-                      )}
-                    </div>
+                      {projects?.find(p => p.id === item.id)?.title}
+                    </span>
+                    <span className="text-[10px] font-mono text-muted-foreground">{item.score} pts</span>
                   </div>
                 ))}
               </div>

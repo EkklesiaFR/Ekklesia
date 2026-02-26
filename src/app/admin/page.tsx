@@ -19,7 +19,7 @@ import {
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, ShieldAlert, Trophy, Settings, Users, Activity, Lock, Play } from 'lucide-react';
+import { Plus, ShieldAlert, Trophy, Settings, Users, Activity, Lock, Play, BarChart3 } from 'lucide-react';
 import { Project, MemberProfile, Vote, Ballot } from '@/types';
 import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
 import { toast } from '@/hooks/use-toast';
@@ -139,56 +139,48 @@ function AdminContent() {
       <Tabs defaultValue="sessions">
         <TabsList className="rounded-none bg-transparent border-b h-auto p-0 gap-8 mb-8 w-full justify-start overflow-x-auto no-scrollbar">
           <TabsTrigger value="sessions" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Activity className="h-3 w-3" /> Sessions</TabsTrigger>
-          <TabsTrigger value="results" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Trophy className="h-3 w-3" /> Résultats</TabsTrigger>
           <TabsTrigger value="projects" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Settings className="h-3 w-3" /> Projets</TabsTrigger>
           <TabsTrigger value="members" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><Users className="h-3 w-3" /> Membres</TabsTrigger>
+          <TabsTrigger value="results" className="px-0 py-4 font-bold uppercase tracking-widest text-[11px] data-[state=active]:border-b-2 data-[state=active]:border-black rounded-none flex items-center gap-2"><BarChart3 className="h-3 w-3" /> Résultats</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sessions" className="space-y-6">
           {votes?.map(v => (
             <div key={v.id} className="p-8 border bg-white flex justify-between items-center group hover:border-black transition-all">
               <div className="space-y-3">
-                <Badge className="bg-black text-white rounded-none uppercase text-[9px] tracking-widest px-2 py-0.5">{v.state}</Badge>
-                <h3 className="text-xl font-bold">{v.question}</h3>
-              </div>
-              {v.state === 'draft' && (
-                <Button 
-                  onClick={() => handleOpenVote(v.id)} 
-                  disabled={isProcessing === v.id}
-                  className="rounded-none font-bold uppercase tracking-widest text-[10px] gap-2"
-                >
-                  <Play className="h-3.5 w-3.5" /> Ouvrir le vote
-                </Button>
-              )}
-            </div>
-          ))}
-        </TabsContent>
-
-        <TabsContent value="results" className="space-y-6">
-          {votes?.filter(v => v.state !== 'draft').map(v => (
-            <div key={v.id} className="p-8 border bg-white flex justify-between items-center group hover:border-black transition-all">
-              <div className="space-y-2">
                 <div className="flex items-center gap-3">
                   <Badge className={v.state === 'open' ? "bg-green-600" : "bg-black"}>{v.state}</Badge>
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground">{v.ballotCount || 0} bulletins</span>
+                  {v.state === 'open' && <span className="text-[10px] uppercase font-bold text-muted-foreground">{v.ballotCount || 0} bulletins</span>}
                 </div>
                 <h3 className="text-xl font-bold">{v.question}</h3>
               </div>
-              {v.state === 'open' ? (
-                <Button 
-                  variant="outline" 
-                  onClick={() => handlePublishResults(v)} 
-                  disabled={isProcessing === v.id}
-                  className="rounded-none border-2 border-black font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6"
-                >
-                  <Lock className="h-3.5 w-3.5" /> Clôturer & Publier
-                </Button>
-              ) : (
-                <div className="text-right">
-                  <p className="text-[10px] uppercase font-bold text-primary mb-1">Gagnant</p>
-                  <p className="font-bold">{projects?.find(p => p.id === v.results?.winnerId)?.title || '—'}</p>
-                </div>
-              )}
+              <div className="flex gap-4">
+                {v.state === 'draft' && (
+                  <Button 
+                    onClick={() => handleOpenVote(v.id)} 
+                    disabled={isProcessing === v.id}
+                    className="rounded-none font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6"
+                  >
+                    <Play className="h-3.5 w-3.5" /> Ouvrir le vote
+                  </Button>
+                )}
+                {v.state === 'open' && (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => handlePublishResults(v)} 
+                    disabled={isProcessing === v.id}
+                    className="rounded-none border-2 border-black font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6"
+                  >
+                    <Lock className="h-3.5 w-3.5" /> Clôturer & Publier
+                  </Button>
+                )}
+                {v.state === 'locked' && (
+                  <div className="text-right">
+                    <p className="text-[10px] uppercase font-bold text-primary mb-1">Gagnant</p>
+                    <p className="font-bold">{projects?.find(p => p.id === v.results?.winnerId)?.title || '—'}</p>
+                  </div>
+                )}
+              </div>
             </div>
           ))}
         </TabsContent>
@@ -224,6 +216,45 @@ function AdminContent() {
               ))}
             </TableBody>
           </Table>
+        </TabsContent>
+
+        <TabsContent value="results" className="space-y-6">
+          {votes?.filter(v => v.state === 'locked').map(v => (
+            <div key={v.id} className="p-8 border bg-white space-y-6 group hover:border-black transition-all">
+              <div className="flex justify-between items-start border-b border-border pb-6">
+                <div className="space-y-2">
+                  <Badge className="bg-black text-white rounded-none uppercase text-[9px]">PV Certifié</Badge>
+                  <h3 className="text-2xl font-bold">{v.question}</h3>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
+                  <p className="text-xl font-black">{v.results?.total || 0}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                <div className="space-y-4">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Vainqueur (Schulze)</p>
+                  <p className="text-xl font-black uppercase text-primary">
+                    {projects?.find(p => p.id === v.results?.winnerId)?.title || '—'}
+                  </p>
+                </div>
+                <div className="space-y-4">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Top 3 Ranking</p>
+                  <div className="space-y-2">
+                    {v.results?.fullRanking?.slice(0, 3).map((r, idx) => (
+                      <div key={r.id} className="flex justify-between items-center text-sm">
+                        <span className="font-bold flex items-center gap-2">
+                          <span className="w-5 h-5 flex items-center justify-center bg-secondary text-[10px]">{idx + 1}</span>
+                          {projects?.find(p => p.id === r.id)?.title}
+                        </span>
+                        <span className="text-muted-foreground font-mono text-xs">{r.score} pts</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
         </TabsContent>
       </Tabs>
 

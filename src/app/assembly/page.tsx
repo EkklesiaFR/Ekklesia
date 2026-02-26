@@ -11,14 +11,10 @@ import Link from 'next/link';
 import { 
   LayoutGrid, 
   Settings, 
-  Users,
   Activity,
-  Clock,
   PieChart
 } from 'lucide-react';
 import { Project, Vote, Assembly } from '@/types';
-import { formatDistanceToNow } from 'date-fns';
-import { fr } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import { Progress } from '@/components/ui/progress';
 import { AdminTrendsPanel } from '@/components/voting/AdminTrendsPanel';
@@ -62,7 +58,7 @@ function AssemblyDashboardContent() {
     if (!activeAssembly?.activeVoteId || activeAssembly.state !== 'open') return null;
     return doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', activeAssembly.activeVoteId);
   }, [db, activeAssembly]);
-  const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
+  const { data: activeVote } = useDoc<Vote>(voteRef);
 
   const projectsQuery = useMemoFirebase(() => collection(db, 'projects'), [db]);
   const { data: allProjects } = useCollection<Project>(projectsQuery);
@@ -83,15 +79,18 @@ function AssemblyDashboardContent() {
 
       {!isOpen ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <section className="border border-border p-12 bg-secondary/5 text-center flex flex-col justify-center space-y-6">
+          <section className="border border-border p-12 bg-secondary/5 text-center flex flex-col justify-center space-y-6 min-h-[400px]">
             <Activity className="h-8 w-8 text-muted-foreground mx-auto" />
             <h2 className="text-2xl font-bold">Aucun scrutin ouvert</h2>
+            <p className="text-sm text-muted-foreground max-w-xs mx-auto">
+              L'assemblée ne propose pas de vote actif pour le moment.
+            </p>
           </section>
           <LastVoteResultCard />
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="border border-border p-8 bg-white space-y-8 flex flex-col justify-between">
+          <div className="border border-border p-8 bg-white space-y-8 flex flex-col justify-between min-h-[400px]">
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs uppercase tracking-widest font-bold text-muted-foreground flex items-center gap-2">
@@ -106,11 +105,11 @@ function AssemblyDashboardContent() {
             </Link>
           </div>
 
-          <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between">
+          <div className="border border-border p-8 bg-black text-white space-y-8 flex flex-col justify-between min-h-[400px]">
             {isAdmin ? (
               <AdminTrendsPanel 
                 assemblyId={DEFAULT_ASSEMBLY_ID} 
-                voteId={activeVote.id} 
+                voteId={activeVote?.id || ''} 
                 projects={activeProjects} 
               />
             ) : (
