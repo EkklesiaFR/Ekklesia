@@ -4,15 +4,17 @@ import React, { createContext, useContext, useEffect, useState, useRef, ReactNod
 import { useUser, useFirestore, useAuth } from '@/firebase';
 import { doc, onSnapshot, getDoc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { MemberProfile } from '@/types';
-import { handleGoogleRedirectResult } from '@/firebase/non-blocking-login';
+import { handleGoogleRedirectResult, GoogleAuthProvider } from '@/firebase/non-blocking-login';
 import { useRouter, usePathname } from 'next/navigation';
-import { User } from 'firebase/auth';
+import { User, AuthCredential } from 'firebase/auth';
 
 interface AuthStatusContextType {
   member: MemberProfile | null;
   isMemberLoading: boolean;
   isActiveMember: boolean;
   isAdmin: boolean;
+  pendingCred: AuthCredential | null;
+  setPendingCred: (cred: AuthCredential | null) => void;
 }
 
 const AuthStatusContext = createContext<AuthStatusContextType>({
@@ -20,6 +22,8 @@ const AuthStatusContext = createContext<AuthStatusContextType>({
   isMemberLoading: true,
   isActiveMember: false,
   isAdmin: false,
+  pendingCred: null,
+  setPendingCred: () => {},
 });
 
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
@@ -28,17 +32,21 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const db = useFirestore();
   const router = useRouter();
   const pathname = usePathname();
+  
   const [member, setMember] = useState<MemberProfile | null>(null);
   const [isMemberLoading, setIsMemberLoading] = useState(true);
+  const [pendingCred, setPendingCred] = useState<AuthCredential | null>(null);
   
-  // Guard for double bootstrap
+  // Guard for double bootstrap per session
   const didBootstrap = useRef(false);
 
-  // 1. Early Redirect Logic (as soon as user is detected)
+  // 1. Early Redirect Logic
   useEffect(() => {
     if (!isUserLoading && user && pathname === '/login') {
-      console.log('[AUTH] Early redirect /login -> /assembly');
+      console.log('[AUTH] user detected -> redirect /assembly');
       router.replace('/assembly');
+    } else if (!isUserLoading && !user && pathname === '/login') {
+      console.log('[AUTH] user null -> stay /login');
     }
   }, [user, isUserLoading, pathname, router]);
 
@@ -48,12 +56,27 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       try {
         const result = await handleGoogleRedirectResult(auth);
         if (result?.user) {
-          console.log('[AUTH] Redirect result success', result.user.uid);
-          // If we handled a redirect, we definitely want to bootstrap
+          console.log('[AUTH] Redirect result success', {
+            uid: result.user.uid,
+            email: result.user.email,
+            providerId: result.providerId
+          });
           bootstrapUser(result.user);
         }
       } catch (error: any) {
-        console.error('[AUTH] Redirect result error', error.code, error.message);
+        console.error('[AUTH] Redirect result error', {
+          code: error.code,
+          message: error.message
+        });
+
+        // Handle the "account already exists" case
+        if (error.code === 'auth/account-exists-with-different-credential') {
+          const cred = GoogleAuthProvider.credentialFromError(error);
+          if (cred) {
+            setPendingCred(cred);
+            console.log('[AUTH] Pending credential stored for linking');
+          }
+        }
       }
     };
     processRedirect();
@@ -67,6 +90,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     const memberRef = doc(db, 'members', user.uid);
     try {
       const snap = await getDoc(memberRef);
+      
       const safeData = {
         email: user.email,
         displayName: user.displayName || user.email?.split('@')[0],
@@ -79,12 +103,13 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         await setDoc(memberRef, {
           ...safeData,
           id: user.uid,
-          role: 'member',    // Forced safe default
-          status: 'pending',   // Forced safe default
+          role: 'member',
+          status: 'pending',
           createdAt: serverTimestamp(),
         });
       } else {
-        console.log('[AUTH] Updating member last login (safe fields only)');
+        console.log('[AUTH] Updating member profile (safe fields only)');
+        // NEVER overwrite role/status here to prevent client-side elevation
         await updateDoc(memberRef, safeData);
       }
     } catch (e) {
@@ -99,23 +124,24 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     if (!user) {
       setMember(null);
       setIsMemberLoading(false);
-      didBootstrap.current = false; // Reset if user signs out
+      didBootstrap.current = false; // Reset guard on sign-out
       return;
     }
 
-    // Attempt bootstrap if not already done
+    // Always attempt bootstrap on user detection
     bootstrapUser(user);
 
     const memberRef = doc(db, 'members', user.uid);
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
-        setMember({ id: docSnap.id, ...docSnap.data() } as MemberProfile);
+        const data = docSnap.data() as MemberProfile;
+        setMember({ ...data, id: docSnap.id });
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
-      console.error("AuthStatusProvider member listener error:", error);
+      console.error("[AUTH] Member listener error:", error.message);
       setIsMemberLoading(false);
     });
 
@@ -127,7 +153,9 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       member, 
       isMemberLoading, 
       isActiveMember: member?.status === 'active', 
-      isAdmin: member?.role === 'admin' 
+      isAdmin: member?.role === 'admin',
+      pendingCred,
+      setPendingCred
     }}>
       {children}
     </AuthStatusContext.Provider>

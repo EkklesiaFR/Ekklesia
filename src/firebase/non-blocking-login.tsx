@@ -7,6 +7,8 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
+  linkWithCredential,
+  AuthCredential,
 } from 'firebase/auth';
 
 /**
@@ -16,6 +18,9 @@ import {
 export const signInWithGoogle = async (authInstance: Auth) => {
   console.log('[AUTH] Google redirect start');
   const provider = new GoogleAuthProvider();
+  // Ensure we request email to avoid linking issues without identification
+  provider.addScope('email');
+  provider.addScope('profile');
   return signInWithRedirect(authInstance, provider);
 };
 
@@ -46,3 +51,13 @@ export const signInEmail = (authInstance: Auth, email: string, pass: string) => 
 export const initiatePasswordReset = (authInstance: Auth, email: string) => {
   return sendPasswordResetEmail(authInstance, email);
 };
+
+/**
+ * [AUTH] Links a pending credential to the current user.
+ */
+export const linkAccount = (authInstance: Auth, credential: AuthCredential) => {
+  if (!authInstance.currentUser) throw new Error("No user to link to");
+  return linkWithCredential(authInstance.currentUser, credential);
+};
+
+export { GoogleAuthProvider };
