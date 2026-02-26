@@ -1,10 +1,10 @@
+
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { useUser, useFirestore } from '@/firebase';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { MemberProfile } from '@/types';
-import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
 interface AuthStatusContextType {
   member: MemberProfile | null;
@@ -34,7 +34,8 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const memberRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members', user.uid);
+    // Utilisation de la collection racine 'members' comme source de vérité
+    const memberRef = doc(db, 'members', user.uid);
     
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {

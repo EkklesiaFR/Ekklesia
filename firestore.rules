@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -6,53 +7,57 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    function isMemberActive(assemblyId) {
+    function isMemberActive() {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid))
-        && get(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid)).data.status == "active";
+        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
+        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.status == "active";
     }
 
-    function isAdminActive(assemblyId) {
-      return isMemberActive(assemblyId) 
-        && get(/databases/$(database)/documents/assemblies/$(assemblyId)/members/$(request.auth.uid)).data.role == "admin";
+    function isAdminActive() {
+      return isMemberActive() 
+        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == "admin";
+    }
+
+    match /members/{uid} {
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
+      allow list: if isAdminActive();
+      
+      // Permettre à l'utilisateur de créer son profil initial
+      allow create: if isSignedIn() && request.auth.uid == uid 
+                    && request.resource.data.role == "member"
+                    && request.resource.data.status == "pending";
+      
+      // Permettre à l'utilisateur de mettre à jour ses timestamps de connexion
+      allow update: if isSignedIn() && request.auth.uid == uid
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastLoginAt', 'updatedAt']);
+
+      // Les admins peuvent tout modifier
+      allow update, delete: if isAdminActive();
     }
 
     match /assemblies/{assemblyId} {
       allow read: if isSignedIn();
-      allow update: if isAdminActive(assemblyId);
-
-      match /members/{uid} {
-        allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive(assemblyId));
-        allow list: if isAdminActive(assemblyId);
-        
-        // Autoriser l'utilisateur à créer son propre profil initial comme 'pending' et 'member'
-        allow create: if isSignedIn() && request.auth.uid == uid 
-                      && request.resource.data.role == "member"
-                      && request.resource.data.status == "pending";
-        
-        // Seuls les admins peuvent valider les profils ou changer les rôles
-        allow update, delete: if isAdminActive(assemblyId);
-      }
+      allow update: if isAdminActive();
 
       match /public/{docId} {
         allow read: if true;
-        allow write: if isAdminActive(assemblyId);
+        allow write: if isAdminActive();
       }
 
       match /votes/{voteId} {
-        allow read: if isMemberActive(assemblyId);
-        allow write: if isAdminActive(assemblyId);
+        allow read: if isMemberActive();
+        allow write: if isAdminActive();
 
         match /ballots/{uid} {
           allow get, write: if isSignedIn() && request.auth.uid == uid && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
-          allow list: if isAdminActive(assemblyId);
+          allow list: if isAdminActive();
         }
       }
     }
 
     match /projects/{projectId} {
       allow read: if isSignedIn();
-      allow write: if isAdminActive('default-assembly'); 
+      allow write: if isAdminActive(); 
     }
   }
 }
