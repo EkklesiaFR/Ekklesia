@@ -43,7 +43,10 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         setMember(null);
       }
       setIsMemberLoading(false);
-    }, () => setIsMemberLoading(false));
+    }, (error) => {
+      console.error("AuthStatusProvider error:", error);
+      setIsMemberLoading(false);
+    });
 
     return () => unsubscribe();
   }, [user, isUserLoading, db]);

@@ -5,8 +5,8 @@ import { useFirestore, useUser } from '@/firebase';
 import { 
   collection, 
   doc, 
-  runTransaction, 
-  serverTimestamp 
+  serverTimestamp,
+  addDoc
 } from 'firebase/firestore';
 import { 
   Dialog, 
@@ -53,46 +53,24 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
 
     setIsSubmitting(true);
     try {
-      /**
-       * HANDLER : Créer une session
-       * - Chemin : /assemblies/{DEFAULT_ASSEMBLY_ID}
-       * - Chemin : /assemblies/{DEFAULT_ASSEMBLY_ID}/votes/{voteId}
-       * - Transaction atomique pour garantir l'intégrité du pointeur activeVoteId
-       */
-      await runTransaction(db, async (transaction) => {
-        const assemblyRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
-        const voteRef = doc(collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'));
-        
-        const now = serverTimestamp();
-
-        // 1. Mise à jour du document parent (Assembly)
-        transaction.update(assemblyRef, {
-          title: title,
-          state: 'open',
-          activeVoteId: voteRef.id,
-          updatedAt: now
-        });
-
-        // 2. Création du document de vote fils
-        transaction.set(voteRef, {
-          id: voteRef.id,
-          assemblyId: DEFAULT_ASSEMBLY_ID,
-          question: `Vote préférentiel : ${title}`,
-          projectIds: selectedProjectIds,
-          state: 'open',
-          createdAt: now,
-          updatedAt: now,
-          ballotCount: 0,
-          eligibleCount: 0,
-          createdBy: user.uid
-        });
+      const voteRef = collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes');
+      
+      await addDoc(voteRef, {
+        assemblyId: DEFAULT_ASSEMBLY_ID,
+        question: title,
+        projectIds: selectedProjectIds,
+        state: 'draft',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+        ballotCount: 0,
+        eligibleCount: 0,
+        createdBy: user.uid
       });
 
-      toast({ title: "Session lancée", description: "Le scrutin est désormais ouvert pour tous les membres." });
+      toast({ title: "Session créée", description: "Le scrutin est en brouillon. Ouvrez-le depuis la console admin." });
       onClose();
     } catch (e: any) {
-      console.error("[ADMIN] Failed to create session:", e);
-      toast({ variant: "destructive", title: "Erreur", description: `Échec du lancement : ${e.message}` });
+      toast({ variant: "destructive", title: "Erreur", description: "Échec de la création." });
     } finally {
       setIsSubmitting(false);
     }
@@ -100,11 +78,11 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto rounded-none p-10">
+      <DialogContent className="max-w-2xl rounded-none p-10">
         <DialogHeader className="space-y-4">
           <DialogTitle className="text-3xl font-bold">Nouvelle Session</DialogTitle>
           <DialogDescription className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
-            Configurez un nouveau scrutin pour l'assemblée par défaut.
+            Configurez un nouveau scrutin pour l'assemblée.
           </DialogDescription>
         </DialogHeader>
 
@@ -112,7 +90,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
           <div className="space-y-4">
             <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Titre de la Session</Label>
             <Input 
-              placeholder="Ex: Assemblée Générale Hiver 2024" 
+              placeholder="Ex: Assemblée Hiver 2024" 
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="rounded-none h-14 text-lg font-bold"
@@ -121,19 +99,18 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
           </div>
 
           <div className="space-y-6">
-            <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Sélection des Projets Candidats ({selectedProjectIds.length})</Label>
+            <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Projets Sélectionnés ({selectedProjectIds.length})</Label>
             <div className="grid gap-3 max-h-[300px] overflow-y-auto pr-4">
               {availableProjects.map(project => (
-                <div key={project.id} className="flex items-center space-x-4 p-4 border border-border bg-secondary/5 hover:bg-secondary/10 transition-colors">
+                <div key={project.id} className="flex items-center space-x-4 p-4 border border-border bg-secondary/5">
                   <Checkbox 
                     id={project.id} 
                     checked={selectedProjectIds.includes(project.id)}
                     onCheckedChange={() => handleToggleProject(project.id)}
-                    className="rounded-none h-5 w-5"
                   />
                   <div className="flex-1">
-                    <label htmlFor={project.id} className="text-sm font-bold cursor-pointer block">{project.title}</label>
-                    <span className="text-[10px] text-muted-foreground uppercase font-medium">{project.budget}</span>
+                    <label htmlFor={project.id} className="text-sm font-bold cursor-pointer">{project.title}</label>
+                    <p className="text-[10px] text-muted-foreground">{project.budget}</p>
                   </div>
                 </div>
               ))}
@@ -141,16 +118,10 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
           </div>
 
           <DialogFooter className="pt-8 gap-4">
-            <Button type="button" variant="outline" onClick={onClose} className="rounded-none h-14 px-8 uppercase font-bold text-xs">
-              Annuler
-            </Button>
-            <Button 
-              type="submit" 
-              disabled={isSubmitting || selectedProjectIds.length < 2}
-              className="rounded-none h-14 px-10 uppercase font-bold text-xs gap-2"
-            >
+            <Button type="button" variant="outline" onClick={onClose} className="rounded-none h-14 px-8 uppercase font-bold text-xs">Annuler</Button>
+            <Button type="submit" disabled={isSubmitting || selectedProjectIds.length < 2} className="rounded-none h-14 px-10 uppercase font-bold text-xs gap-2">
               {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
-              Lancer le scrutin
+              Créer Brouillon
             </Button>
           </DialogFooter>
         </form>

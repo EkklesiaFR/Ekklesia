@@ -27,6 +27,11 @@ service cloud.firestore {
         allow write: if isAdminActive(assemblyId);
       }
 
+      match /public/{docId} {
+        allow read: if true;
+        allow write: if isAdminActive(assemblyId);
+      }
+
       match /votes/{voteId} {
         allow read: if isMemberActive(assemblyId);
         allow write: if isAdminActive(assemblyId);
@@ -40,7 +45,7 @@ service cloud.firestore {
 
     match /projects/{projectId} {
       allow read: if isSignedIn();
-      allow write: if isAdminActive('default-assembly'); // Ou via une vérification plus large
+      allow write: if isAdminActive('default-assembly'); 
     }
   }
 }
