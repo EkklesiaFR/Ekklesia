@@ -19,15 +19,23 @@ import {
  * Forces local persistence before redirect.
  */
 export const signInWithGoogle = async (authInstance: Auth) => {
-  console.log('[AUTH] Google redirect start - setting local persistence');
+  console.log('[AUTH] Google redirect start', {
+    origin: window.location.origin,
+    href: window.location.href,
+    appName: authInstance.app.name
+  });
+
   try {
+    // Force la persistance locale avant la redirection
     await setPersistence(authInstance, browserLocalPersistence);
+    
     const provider = new GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
+    
     return signInWithRedirect(authInstance, provider);
   } catch (error) {
-    console.error('[AUTH] Failed to set persistence or start redirect', error);
+    console.error('[AUTH] Failed to start redirect', error);
     throw error;
   }
 };
@@ -36,6 +44,10 @@ export const signInWithGoogle = async (authInstance: Auth) => {
  * [AUTH] Consumes the redirect result.
  */
 export const handleGoogleRedirectResult = (authInstance: Auth) => {
+  console.log('[AUTH] Checking for redirect result...', {
+    origin: window.location.origin,
+    href: window.location.href
+  });
   return getRedirectResult(authInstance);
 };
 

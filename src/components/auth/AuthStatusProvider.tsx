@@ -40,9 +40,9 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const didBootstrap = useRef(false);
   const hasProcessedRedirect = useRef(false);
 
-  // REDIRECTION EARLY : Dès qu'on a un user, on dégage de /login
+  // REDIRECTION EARLY : Déséquilibrée tant que le redirect n'est pas consommé
   useEffect(() => {
-    if (!isUserLoading && user && pathname === '/login') {
+    if (!isUserLoading && user && pathname === '/login' && hasProcessedRedirect.current) {
       console.log('[AUTH] user detected -> redirect /assembly');
       router.replace('/assembly');
     }
@@ -59,10 +59,10 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         hasProcessedRedirect.current = true;
         
         if (result?.user) {
-          console.log('[AUTH] redirect result SUCCESS:', result.user.uid);
+          console.log('[AUTH] redirect result SUCCESS:', result.user.uid, result.user.email);
           await bootstrapUser(result.user);
         } else {
-          console.log('[AUTH] redirect result EMPTY');
+          console.log('[AUTH] redirect result EMPTY (normal boot)');
         }
       } catch (error: any) {
         console.error('[AUTH] redirect result ERROR:', error.code, error.message);
@@ -87,6 +87,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       const snap = await getDoc(memberRef);
       
       if (!snap.exists()) {
+        console.log('[AUTH] Bootstrapping new member profile:', user.uid);
         await setDoc(memberRef, {
           id: user.uid,
           email: user.email,
@@ -98,6 +99,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           lastLoginAt: serverTimestamp(),
         });
       } else {
+        console.log('[AUTH] Updating existing member login info:', user.uid);
         await updateDoc(memberRef, {
           lastLoginAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
