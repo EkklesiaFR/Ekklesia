@@ -29,7 +29,18 @@ const AuthStatusContext = createContext<AuthStatusContextType>({
 export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const { user, isUserLoading } = useUser();
   const auth = useAuth();
-  const db = useFirestore();
+  const db = useFirestore();--- a/src/components/auth/AuthStatusProvider.tsx
++++ b/src/components/auth/AuthStatusProvider.tsx
+@@ -91,7 +91,7 @@
+       if (!snap.exists()) {
+         console.log('[AUTH] Creating new member profile:', user.uid);
+         await setDoc(memberRef, {
+-          id: user.uid,
++          uid: user.uid,
+           email: user.email,
+           displayName: user.displayName || user.email?.split('@')[0],
+           role: 'member',
+
   const router = useRouter();
   const pathname = usePathname();
   
