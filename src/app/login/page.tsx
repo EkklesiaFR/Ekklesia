@@ -31,22 +31,21 @@ function LoginForm() {
     
     try {
       console.log('[AUTH] Starting Email login attempt');
-      const userCredential = await signInEmail(auth, email, password);
+      await signInEmail(auth, email, password);
       
       // If we have a pending Google credential, link it now
       if (pendingCred) {
-        console.log('[AUTH] Attempting to link Google account to existing email session');
+        console.log('[AUTH] Attempting to link Google account');
         try {
           await linkAccount(auth, pendingCred);
-          toast({ title: "Comptes liés", description: "Votre compte Google est désormais associé à votre e-mail." });
+          toast({ title: "Comptes liés", description: "Votre compte Google est désormais associé." });
           setPendingCred(null);
         } catch (linkErr: any) {
           console.error('[AUTH] Linking error', linkErr.code);
-          // Don't block login if linking fails, just inform the user
           toast({ 
             variant: "destructive", 
             title: "Échec de l'association", 
-            description: "Votre session est ouverte, mais le lien Google a échoué." 
+            description: "Session ouverte, mais lien Google échoué." 
           });
         }
       } else {
@@ -57,7 +56,6 @@ function LoginForm() {
       let message = "Identifiants incorrects.";
       if (error.code === 'auth/user-not-found') message = "Utilisateur introuvable.";
       if (error.code === 'auth/wrong-password') message = "Mot de passe erroné.";
-      if (error.code === 'auth/too-many-requests') message = "Trop de tentatives. Veuillez patienter.";
       
       setAuthError(message);
       toast({ variant: "destructive", title: "Erreur", description: message });
@@ -82,7 +80,7 @@ function LoginForm() {
     <div className="flex flex-col items-center justify-center py-12 space-y-10 animate-in fade-in duration-700">
       <header className="space-y-4 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-black font-headline">Ekklesia Vote</h1>
-        <p className="text-muted-foreground max-w-sm mx-auto">Connectez-vous pour participer aux décisions de l'assemblée.</p>
+        <p className="text-muted-foreground max-w-sm mx-auto">Connectez-vous pour participer aux décisions.</p>
       </header>
 
       <div className="w-full max-w-sm space-y-8">
@@ -91,7 +89,7 @@ function LoginForm() {
             <AlertCircle className="h-4 w-4 text-primary" />
             <AlertTitle className="text-[10px] font-black uppercase tracking-widest text-primary">Lien requis</AlertTitle>
             <AlertDescription className="text-xs">
-              Ce compte Google existe déjà avec une méthode différente. Connectez-vous par e-mail pour lier vos comptes.
+              Ce compte Google existe déjà. Connectez-vous par e-mail pour lier vos comptes.
             </AlertDescription>
           </Alert>
         )}
@@ -122,7 +120,7 @@ function LoginForm() {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="password">Mot de passe</Label>
-              <Link href="/forgot-password" className="text-[10px] opacity-60 uppercase font-bold text-muted-foreground hover:text-black">Oublié ?</Link>
+              <Link href="/forgot-password" title="Oublié ?" className="text-[10px] opacity-60 uppercase font-bold text-muted-foreground hover:text-black">Oublié ?</Link>
             </div>
             <div className="relative">
               <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />

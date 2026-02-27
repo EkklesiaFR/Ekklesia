@@ -9,19 +9,27 @@ import {
   sendPasswordResetEmail,
   linkWithCredential,
   AuthCredential,
+  setPersistence,
+  browserLocalPersistence,
 } from 'firebase/auth';
 
 /**
  * [AUTH] Initiates Google Sign-In with Redirect.
  * Stable for restricted environments like Cloud Workstations.
+ * Forces local persistence before redirect.
  */
 export const signInWithGoogle = async (authInstance: Auth) => {
-  console.log('[AUTH] Google redirect start');
-  const provider = new GoogleAuthProvider();
-  // Ensure we request email to avoid linking issues without identification
-  provider.addScope('email');
-  provider.addScope('profile');
-  return signInWithRedirect(authInstance, provider);
+  console.log('[AUTH] Google redirect start - setting local persistence');
+  try {
+    await setPersistence(authInstance, browserLocalPersistence);
+    const provider = new GoogleAuthProvider();
+    provider.addScope('email');
+    provider.addScope('profile');
+    return signInWithRedirect(authInstance, provider);
+  } catch (error) {
+    console.error('[AUTH] Failed to set persistence or start redirect', error);
+    throw error;
+  }
 };
 
 /**

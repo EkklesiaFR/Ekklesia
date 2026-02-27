@@ -38,9 +38,9 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const [pendingCred, setPendingCred] = useState<AuthCredential | null>(null);
   
   const didBootstrap = useRef(false);
+  const hasProcessedRedirect = useRef(false);
 
-  // REDIRECTION EARLY : Si on est sur /login et qu'on a un user, on dégage vers /assembly
-  // On n'attend pas Firestore pour cette redirection de base.
+  // REDIRECTION EARLY : Dès qu'on a un user, on dégage de /login
   useEffect(() => {
     if (!isUserLoading && user && pathname === '/login') {
       console.log('[AUTH] User detected early -> redirecting to /assembly');
@@ -48,17 +48,24 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     }
   }, [user, isUserLoading, pathname, router]);
 
-  // Consommation du résultat Google Redirect
+  // Consommation du résultat Google Redirect - UNIQUE au boot
   useEffect(() => {
+    if (hasProcessedRedirect.current) return;
+    
     const processRedirect = async () => {
+      console.log('[AUTH] Checking for redirect result...');
       try {
         const result = await handleGoogleRedirectResult(auth);
+        hasProcessedRedirect.current = true;
+        
         if (result?.user) {
           console.log('[AUTH] Redirect result success:', result.user.email);
           await bootstrapUser(result.user);
+        } else {
+          console.log('[AUTH] No redirect result found (normal boot)');
         }
       } catch (error: any) {
-        console.error('[AUTH] Redirect result error:', error.code);
+        console.error('[AUTH] Redirect result error:', error.code, error.message);
         if (error.code === 'auth/account-exists-with-different-credential') {
           const cred = GoogleAuthProvider.credentialFromError(error);
           if (cred) setPendingCred(cred);
@@ -89,7 +96,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           lastLoginAt: serverTimestamp(),
         });
       } else {
-        console.log('[AUTH] Updating existing member timestamps...');
+        console.log('[AUTH] Updating existing member login time...');
         await updateDoc(memberRef, {
           lastLoginAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -104,7 +111,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     if (isUserLoading) return;
 
     if (!user) {
-      console.log('[AUTH] No user found -> clearing session');
       setMember(null);
       setIsMemberLoading(false);
       didBootstrap.current = false;
@@ -115,22 +121,17 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     bootstrapUser(user);
 
     // Écouter le profil membre
-    console.log('[AUTH] Starting member profile listener for:', user.uid);
     const memberRef = doc(db, 'members', user.uid);
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as MemberProfile;
-        console.log('[AUTH] Member profile loaded:', data.status);
         setMember({ ...data, id: docSnap.id });
       } else {
-        console.log('[AUTH] Member document does not exist yet');
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
-      console.error("[AUTH] Profile listener access denied (normal during bootstrap or rules propagation)");
-      // On ne met pas loading à false immédiatement pour laisser le temps au bootstrap de finir
-      // Sauf si on est vraiment bloqué
+      console.error("[AUTH] Profile listener error:", error.code);
       setTimeout(() => setIsMemberLoading(false), 2000);
     });
 
