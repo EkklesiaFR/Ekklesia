@@ -43,7 +43,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   // REDIRECTION EARLY : Dès qu'on a un user, on dégage de /login
   useEffect(() => {
     if (!isUserLoading && user && pathname === '/login') {
-      console.log('[AUTH] User detected early -> redirecting to /assembly');
+      console.log('[AUTH] user detected -> redirect /assembly');
       router.replace('/assembly');
     }
   }, [user, isUserLoading, pathname, router]);
@@ -59,17 +59,17 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         hasProcessedRedirect.current = true;
         
         if (result?.user) {
-          console.log('[AUTH] Redirect result success:', result.user.email, 'UID:', result.user.uid);
+          console.log('[AUTH] redirect result SUCCESS:', result.user.uid);
           await bootstrapUser(result.user);
         } else {
-          console.log('[AUTH] No redirect result found (normal boot or empty result)');
+          console.log('[AUTH] redirect result EMPTY');
         }
       } catch (error: any) {
-        console.error('[AUTH] Redirect result error:', error.code, error.message);
+        console.error('[AUTH] redirect result ERROR:', error.code, error.message);
         if (error.code === 'auth/account-exists-with-different-credential') {
           const cred = GoogleAuthProvider.credentialFromError(error);
           if (cred) {
-            console.log('[AUTH] Found pending credential for linking');
+            console.log('[AUTH] pending link set (conflict found)');
             setPendingCred(cred);
           }
         }
@@ -82,13 +82,11 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     if (didBootstrap.current) return;
     didBootstrap.current = true;
 
-    console.log('[AUTH] Bootstrapping user profile for:', user.uid);
     const memberRef = doc(db, 'members', user.uid);
     try {
       const snap = await getDoc(memberRef);
       
       if (!snap.exists()) {
-        console.log('[AUTH] Creating initial member profile...');
         await setDoc(memberRef, {
           id: user.uid,
           email: user.email,
@@ -100,7 +98,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           lastLoginAt: serverTimestamp(),
         });
       } else {
-        console.log('[AUTH] Updating existing member login time...');
         await updateDoc(memberRef, {
           lastLoginAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -115,8 +112,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isUserLoading) return;
-
-    console.log('[AUTH] Auth state changed. User:', user?.uid || 'NONE', 'Path:', pathname);
 
     if (!user) {
       setMember(null);
@@ -133,10 +128,8 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data() as MemberProfile;
-        console.log('[AUTH] Member profile loaded. Status:', data.status, 'Role:', data.role);
         setMember({ ...data, id: docSnap.id });
       } else {
-        console.warn('[AUTH] No member profile document found for UID:', user.uid);
         setMember(null);
       }
       setIsMemberLoading(false);
@@ -146,7 +139,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     });
 
     return () => unsubscribe();
-  }, [user, isUserLoading, db, pathname]);
+  }, [user, isUserLoading, db]);
 
   return (
     <AuthStatusContext.Provider value={{ 

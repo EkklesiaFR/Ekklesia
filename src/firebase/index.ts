@@ -1,58 +1,33 @@
 'use client';
 
 import { firebaseConfig } from '@/firebase/config';
-import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
-
-// Singleton cache for Firebase SDKs
-let cachedSdks: {
-  firebaseApp: FirebaseApp;
-  auth: Auth;
-  firestore: Firestore;
-} | null = null;
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
 
 /**
- * Initializes Firebase using a strict singleton pattern.
- * Ensures that the same instances are shared across the entire application.
+ * Singleton déterministe pour Firebase.
+ * Garantit qu'une seule instance d'App, Auth et Firestore existe.
+ */
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const firestore = getFirestore(app);
+
+// Logs de diagnostic pour confirmer le singleton
+console.log('[FIREBASE] apps count:', getApps().length);
+console.log('[FIREBASE] app name:', app.name);
+
+export { app as firebaseApp, auth, firestore };
+
+/**
+ * Retourne les instances initialisées. 
+ * Utilisé par le FirebaseProvider pour distribuer les services.
  */
 export function initializeFirebase() {
-  if (cachedSdks) return cachedSdks;
-
-  let firebaseApp: FirebaseApp;
-
-  if (!getApps().length) {
-    try {
-      // Attempt to initialize via Firebase App Hosting (production)
-      firebaseApp = initializeApp();
-      console.log('[FIREBASE] Initialized with App Hosting defaults');
-    } catch (e) {
-      // Fallback to manual config (development)
-      firebaseApp = initializeApp(firebaseConfig);
-      console.log('[FIREBASE] Initialized with manual config');
-    }
-  } else {
-    firebaseApp = getApp();
-    console.log('[FIREBASE] Using existing App instance:', firebaseApp.name);
-  }
-
-  cachedSdks = {
-    firebaseApp,
-    auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp),
-  };
-
-  return cachedSdks;
-}
-
-/**
- * Helper to get initialized SDKs from an existing app.
- */
-export function getSdks(firebaseApp: FirebaseApp) {
   return {
-    firebaseApp,
-    auth: getAuth(firebaseApp),
-    firestore: getFirestore(firebaseApp)
+    firebaseApp: app,
+    auth: auth,
+    firestore: firestore
   };
 }
 
