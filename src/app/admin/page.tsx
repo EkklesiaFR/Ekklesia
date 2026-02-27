@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
 
 import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
 import { toast } from '@/hooks/use-toast';
@@ -27,78 +28,266 @@ import {
   updateDoc,
   where,
   writeBatch,
+  onSnapshot,
 } from 'firebase/firestore';
 
-import { Plus, BarChart3, Settings, Users, Activity, Lock, Play } from 'lucide-react';
+import { Plus, BarChart3, Settings, Users, Activity, Lock, Play, Search } from 'lucide-react';
 
 import { computeSchulzeResults } from '@/lib/tally';
 import type { Project, MemberProfile, Vote, Ballot } from '@/types';
-import { useVoteBallotCount } from '@/hooks/useVoteBallotCount';
 
-type VoteRowProps = {
+/** Helper: supports members shaped as {id} or {uid} */
+function memberKey(member: MemberProfile): string | undefined {
+  const m = member as unknown as { id?: string; uid?: string };
+  return m.id ?? m.uid;
+}
+
+/**
+ * Custom hook to count ballots for a vote.
+ * - Realtime only when vote is open
+ * - One-time count when draft/locked
+ */
+function useVoteMetrics(assemblyId: string, vote: Vote | undefined) {
+  const db = useFirestore();
+  const [ballotCount, setBallotCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    if (!db || !assemblyId || !vote) {
+      setBallotCount(0);
+      setIsLoading(false);
+      return;
+    }
+
+    const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots');
+
+    if (vote.state === 'open') {
+      setIsLoading(true);
+      const unsubscribe = onSnapshot(
+        ballotsRef,
+        (snapshot) => {
+          setBallotCount(snapshot.size);
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error('[VOTE_METRICS] onSnapshot error:', error);
+          setIsLoading(false);
+        }
+      );
+      return () => unsubscribe();
+    }
+
+    setIsLoading(true);
+    getCountFromServer(ballotsRef)
+      .then((snapshot) => {
+        setBallotCount(snapshot.data().count);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        console.error('[VOTE_METRICS] getCountFromServer error:', error);
+        setIsLoading(false);
+      });
+  }, [db, assemblyId, vote?.id, vote?.state]);
+
+  return { ballotCount, isLoading };
+}
+
+function ActiveVoteCockpit({
+  assemblyId,
+  activeVote,
+  members,
+}: {
+  assemblyId: string;
+  activeVote: Vote | undefined;
+  members: MemberProfile[];
+}) {
+  const { ballotCount, isLoading } = useVoteMetrics(assemblyId, activeVote);
+
+  if (!activeVote) {
+    return (
+      <div className="p-4 border text-center bg-secondary/30">
+        <p className="text-sm text-muted-foreground">Aucun vote en cours.</p>
+      </div>
+    );
+  }
+
+  const eligibleCount = activeVote.eligibleCountAtOpen;
+  const participation =
+    eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
+  const abstention = participation !== null ? 100 - participation : null;
+
+  const openedAtFormatted = activeVote.openedAt?.toDate
+    ? activeVote.openedAt.toDate().toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
+
+  const openedByUser = activeVote.openedBy
+    ? members.find((m) => memberKey(m) === activeVote.openedBy)
+    : null;
+  const openedByDisplay = openedByUser
+    ? openedByUser.displayName || openedByUser.email
+    : activeVote.openedBy || '—';
+
+  return (
+    <div className="p-6 border bg-secondary/30 space-y-4">
+      <h4 className="font-bold text-lg">
+        Vote en cours : <span className="font-normal">{activeVote.question}</span>
+      </h4>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm">
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
+          <p className="font-bold text-base">
+            {isLoading
+              ? '...'
+              : eligibleCount
+                ? `${ballotCount} / ${eligibleCount}`
+                : ballotCount}
+          </p>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
+          <p className="font-bold text-base">{participation !== null ? `${participation}%` : '—'}</p>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Abstention</p>
+          <p className="font-bold text-base">{abstention !== null ? `${abstention}%` : '—'}</p>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Ouvert le</p>
+          <p className="font-mono text-xs">{openedAtFormatted}</p>
+        </div>
+
+        <div className="space-y-1 md:col-span-2">
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Ouvert par</p>
+          <p className="font-mono text-xs truncate" title={openedByDisplay}>
+            {openedByDisplay}
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function VoteRow({
+  assemblyId,
+  vote,
+  isProcessing,
+  onOpen,
+  onPublish,
+  projects,
+  members,
+}: {
+  assemblyId: string;
   vote: Vote;
   isProcessing: boolean;
   onOpen: (voteId: string) => void;
   onPublish: (vote: Vote) => void;
-};
+  projects: Project[];
+  members: MemberProfile[];
+}) {
+  const { ballotCount, isLoading } = useVoteMetrics(assemblyId, vote);
 
-function VoteRow({ vote, isProcessing, onOpen, onPublish }: VoteRowProps) {
-  const { count, isLoading } = useVoteBallotCount({
-    assemblyId: DEFAULT_ASSEMBLY_ID,
-    voteId: vote.id,
-    status: vote.state,
-    frozenCount: vote.results?.total,
-    mode: vote.state === 'open' ? 'realtime' : 'once',
-  });
+  const eligibleCount = vote.eligibleCountAtOpen;
+  const participation =
+    eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
+  const abstention = participation !== null ? 100 - participation : null;
 
-  const eligible = vote.eligibleCountAtOpen ?? null;
+  const stateBadgeClass =
+    {
+      draft: 'bg-gray-400 text-white',
+      open: 'bg-green-600 text-white',
+      locked: 'bg-black text-white',
+    }[vote.state] ?? 'bg-black text-white';
 
-  const participationPct =
-    eligible && eligible > 0 ? Math.round((100 * count) / eligible) : null;
+  const openedAtFormatted = vote.openedAt?.toDate
+    ? vote.openedAt.toDate().toLocaleString('fr-FR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+    : '—';
 
-  const abstentionCount =
-    eligible && eligible > 0 ? Math.max(0, eligible - count) : null;
+  const openedByUser = vote.openedBy ? members.find((m) => memberKey(m) === vote.openedBy) : null;
+  const openedByDisplay = openedByUser
+    ? openedByUser.displayName || openedByUser.email
+    : vote.openedBy || '—';
 
-  const abstentionPct =
-    eligible && eligible > 0 ? Math.max(0, 100 - (participationPct ?? 0)) : null;
+  const winnerId = vote.state === 'locked' ? vote.results?.winnerId : null;
+  const winnerProject = winnerId ? projects.find((p) => p.id === winnerId) : null;
+  const winnerDisplay = winnerProject
+    ? (winnerProject.title ?? (winnerProject as any).name ?? (winnerProject as any).label ?? winnerProject.id)
+    : winnerId;
 
   return (
-    <div className="p-8 border bg-white flex justify-between items-center group hover:border-black transition-all">
-      <div className="space-y-3">
+    <div className="p-8 border bg-white flex justify-between items-start group hover:border-black transition-all">
+      <div className="space-y-4 flex-grow">
         <div className="flex items-center gap-3">
-          <Badge className={vote.state === 'open' ? 'bg-green-600' : 'bg-black'}>
-            {vote.state}
-          </Badge>
-          <span className="text-[10px] uppercase font-bold text-muted-foreground">
-            {isLoading ? '…' : count} bulletins
-          </span>
+          <Badge className={stateBadgeClass}>{vote.state}</Badge>
+          <h3 className="text-xl font-bold">{vote.question}</h3>
         </div>
 
-        <h3 className="text-xl font-bold">{vote.question}</h3>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-sm pr-8">
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Éligibles</p>
+            <p className="font-bold text-lg">{eligibleCount ?? '—'}</p>
+          </div>
 
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-muted-foreground">
-          <span>
-            Éligibles : <span className="font-bold text-foreground">{eligible ?? '—'}</span>
-          </span>
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
+            <p className="font-bold text-lg">
+              {isLoading
+                ? '...'
+                : eligibleCount
+                  ? `${ballotCount} / ${eligibleCount}`
+                  : ballotCount}
+            </p>
+          </div>
 
-          {participationPct !== null && (
-            <span>
-              Participation : <span className="font-bold text-foreground">{participationPct}%</span>
-            </span>
-          )}
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
+            <p className="font-bold text-lg">{participation !== null ? `${participation}%` : '—'}</p>
+          </div>
 
-          {abstentionCount !== null && abstentionPct !== null && (
-            <span>
-              Abstention :{' '}
-              <span className="font-bold text-foreground">
-                {abstentionCount} ({abstentionPct}%)
-              </span>
-            </span>
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Abstention</p>
+            <p className="font-bold text-lg">{abstention !== null ? `${abstention}%` : '—'}</p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Ouvert le</p>
+            <p className="font-mono text-xs">{openedAtFormatted}</p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Ouvert par</p>
+            <p className="font-mono text-xs truncate" title={openedByDisplay}>
+              {openedByDisplay}
+            </p>
+          </div>
+
+          {winnerId && (
+            <div className="space-y-1 col-span-2">
+              <p className="text-[10px] uppercase font-bold text-primary">Gagnant</p>
+              <p className="font-bold text-primary truncate" title={winnerDisplay ?? undefined}>
+                {winnerDisplay}
+              </p>
+            </div>
           )}
         </div>
       </div>
 
-      <div className="flex gap-4">
+      <div className="flex-shrink-0 flex flex-col gap-4">
         {vote.state === 'draft' && (
           <Button
             onClick={() => onOpen(vote.id)}
@@ -116,7 +305,7 @@ function VoteRow({ vote, isProcessing, onOpen, onPublish }: VoteRowProps) {
             disabled={isProcessing}
             className="rounded-none border-2 border-black font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6"
           >
-            <Lock className="h-3.5 w-3.5" /> Clôturer & Publier
+            <Lock className="h-3.5 w-3.5" /> Clôturer &amp; Publier
           </Button>
         )}
       </div>
@@ -131,12 +320,13 @@ function AdminContent() {
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
   const [isProcessing, setIsProcessing] = useState<string | null>(null);
 
+  // Filters + Search
+  const [filterState, setFilterState] = useState<Vote['state'] | 'all'>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Robust votes query (no server-side orderBy)
   const votesQuery = useMemoFirebase(
-    () =>
-      query(
-        collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'),
-        orderBy('createdAt', 'desc')
-      ),
+    () => collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'),
     [db]
   );
   const { data: votes } = useCollection<Vote>(votesQuery);
@@ -150,9 +340,58 @@ function AdminContent() {
   const membersQuery = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members } = useCollection<MemberProfile>(membersQuery);
 
-  const projectsById = useMemo(() => {
-    return new Map((projects ?? []).map((p) => [p.id, p]));
-  }, [projects]);
+  const activeVote = useMemo(() => (votes || []).find((v) => v.state === 'open'), [votes]);
+
+  const projectsById = useMemo(
+    () => new Map((projects || []).map((p) => [p.id, p])),
+    [projects]
+  );
+
+  const filterLabels: Record<Vote['state'] | 'all', string> = {
+    all: 'Tous',
+    open: 'Open',
+    draft: 'Draft',
+    locked: 'Locked',
+  };
+
+  const filteredAndSortedVotes = useMemo(() => {
+    if (!votes) return [];
+
+    const stateOrder: Record<Vote['state'], number> = { open: 1, draft: 2, locked: 3 };
+    const q = searchQuery.toLowerCase().trim();
+
+    return votes
+      .filter((vote) => {
+        if (filterState !== 'all' && vote.state !== filterState) return false;
+        if (!q) return true;
+
+        const winnerProject = vote.results?.winnerId ? projectsById.get(vote.results.winnerId) : null;
+        const winnerTitle = winnerProject?.title ?? '';
+
+        const searchCorpus = [
+          vote.question,
+          vote.id,
+          vote.state === 'locked' ? winnerTitle : '',
+          vote.state === 'locked' ? vote.results?.winnerId : '',
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return searchCorpus.includes(q);
+      })
+      .sort((a, b) => {
+        if (stateOrder[a.state] !== stateOrder[b.state]) return stateOrder[a.state] - stateOrder[b.state];
+
+        const dateA = a.openedAt ?? a.createdAt;
+        const dateB = b.openedAt ?? b.createdAt;
+
+        if (dateA?.toMillis && dateB?.toMillis) return dateB.toMillis() - dateA.toMillis();
+        if (dateA) return -1;
+        if (dateB) return 1;
+
+        return a.id.localeCompare(b.id);
+      });
+  }, [votes, filterState, searchQuery, projectsById]);
 
   const handleOpenVote = async (voteId: string) => {
     setIsProcessing(voteId);
@@ -199,14 +438,7 @@ function AdminContent() {
   const handlePublishResults = async (vote: Vote) => {
     setIsProcessing(vote.id);
     try {
-      const ballotsRef = collection(
-        db,
-        'assemblies',
-        DEFAULT_ASSEMBLY_ID,
-        'votes',
-        vote.id,
-        'ballots'
-      );
+      const ballotsRef = collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', vote.id, 'ballots');
       const ballotsSnap = await getDocs(ballotsRef);
       const ballots = ballotsSnap.docs.map((d) => d.data() as Ballot);
 
@@ -314,13 +546,50 @@ function AdminContent() {
         </TabsList>
 
         <TabsContent value="sessions" className="space-y-6">
-          {(votes ?? []).map((vote) => (
+          <ActiveVoteCockpit
+            assemblyId={DEFAULT_ASSEMBLY_ID}
+            activeVote={activeVote}
+            members={members || []}
+          />
+
+          <div className="space-y-4 p-4 border bg-secondary/30">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 flex-wrap">
+                {(Object.keys(filterLabels) as Array<keyof typeof filterLabels>).map((state) => (
+                  <Button
+                    key={state}
+                    variant={filterState === state ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setFilterState(state)}
+                    className="capitalize rounded-none h-9 px-4"
+                  >
+                    {filterLabels[state]}
+                  </Button>
+                ))}
+              </div>
+
+              <div className="relative w-full max-w-sm">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Rechercher par question, id, gagnant..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10 rounded-none h-9"
+                />
+              </div>
+            </div>
+          </div>
+
+          {filteredAndSortedVotes.map((v) => (
             <VoteRow
-              key={vote.id}
-              vote={vote}
-              isProcessing={isProcessing === vote.id}
+              key={v.id}
+              assemblyId={DEFAULT_ASSEMBLY_ID}
+              vote={v}
+              isProcessing={isProcessing === v.id}
               onOpen={handleOpenVote}
               onPublish={handlePublishResults}
+              projects={projects || []}
+              members={members || []}
             />
           ))}
         </TabsContent>
@@ -332,24 +601,18 @@ function AdminContent() {
               <div key={v.id} className="p-8 border bg-white space-y-8">
                 <div className="flex justify-between items-start border-b pb-6">
                   <div>
-                    <Badge className="bg-black text-white rounded-none uppercase text-[9px]">
-                      PV Certifié
-                    </Badge>
+                    <Badge className="bg-black text-white rounded-none uppercase text-[9px]">PV Certifié</Badge>
                     <h3 className="text-2xl font-bold">{v.question}</h3>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] uppercase font-bold text-muted-foreground">
-                      Participation
-                    </p>
+                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
                     <p className="text-2xl font-black">{v.results?.total ?? 0}</p>
                   </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                   <div className="space-y-4">
-                    <p className="text-[10px] uppercase font-bold tracking-widest text-primary">
-                      Vainqueur
-                    </p>
+                    <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Vainqueur</p>
                     <p className="text-2xl font-black uppercase text-primary">
                       {projectsById.get(v.results?.winnerId ?? '')?.title || '—'}
                     </p>
@@ -371,9 +634,7 @@ function AdminContent() {
                             </span>
                             {projectsById.get(r.id)?.title ?? r.id}
                           </span>
-                          <span className="text-muted-foreground font-mono text-xs">
-                            {r.score ?? r.rank ?? '—'}
-                          </span>
+                          <span className="text-muted-foreground font-mono text-xs">{r.score ?? r.rank ?? '—'}</span>
                         </div>
                       ))}
                     </div>
@@ -438,18 +699,18 @@ function AdminContent() {
               </TableHeader>
               <TableBody>
                 {(members ?? []).map((m) => (
-                  <TableRow key={m.id}>
+                  <TableRow key={(m as any).id ?? (m as any).uid ?? m.email}>
                     <TableCell>{m.email}</TableCell>
-                    <TableCell className="capitalize">{m.role}</TableCell>
+                    <TableCell className="capitalize">{(m as any).role}</TableCell>
                     <TableCell>
                       <Badge
                         className={
-                          m.status === 'active'
+                          (m as any).status === 'active'
                             ? 'bg-green-600/10 text-green-600 border-none rounded-none'
                             : 'bg-orange-500/10 text-orange-500 border-none rounded-none'
                         }
                       >
-                        {m.status}
+                        {(m as any).status}
                       </Badge>
                     </TableCell>
                   </TableRow>
