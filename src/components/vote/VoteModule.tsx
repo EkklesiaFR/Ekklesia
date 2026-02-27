@@ -37,6 +37,7 @@ interface VoteModuleProps {
 
 /**
  * Résumé inline (à droite du titre)
+ * Conservé pour définition mais non utilisé dans VoteModule pour éviter la redondance.
  */
 function VoteHeaderSummary({
   ballotCount,
@@ -66,7 +67,7 @@ function VoteHeaderSummary({
 }
 
 /**
- * Mini header repositionné dans le flux (haut droite)
+ * Capsule de résumé repositionnée dans l'aside
  */
 function MiniHeaderOverlay({
   ballotCount,
@@ -80,7 +81,7 @@ function MiniHeaderOverlay({
   const timeLeft = useCountdown(closesAt ?? null);
 
   return (
-    <div className="flex justify-end">
+    <div className="flex justify-end mb-8">
       <div className="flex items-center gap-6 rounded-lg border bg-background/80 px-4 py-2 text-[11px] uppercase tracking-widest font-bold text-muted-foreground backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <Inbox className="h-4 w-4" />
@@ -275,144 +276,135 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
   const canShowAdminTrends = !isMemberLoading && isAdmin === true && vote.state === 'open';
 
   return (
-    <div className="space-y-6">
-      {/* ✅ Mini header intégré dans le flow (plus d'overlay) */}
-      <MiniHeaderOverlay
-        ballotCount={ballotCount}
-        isLoading={isBallotCountLoading}
-        closesAt={closesAt}
-      />
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 animate-in fade-in slide-in-from-bottom-4 duration-700">
-        <div className="space-y-12">
-          <header className="space-y-6">
-            <div className="flex items-start justify-between gap-6">
-              <div className="space-y-2">
-                <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary block">
-                  Scrutin Direct
-                </span>
-                <h1 className="text-4xl font-bold tracking-tight text-black">{vote.question}</h1>
-              </div>
-
-              {/* ✅ Résumé inline à droite conservé */}
-              <VoteHeaderSummary
-                ballotCount={ballotCount}
-                isLoading={isBallotCountLoading}
-                closesAt={closesAt}
-              />
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 animate-in fade-in slide-in-from-bottom-4 duration-700">
+      <div className="space-y-12">
+        <header className="space-y-6">
+          <div className="flex items-start justify-between gap-6">
+            <div className="space-y-2">
+              <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary block">
+                Scrutin Direct
+              </span>
+              <h1 className="text-4xl font-bold tracking-tight text-black">{vote.question}</h1>
             </div>
-
-            <div className="flex items-start gap-3 p-4 bg-secondary/30 border border-border">
-              <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-              <p className="text-xs text-muted-foreground leading-relaxed italic">
-                Classez les projets par préférence (1 = favori). Glissez les cartes pour réorganiser.
-                Votre vote est secret et peut être modifié jusqu'à la clôture.
-              </p>
-            </div>
-          </header>
-
-          <div className="space-y-6">
-            {vote.state === 'open' ? (
-              <RankedList projects={sortedProjects} onOrderChange={setCurrentRanking} />
-            ) : (
-              <div className="p-12 border border-dashed border-border bg-secondary/5 text-center space-y-4">
-                <Lock className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
-                <p className="text-xs uppercase font-bold tracking-widest text-muted-foreground">
-                  Les votes ne sont pas ouverts
-                </p>
-              </div>
-            )}
           </div>
 
-          {vote.state === 'open' && (
-            <div className="pt-8 space-y-6">
-              <Button
-                className="w-full h-16 text-xs uppercase tracking-[0.2em] font-bold rounded-none"
-                onClick={handleVoteSubmit}
-                disabled={isSaving}
-              >
-                {isSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : userBallot ? (
-                  'Mettre à jour mon vote'
-                ) : (
-                  'Valider mon classement'
-                )}
-              </Button>
+          <div className="flex items-start gap-3 p-4 bg-secondary/30 border border-border">
+            <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
+            <p className="text-xs text-muted-foreground leading-relaxed italic">
+              Classez les projets par préférence (1 = favori). Glissez les cartes pour réorganiser.
+              Votre vote est secret et peut être modifié jusqu'à la clôture.
+            </p>
+          </div>
+        </header>
 
-              {userBallot && (
-                <div className="flex items-center gap-3 p-5 bg-green-50 text-green-700 text-sm font-bold border border-green-100">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span>Vote enregistré.</span>
-                </div>
-              )}
+        <div className="space-y-6">
+          {vote.state === 'open' ? (
+            <RankedList projects={sortedProjects} onOrderChange={setCurrentRanking} />
+          ) : (
+            <div className="p-12 border border-dashed border-border bg-secondary/5 text-center space-y-4">
+              <Lock className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
+              <p className="text-xs uppercase font-bold tracking-widest text-muted-foreground">
+                Les votes ne sont pas ouverts
+              </p>
             </div>
           )}
         </div>
 
-        <aside className="space-y-12 lg:bg-secondary/5 lg:p-12 border-l border-border">
-          {vote.state === 'draft' ? (
-            <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-4">
-              <Lock className="h-12 w-12 text-muted-foreground opacity-20" />
-              <h3 className="text-xs uppercase tracking-[0.2em] font-bold">Scrutin en attente</h3>
-            </div>
-          ) : vote.state === 'open' ? (
-            <div className="space-y-12">
-              {/* ✅ Stats pour tout le monde (admin inclus) */}
-              <ParticipationPanel
-                ballotCount={ballotCount}
-                eligibleCount={vote.eligibleCountAtOpen}
-                isLoading={isBallotCountLoading}
-              />
-
-              {/* ✅ Tendance admin en plus */}
-              {canShowAdminTrends && (
-                <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} projects={projects} />
+        {vote.state === 'open' && (
+          <div className="pt-8 space-y-6">
+            <Button
+              className="w-full h-16 text-xs uppercase tracking-[0.2em] font-bold rounded-none"
+              onClick={handleVoteSubmit}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : userBallot ? (
+                'Mettre à jour mon vote'
+              ) : (
+                'Valider mon classement'
               )}
-            </div>
-          ) : (
-            <div className="space-y-12">
-              <header className="flex items-center justify-between border-b border-border pb-6">
-                <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
-                  <BarChart3 className="h-4 w-4 text-primary" /> Résultat Final
-                </h2>
-              </header>
+            </Button>
 
-              <div className="space-y-4">
-                {vote.results?.fullRanking ? (
-                  vote.results.fullRanking.map((rankInfo) => (
+            {userBallot && (
+              <div className="flex items-center gap-3 p-5 bg-green-50 text-green-700 text-sm font-bold border border-green-100">
+                <CheckCircle2 className="h-5 w-5" />
+                <span>Vote enregistré.</span>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      <aside className="space-y-12 lg:bg-secondary/5 lg:p-12 border-l border-border">
+        {/* ✅ Mini résumé placé au sommet de l'aside */}
+        <MiniHeaderOverlay
+          ballotCount={ballotCount}
+          isLoading={isBallotCountLoading}
+          closesAt={closesAt}
+        />
+
+        {vote.state === 'draft' ? (
+          <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-4">
+            <Lock className="h-12 w-12 text-muted-foreground opacity-20" />
+            <h3 className="text-xs uppercase tracking-[0.2em] font-bold">Scrutin en attente</h3>
+          </div>
+        ) : vote.state === 'open' ? (
+          <div className="space-y-12">
+            {/* ✅ Stats pour tout le monde */}
+            <ParticipationPanel
+              ballotCount={ballotCount}
+              eligibleCount={vote.eligibleCountAtOpen}
+              isLoading={isBallotCountLoading}
+            />
+
+            {/* ✅ Tendance admin en plus */}
+            {canShowAdminTrends && (
+              <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} projects={projects} />
+            )}
+          </div>
+        ) : (
+          <div className="space-y-12">
+            <header className="flex items-center justify-between border-b border-border pb-6">
+              <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
+                <BarChart3 className="h-4 w-4 text-primary" /> Résultat Final
+              </h2>
+            </header>
+
+            <div className="space-y-4">
+              {vote.results?.fullRanking ? (
+                vote.results.fullRanking.map((rankInfo) => (
+                  <div
+                    key={rankInfo.id}
+                    className={cn(
+                      'p-5 flex items-center gap-5 border',
+                      rankInfo.rank === 1
+                        ? 'bg-white border-primary ring-1 ring-primary'
+                        : 'bg-white/50 border-border'
+                    )}
+                  >
                     <div
-                      key={rankInfo.id}
                       className={cn(
-                        'p-5 flex items-center gap-5 border',
-                        rankInfo.rank === 1
-                          ? 'bg-white border-primary ring-1 ring-primary'
-                          : 'bg-white/50 border-border'
+                        'w-10 h-10 flex items-center justify-center text-xs font-black',
+                        rankInfo.rank === 1 ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'
                       )}
                     >
-                      <div
-                        className={cn(
-                          'w-10 h-10 flex items-center justify-center text-xs font-black',
-                          rankInfo.rank === 1 ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'
-                        )}
-                      >
-                        #{rankInfo.rank}
-                      </div>
-                      <div className="font-bold text-sm uppercase">
-                        {projects.find((p) => p.id === rankInfo.id)?.title}
-                      </div>
+                      #{rankInfo.rank}
                     </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-muted-foreground italic text-center py-12">
-                    Résultats en cours de publication...
-                  </p>
-                )}
-              </div>
+                    <div className="font-bold text-sm uppercase">
+                      {projects.find((p) => p.id === rankInfo.id)?.title}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground italic text-center py-12">
+                  Résultats en cours de publication...
+                </p>
+              )}
             </div>
-          )}
-        </aside>
-      </div>
+          </div>
+        )}
+      </aside>
     </div>
   );
 }
