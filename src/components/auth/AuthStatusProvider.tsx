@@ -89,9 +89,10 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       if (!snap.exists()) {
         console.log('[AUTH] Creating new member profile:', user.uid);
         await setDoc(memberRef, {
-          id: user.uid,
+          uid: user.uid,
           email: user.email,
           displayName: user.displayName || user.email?.split('@')[0],
+          photoURL: user.photoURL,
           role: 'member',
           status: 'pending',
           createdAt: serverTimestamp(),
@@ -119,7 +120,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       didBootstrap.current = false;
       return;
     }
-
+    setIsMemberLoading(true);
     bootstrapUser(user);
 
     const memberRef = doc(db, 'members', user.uid);
@@ -139,11 +140,11 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   }, [user, isUserLoading, db]);
 
   return (
-    <AuthStatusContext.Provider value={{ 
-      member, 
-      isMemberLoading, 
-      isActiveMember: member?.status === 'active', 
-      isAdmin: member?.role === 'admin',
+    <AuthStatusContext.Provider value={{
+      member,
+      isMemberLoading,
+      isActiveMember: member?.status === 'active',
+      isAdmin: member?.role === "admin" && member?.status === "active",
       pendingCred,
       setPendingCred
     }}>

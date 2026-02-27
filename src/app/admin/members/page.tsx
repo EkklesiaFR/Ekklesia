@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { collection, doc, onSnapshot, orderBy, query, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
+import { collection, doc, onSnapshot, query, updateDoc, serverTimestamp, Timestamp } from 'firebase/firestore';
 import { ShieldAlert } from 'lucide-react';
 
 import { useFirestore } from '@/firebase';
@@ -40,6 +40,7 @@ function MemberRow({ member }: { member: MemberRowData }) {
   const [role, setRole] = useState<MemberRowData['role']>(member.role ?? 'member');
   const [status, setStatus] = useState<MemberRowData['status']>(member.status ?? 'pending');
   const [saving, setSaving] = useState(false);
+  const [isQuickActionLoading, setQuickActionLoading] = useState(false);
 
   useEffect(() => {
     setRole(member.role ?? 'member');
@@ -71,13 +72,36 @@ function MemberRow({ member }: { member: MemberRowData }) {
     }
   }
 
+  async function handleStatusUpdate(newStatus: 'active' | 'disabled') {
+    setQuickActionLoading(true);
+    try {
+      console.log(`[ADMIN] members:quick-update status start`, { uid: member.id, newStatus });
+      await updateDoc(doc(db, 'members', member.id), {
+        status: newStatus,
+        updatedAt: serverTimestamp(),
+      });
+      setStatus(newStatus);
+      console.log(`[ADMIN] members:quick-update status success`, { uid: member.id });
+      toast({ title: '✅ Statut mis à jour' });
+    } catch (e: any) {
+      console.error('[ADMIN] members:quick-update status error', { uid: member.id, code: e?.code, message: e?.message });
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: 'La mise à jour a échoué.',
+      });
+    } finally {
+      setQuickActionLoading(false);
+    }
+  }
+
   return (
     <TableRow>
       <TableCell className="font-mono text-xs">{member.email ?? '—'}</TableCell>
       <TableCell>{member.displayName ?? '—'}</TableCell>
 
       <TableCell>
-        <Select value={role} onValueChange={(v) => setRole(v as any)} disabled={saving}>
+        <Select value={role} onValueChange={(v) => setRole(v as any)} disabled={saving || isQuickActionLoading}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
           </SelectTrigger>
@@ -89,7 +113,7 @@ function MemberRow({ member }: { member: MemberRowData }) {
       </TableCell>
 
       <TableCell>
-        <Select value={status} onValueChange={(v) => setStatus(v as any)} disabled={saving}>
+        <Select value={status} onValueChange={(v) => setStatus(v as any)} disabled={saving || isQuickActionLoading}>
           <SelectTrigger className="w-[140px]">
             <SelectValue />
           </SelectTrigger>
@@ -104,8 +128,23 @@ function MemberRow({ member }: { member: MemberRowData }) {
       <TableCell className="text-xs text-muted-foreground">{fmtTs(member.createdAt)}</TableCell>
       <TableCell className="text-xs text-muted-foreground">{fmtTs(member.lastLoginAt)}</TableCell>
 
-      <TableCell>
-        <Button size="sm" onClick={onSave} disabled={saving || !isDirty}>
+      <TableCell className="space-x-2">
+        {member.status === 'pending' && (
+          <Button size="sm" variant="outline" onClick={() => handleStatusUpdate('active')} disabled={saving || isQuickActionLoading}>
+            {isQuickActionLoading ? '…' : 'Activer'}
+          </Button>
+        )}
+        {member.status === 'active' && (
+          <Button size="sm" variant="outline" onClick={() => handleStatusUpdate('disabled')} disabled={saving || isQuickActionLoading}>
+            {isQuickActionLoading ? '…' : 'Désactiver'}
+          </Button>
+        )}
+        {member.status === 'disabled' && (
+          <Button size="sm" variant="outline" onClick={() => handleStatusUpdate('active')} disabled={saving || isQuickActionLoading}>
+            {isQuickActionLoading ? '…' : 'Réactiver'}
+          </Button>
+        )}
+        <Button size="sm" onClick={onSave} disabled={saving || !isDirty || isQuickActionLoading}>
           {saving ? 'Saving…' : 'Enregistrer'}
         </Button>
       </TableCell>
@@ -128,14 +167,36 @@ export default function AdminMembersPage() {
       return;
     }
 
-    console.log('[ADMIN] members:list subscribe');
-    const q = query(collection(db, 'members'), orderBy('createdAt', 'desc'));
+    console.log('[ADMIN] members:list subscribe (all members)');
+    // We remove the orderBy to ensure members without a createdAt field are still returned.
+    const q = collection(db, 'members');
 
     const unsub = onSnapshot(
       q,
       (snap) => {
         console.log('[ADMIN] members:list snapshot', { count: snap.docs.length });
-        setMembers(snap.docs.map((d) => ({ ...(d.data() as any), id: d.id })));
+        
+        // Sorting logic:
+        // 1) createdAt (desc)
+        // 2) lastLoginAt (desc)
+        // 3) original order
+        const sortedMembers = snap.docs
+          .map((d) => ({ ...(d.data() as any), id: d.id }))
+          .sort((a, b) => {
+            const getTime = (val: any) => {
+              if (val instanceof Timestamp) return val.toMillis();
+              if (typeof val?.toMillis === 'function') return val.toMillis();
+              if (typeof val?.seconds === 'number') return val.seconds * 1000;
+              return 0;
+            };
+
+            const timeA = getTime(a.createdAt) || getTime(a.lastLoginAt) || 0;
+            const timeB = getTime(b.createdAt) || getTime(b.lastLoginAt) || 0;
+
+            return timeB - timeA;
+          });
+
+        setMembers(sortedMembers);
         setLoading(false);
       },
       (err) => {
