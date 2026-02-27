@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState } from 'react';
@@ -26,6 +25,7 @@ import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
 import { toast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { computeSchulzeResults } from '@/lib/tally';
+import Link from 'next/link';
 
 function AdminContent() {
   const db = useFirestore();
@@ -38,7 +38,6 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), orderBy('createdAt', 'desc')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  // Correction : La collection des membres est à la racine '/members'
   const membersQuery = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members } = useCollection<MemberProfile>(membersQuery);
 
@@ -219,15 +218,24 @@ function AdminContent() {
           ))}
         </TabsContent>
 
-        <TabsContent value="members" className="bg-white border">
-          <Table>
-            <TableHeader><TableRow className="bg-secondary/20"><TableHead className="uppercase text-[10px] font-bold">Email</TableHead><TableHead className="uppercase text-[10px] font-bold">Rôle</TableHead><TableHead className="uppercase text-[10px] font-bold">Statut</TableHead></TableRow></TableHeader>
-            <TableBody>
-              {members?.map(m => (
-                <TableRow key={m.id}><TableCell>{m.email}</TableCell><TableCell className="capitalize">{m.role}</TableCell><TableCell><Badge className={m.status === 'active' ? "bg-green-600/10 text-green-600 border-none rounded-none" : "bg-orange-500/10 text-orange-500 border-none rounded-none"}>{m.status}</Badge></TableCell></TableRow>
-              ))}
-            </TableBody>
-          </Table>
+        <TabsContent value="members" className="space-y-6">
+          <div className="flex justify-end">
+            <Link href="/admin/members">
+              <Button variant="outline" className="rounded-none font-bold uppercase tracking-widest text-[10px] h-10 px-6 gap-2">
+                <Users className="h-3.5 w-3.5" /> Ouvrir le gestionnaire des membres
+              </Button>
+            </Link>
+          </div>
+          <div className="bg-white border">
+            <Table>
+              <TableHeader><TableRow className="bg-secondary/20"><TableHead className="uppercase text-[10px] font-bold">Email</TableHead><TableHead className="uppercase text-[10px] font-bold">Rôle</TableHead><TableHead className="uppercase text-[10px] font-bold">Statut</TableHead></TableRow></TableHeader>
+              <TableBody>
+                {members?.map(m => (
+                  <TableRow key={m.id}><TableCell>{m.email}</TableCell><TableCell className="capitalize">{m.role}</TableCell><TableCell><Badge className={m.status === 'active' ? "bg-green-600/10 text-green-600 border-none rounded-none" : "bg-orange-500/10 text-orange-500 border-none rounded-none"}>{m.status}</Badge></TableCell></TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </TabsContent>
       </Tabs>
 
