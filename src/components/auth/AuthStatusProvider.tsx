@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
@@ -41,38 +40,33 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const didBootstrap = useRef(false);
   const hasProcessedRedirect = useRef(false);
 
-  // REDIRECTION EARLY : Déséquilibrée tant que le redirect n'est pas consommé
+  // REDIRECTION EARLY : Si un utilisateur est authentifié et sur /login, on part sur /assembly
   useEffect(() => {
-    if (!isUserLoading && user && pathname === '/login' && hasProcessedRedirect.current) {
-      console.log('[AUTH] user detected -> redirect /assembly');
+    if (!isUserLoading && user && pathname === '/login') {
+      console.log('[AUTH] user detected -> redirect /assembly', { uid: user.uid });
       router.replace('/assembly');
     }
   }, [user, isUserLoading, pathname, router]);
 
-  // Consommation du résultat Google Redirect - UNIQUE au boot
+  // Consommation du résultat Google Redirect (Fallback pour mobile ou si Popup échoue)
   useEffect(() => {
     if (hasProcessedRedirect.current) return;
     
     const processRedirect = async () => {
-      console.log('[AUTH] Checking for redirect result (Instance:', auth.app.name, ')');
+      console.log('[AUTH] Checking for redirect result...');
       try {
         const result = await handleGoogleRedirectResult(auth);
         hasProcessedRedirect.current = true;
         
         if (result?.user) {
-          console.log('[AUTH] redirect result SUCCESS:', result.user.uid, result.user.email);
+          console.log('[AUTH] redirect result SUCCESS:', result.user.uid);
           await bootstrapUser(result.user);
-        } else {
-          console.log('[AUTH] redirect result EMPTY (normal boot)');
         }
       } catch (error: any) {
-        console.error('[AUTH] redirect result ERROR:', error.code, error.message);
+        console.error('[AUTH] redirect result ERROR:', error.code);
         if (error.code === 'auth/account-exists-with-different-credential') {
           const cred = GoogleAuthProvider.credentialFromError(error);
-          if (cred) {
-            console.log('[AUTH] pending link set (conflict found)');
-            setPendingCred(cred);
-          }
+          if (cred) setPendingCred(cred);
         }
       }
     };
@@ -86,9 +80,8 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     const memberRef = doc(db, 'members', user.uid);
     try {
       const snap = await getDoc(memberRef);
-      
       if (!snap.exists()) {
-        console.log('[AUTH] Bootstrapping new member profile:', user.uid);
+        console.log('[AUTH] Creating new member profile:', user.uid);
         await setDoc(memberRef, {
           id: user.uid,
           email: user.email,
@@ -100,16 +93,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           lastLoginAt: serverTimestamp(),
         });
       } else {
-        console.log('[AUTH] Updating existing member login info:', user.uid);
+        console.log('[AUTH] Updating last login for:', user.uid);
         await updateDoc(memberRef, {
           lastLoginAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
-          displayName: user.displayName || snap.data().displayName,
-          email: user.email || snap.data().email,
         });
       }
     } catch (e) {
-      console.error('[AUTH] Bootstrap error:', e);
+      console.error('[AUTH] Profile bootstrap error:', e);
     }
   };
 
@@ -123,22 +114,19 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    // Lancer le bootstrap
     bootstrapUser(user);
 
-    // Écouter le profil membre
     const memberRef = doc(db, 'members', user.uid);
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data() as MemberProfile;
-        setMember({ ...data, id: docSnap.id });
+        setMember({ ...(docSnap.data() as MemberProfile), id: docSnap.id });
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
       console.error("[AUTH] Profile listener error:", error.code);
-      setTimeout(() => setIsMemberLoading(false), 2000);
+      setIsMemberLoading(false);
     });
 
     return () => unsubscribe();
