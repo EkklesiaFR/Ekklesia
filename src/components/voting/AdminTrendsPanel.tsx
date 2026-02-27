@@ -1,12 +1,12 @@
 'use client';
 
+import { useMemo } from 'react';
 import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { collection } from 'firebase/firestore';
-import { Ballot, Project } from '@/types';
+import type { Ballot, Project } from '@/types';
 import { computeSchulzeResults } from '@/lib/tally';
-import { Trophy } from 'lucide-react';
-import { useEffect } from 'react';
+import { TrendingUp, BarChart3 } from 'lucide-react';
 
 interface AdminTrendsPanelProps {
   assemblyId: string;
@@ -15,58 +15,90 @@ interface AdminTrendsPanelProps {
 }
 
 /**
- * COMPOSANT CRITIQUE : Ce composant ne doit être monté QUE par un administrateur.
- * Il effectue une requête LIST sur la collection 'ballots'.
+ * IMPORTANT : Ne doit être monté que côté admin.
+ * Fait une LIST sur /ballots (donc coûteux si monté pour tout le monde).
  */
 export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPanelProps) {
   const { isAdmin, isMemberLoading } = useAuthStatus();
   const db = useFirestore();
 
-  useEffect(() => {
-    if (isAdmin === true) {
-      console.log("🛡️ [DIAGNOSTIC] ADMIN identifié : Lancement du LIST ballots...");
-    }
-  }, [isAdmin]);
-
-  // Sécurité "Béton" : on retourne null si l'utilisateur n'est pas admin, 
-  // ce qui empêche useCollection de lancer la requête.
   const ballotsQuery = useMemoFirebase(() => {
-    // Si isAdmin est faux ou non encore résolu, on renvoie strictement null.
-    // useCollection(null) n'émettra jamais de requête Firestore.
-    if (isMemberLoading || isAdmin !== true) {
-      return null;
-    }
+    // Sécurité: ne retourne une query QUE si admin actif (et profil chargé)
+    if (!db || isMemberLoading || isAdmin !== true) return null;
     return collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
   }, [db, assemblyId, voteId, isAdmin, isMemberLoading]);
 
   const { data: ballots, isLoading } = useCollection<Ballot>(ballotsQuery);
 
-  const results = (ballots && projects.length > 0) 
-    ? computeSchulzeResults(projects.map(p => p.id), ballots)
-    : null;
+  const results = useMemo(() => {
+    if (!ballots || projects.length === 0) return null;
+    return computeSchulzeResults(projects.map((p) => p.id), ballots);
+  }, [ballots, projects]);
 
-  const winnerProject = results?.winnerId ? projects.find(p => p.id === results.winnerId) : null;
+  const winnerProject = useMemo(() => {
+    if (!results?.winnerId) return null;
+    return projects.find((p) => p.id === results.winnerId) ?? null;
+  }, [results?.winnerId, projects]);
 
-  // Double protection : Si un membre forçait le montage du composant
-  if (isMemberLoading || isAdmin !== true) return null;
-  
-  if (isLoading) return <p className="text-[10px] text-gray-400 animate-pulse uppercase tracking-widest font-bold">Calcul des tendances...</p>;
+  // Fallbacks d'image (sans casser si la clé n'existe pas)
+  const winnerImg =
+    winnerProject
+      ? ((winnerProject as any).imageUrl ??
+        (winnerProject as any).coverImageUrl ??
+        (winnerProject as any).thumbnailUrl ??
+        null)
+      : null;
+
+  if (isLoading || isMemberLoading) {
+    return (
+      <div className="bg-secondary/30 p-6 border space-y-4 animate-pulse">
+        <div className="h-4 bg-muted rounded w-2/3" />
+        <div className="h-10 bg-muted rounded w-1/2" />
+      </div>
+    );
+  }
+
+  if (!results) {
+    return (
+      <div className="bg-secondary/30 p-6 border space-y-3">
+        <div className="flex items-center gap-3">
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-xs font-bold uppercase tracking-widest">Tendance live (Admin)</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">En attente des premiers bulletins…</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <h3 className="text-xs uppercase tracking-widest font-bold text-gray-400 flex items-center gap-2">
-        <Trophy className="h-3 w-3 text-primary" /> Tendance Live (Admin)
-      </h3>
-      <div className="space-y-4">
-        {winnerProject ? (
-          <div className="space-y-2">
-            <p className="text-[10px] uppercase font-bold tracking-widest text-primary">En tête</p>
-            <p className="text-2xl font-bold leading-tight">{winnerProject.title}</p>
-            <p className="text-[10px] text-gray-500 uppercase font-medium">{ballots?.length || 0} bulletins analysés</p>
-          </div>
+    <div className="bg-secondary/30 p-6 border space-y-4">
+      <div className="flex items-center gap-3">
+        <TrendingUp className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-xs font-bold uppercase tracking-widest">Tendance live (Admin)</h3>
+      </div>
+
+      <div className="flex items-start gap-4">
+        {winnerImg ? (
+          <img
+            src={winnerImg}
+            alt={winnerProject?.title ? `Image de ${winnerProject.title}` : 'Image projet'}
+            className="w-20 h-[60px] object-cover rounded-md border bg-white"
+            loading="lazy"
+          />
         ) : (
-          <p className="text-sm text-gray-400 italic">Aucun bulletin pour le moment.</p>
+          <div className="w-20 h-[60px] bg-white/60 rounded-md border flex items-center justify-center">
+            <BarChart3 className="h-6 w-6 text-muted-foreground/50" />
+          </div>
         )}
+
+        <div className="flex-1 min-w-0">
+          <p className="text-sm text-muted-foreground">En tête</p>
+          <p className="text-lg font-bold truncate">{winnerProject?.title ?? results.winnerId ?? '—'}</p>
+        </div>
+      </div>
+
+      <div className="text-xs text-muted-foreground pt-2 border-t border-black/5">
+        Basé sur {ballots?.length ?? 0} bulletin(s). Le classement peut évoluer.
       </div>
     </div>
   );
