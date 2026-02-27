@@ -26,6 +26,43 @@ import { toast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { computeSchulzeResults } from '@/lib/tally';
 import Link from 'next/link';
+import { useVoteBallotCount } from '@/hooks/useVoteBallotCount';
+
+function VoteRow({ vote, isProcessing, onOpen, onPublish }: { vote: Vote, isProcessing: boolean, onOpen: (voteId: string) => void, onPublish: (vote: Vote) => void }) {
+  const { count, isLoading } = useVoteBallotCount({
+    assemblyId: DEFAULT_ASSEMBLY_ID,
+    voteId: vote.id,
+    status: vote.state,
+    frozenCount: vote.results?.total ?? 0,
+    mode: vote.state === 'open' ? 'realtime' : 'once'
+  });
+
+  return (
+    <div className="p-8 border bg-white flex justify-between items-center group hover:border-black transition-all">
+      <div className="space-y-3">
+        <div className="flex items-center gap-3">
+          <Badge className={vote.state === 'open' ? "bg-green-600" : "bg-black"}>{vote.state}</Badge>
+          <span className="text-[10px] uppercase font-bold text-muted-foreground">
+            {isLoading ? '...' : count} bulletins
+          </span>
+        </div>
+        <h3 className="text-xl font-bold">{vote.question}</h3>
+      </div>
+      <div className="flex gap-4">
+        {vote.state === 'draft' && (
+          <Button onClick={() => onOpen(vote.id)} disabled={isProcessing} className="rounded-none font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6">
+            <Play className="h-3.5 w-3.5" /> Ouvrir
+          </Button>
+        )}
+        {vote.state === 'open' && (
+          <Button variant="outline" onClick={() => onPublish(vote)} disabled={isProcessing} className="rounded-none border-2 border-black font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6">
+            <Lock className="h-3.5 w-3.5" /> Clôturer & Publier
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function AdminContent() {
   const db = useFirestore();
@@ -103,7 +140,6 @@ function AdminContent() {
         voteId: vote.id,
         voteTitle: vote.question,
         closedAt: serverTimestamp(),
-        totalBallots: ballots.length,
         winnerLabel: projects?.find(p => p.id === results.winnerId)?.title || "Vainqueur"
       });
 
@@ -138,32 +174,12 @@ function AdminContent() {
 
         <TabsContent value="sessions" className="space-y-6">
           {votes?.map(v => (
-            <div key={v.id} className="p-8 border bg-white flex justify-between items-center group hover:border-black transition-all">
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Badge className={v.state === 'open' ? "bg-green-600" : "bg-black"}>{v.state}</Badge>
-                  <span className="text-[10px] uppercase font-bold text-muted-foreground">{v.ballotCount || 0} bulletins</span>
-                </div>
-                <h3 className="text-xl font-bold">{v.question}</h3>
-              </div>
-              <div className="flex gap-4">
-                {v.state === 'draft' && (
-                  <Button onClick={() => handleOpenVote(v.id)} disabled={isProcessing === v.id} className="rounded-none font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6">
-                    <Play className="h-3.5 w-3.5" /> Ouvrir
-                  </Button>
-                )}
-                {v.state === 'open' && (
-                  <Button variant="outline" onClick={() => handlePublishResults(v)} disabled={isProcessing === v.id} className="rounded-none border-2 border-black font-bold uppercase tracking-widest text-[10px] gap-2 h-12 px-6">
-                    <Lock className="h-3.5 w-3.5" /> Clôturer & Publier
-                  </Button>
-                )}
-              </div>
-            </div>
+            <VoteRow key={v.id} vote={v} isProcessing={isProcessing === v.id} onOpen={handleOpenVote} onPublish={handlePublishResults} />
           ))}
         </TabsContent>
 
         <TabsContent value="results" className="space-y-8">
-          {votes?.filter(v => v.state === 'locked').map(v => (
+          {votes?.filter(v => !!v.results?.computedAt).map(v => (
             <div key={v.id} className="p-8 border bg-white space-y-8">
               <div className="flex justify-between items-start border-b pb-6">
                 <div>
@@ -172,7 +188,7 @@ function AdminContent() {
                 </div>
                 <div className="text-right">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
-                  <p className="text-2xl font-black">{v.results?.total || 0}</p>
+                  <p className="text-2xl font-black">{v.results?.total ?? 0}</p>
                 </div>
               </div>
 
@@ -232,8 +248,7 @@ function AdminContent() {
               <TableBody>
                 {members?.map(m => (
                   <TableRow key={m.id}><TableCell>{m.email}</TableCell><TableCell className="capitalize">{m.role}</TableCell><TableCell><Badge className={m.status === 'active' ? "bg-green-600/10 text-green-600 border-none rounded-none" : "bg-orange-500/10 text-orange-500 border-none rounded-none"}>{m.status}</Badge></TableCell></TableRow>
-                ))}
-              </TableBody>
+                ))}</TableBody>
             </Table>
           </div>
         </TabsContent>
