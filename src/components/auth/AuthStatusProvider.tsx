@@ -55,20 +55,25 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       console.log('[AUTH] Checking for redirect result...');
       try {
         const result = await handleGoogleRedirectResult(auth);
-        console.log('[AUTH-DEBUG] getRedirectResult returned:', result ? { uid: result.user.uid, email: result.user.email } : 'null');
-        hasProcessedRedirect.current = true;
         
         if (result?.user) {
+          console.log(`[AUTH-DEBUG] redirect result OK uid=${result.user.uid}`);
           console.log('[AUTH] redirect result SUCCESS:', result.user.uid);
+          hasProcessedRedirect.current = true;
           await bootstrapUser(result.user);
+        } else {
+          console.log('[AUTH-DEBUG] redirect result EMPTY');
+          hasProcessedRedirect.current = true;
         }
       } catch (error: any) {
+        console.log(`[AUTH-DEBUG] redirect result ERROR code=${error.code} message=${error.message}`);
         console.error('[AUTH] redirect result ERROR:', error.code);
-        console.log('[AUTH-DEBUG] getRedirectResult failed with error:', { code: error.code, message: error.message });
+        
         if (error.code === 'auth/account-exists-with-different-credential') {
           const cred = GoogleAuthProvider.credentialFromError(error);
           if (cred) setPendingCred(cred);
         }
+        hasProcessedRedirect.current = true;
       }
     };
     processRedirect();
