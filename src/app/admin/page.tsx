@@ -20,7 +20,7 @@ import {
 } from 'firebase/firestore';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Plus, ShieldAlert, BarChart3, Settings, Users, Activity, Lock, Play } from 'lucide-react';
+import { Plus, BarChart3, Settings, Users, Activity, Lock, Play } from 'lucide-react';
 import { Project, MemberProfile, Vote, Ballot } from '@/types';
 import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
 import { toast } from '@/hooks/use-toast';
@@ -38,7 +38,8 @@ function AdminContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), orderBy('createdAt', 'desc')), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  const membersQuery = useMemoFirebase(() => collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'members'), [db]);
+  // Correction : La collection des membres est à la racine '/members'
+  const membersQuery = useMemoFirebase(() => collection(db, 'members'), [db]);
   const { data: members } = useCollection<MemberProfile>(membersQuery);
 
   const handleOpenVote = async (voteId: string) => {
@@ -167,7 +168,7 @@ function AdminContent() {
             <div key={v.id} className="p-8 border bg-white space-y-8">
               <div className="flex justify-between items-start border-b pb-6">
                 <div>
-                  <Badge className="bg-black text-white rounded-none uppercase text-[9px] mb-2">PV Certifié</Badge>
+                  <Badge className="bg-black text-white rounded-none uppercase text-[9px]">PV Certifié</Badge>
                   <h3 className="text-2xl font-bold">{v.question}</h3>
                 </div>
                 <div className="text-right">
@@ -186,7 +187,7 @@ function AdminContent() {
                 <div className="space-y-4">
                   <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Classement complet</p>
                   <div className="space-y-2">
-                    {v.results?.fullRanking?.map((r, idx) => (
+                    {v.results?.fullRanking?.map((r: any, idx) => (
                       <div key={r.id} className="flex justify-between items-center text-sm border-b border-secondary pb-2">
                         <span className="font-bold flex items-center gap-3">
                           <span className="w-5 h-5 flex items-center justify-center bg-secondary text-[10px]">{idx + 1}</span>

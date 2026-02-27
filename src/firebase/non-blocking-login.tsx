@@ -15,41 +15,60 @@ import {
 } from 'firebase/auth';
 
 /**
- * [AUTH] Stratégie Hybride : Tente le Popup (fiable sur hosted.app), 
- * bascule sur Redirect si les popups sont bloqués (mobile).
+ * [AUTH] Connexion Google avec stratégie Simplifiée :
+ * 1. Force la persistance locale.
+ * 2. Tente une Popup (meilleure UX et stabilité de session).
+ * 3. Fallback vers Redirect uniquement si la popup est bloquée.
  */
 export const signInWithGoogle = async (authInstance: Auth) => {
-  console.log('[AUTH] Google Auth attempt', {
-    origin: window.location.origin,
-    method: 'Popup'
-  });
-
   try {
     await setPersistence(authInstance, browserLocalPersistence);
     const provider = new GoogleAuthProvider();
-    provider.addScope('email');
-    provider.addScope('profile');
-    
+
+    console.log('[AUTH] Google Auth attempt { method: "Popup" }');
+
     try {
-      // Priorité au Popup pour éviter les pertes de session sur hosted.app
       const result = await signInWithPopup(authInstance, provider);
       console.log('[AUTH] Popup Success:', result.user.uid);
       return result;
     } catch (popupError: any) {
-      if (popupError.code === 'auth/popup-blocked') {
+      const code = popupError?.code;
+
+      // Cas spécifique : Popup bloquée par le navigateur
+      if (code === 'auth/popup-blocked') {
         console.warn('[AUTH] Popup blocked, falling back to Redirect');
         return signInWithRedirect(authInstance, provider);
       }
+
+      // Cas spécifique : Utilisateur ferme la popup (non-bloquant)
+      if (code === 'auth/popup-closed-by-user') {
+        console.info('[AUTH] Popup closed by user (non-blocking).');
+        return;
+      }
+
+      // Autres erreurs (ex: annulation de requête)
+      if (code === 'auth/cancelled-popup-request') {
+        console.info('[AUTH] Popup request cancelled (non-blocking).');
+        return;
+      }
+
       throw popupError;
     }
-  } catch (error) {
-    console.error('[AUTH] Google Auth Error:', error);
+  } catch (error: any) {
+    const code = error?.code;
+
+    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+      console.info('[AUTH] Google Auth: popup closed or cancelled (non-blocking).');
+      return;
+    }
+
+    console.error('[AUTH] Google Auth Error:', code, error?.message);
     throw error;
   }
 };
 
 /**
- * [AUTH] Consommation du résultat de redirection (Fallback mobile)
+ * [AUTH] Consommation du résultat de redirection (Fallback)
  */
 export const handleGoogleRedirectResult = (authInstance: Auth) => {
   return getRedirectResult(authInstance);

@@ -1,3 +1,4 @@
+
 export type MemberStatus = 'active' | 'pending' | 'blocked' | 'revoked';
 export type Role = 'admin' | 'member';
 
@@ -56,7 +57,7 @@ export interface Vote {
   eligibleCount?: number;
   results?: { // Résultats officiels (après clôture/publication)
     winnerId: string;
-    fullRanking: { id: string; rank: number }[];
+    fullRanking: { id: string; rank: number; score?: number }[];
     computedAt: any;
     total: number;
   };

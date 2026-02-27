@@ -81,11 +81,15 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       (firebaseUser) => { // Auth state determined
         if (firebaseUser) {
           console.log('[AUTH] onAuthStateChanged user uid:', firebaseUser.uid);
+          console.log('[AUTH-DEBUG] onAuthStateChanged fired with user:', { uid: firebaseUser.uid, email: firebaseUser.email });
+        } else {
+          console.log('[AUTH-DEBUG] onAuthStateChanged fired with null user');
         }
         setUserAuthState({ user: firebaseUser, isUserLoading: false, userError: null });
       },
       (error) => { // Auth listener error
         console.error("FirebaseProvider: onAuthStateChanged error:", error);
+        console.log('[AUTH-DEBUG] onAuthStateChanged error:', { code: error.code, message: error.message });
         setUserAuthState({ user: null, isUserLoading: false, userError: error });
       }
     );

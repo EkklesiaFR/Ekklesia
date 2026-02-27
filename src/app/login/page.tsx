@@ -67,14 +67,20 @@ export default function LoginPage() {
     setIsLoading(true);
     setAuthError(null);
     try {
-      // signInWithGoogle utilise maintenant le Popup en priorité
       await signInWithGoogle(auth);
     } catch (error: any) {
-      console.error('[AUTH] Google Error', error.code);
-      if (error.code !== 'auth/popup-closed-by-user') {
-        setAuthError(`Erreur Google: ${error.code}`);
-        toast({ variant: "destructive", title: "Erreur", description: error.message });
+      if (error.code === 'auth/popup-closed-by-user') {
+        console.info('[AUTH] Popup closed by user. This is a non-blocking event.');
+        return;
       }
+      console.error('[AUTH] Login page error handler:', error.code, error.message);
+      setAuthError(`Erreur: ${error.message}`);
+      toast({
+        variant: "destructive",
+        title: "Erreur de connexion",
+        description: error.message || "Une erreur inattendue est survenue."
+      });
+    } finally {
       setIsLoading(false);
     }
   };
