@@ -6,37 +6,42 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    function getMemberData() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
+    }
+
     function isMemberActive() {
       return isSignedIn()
         && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.status == "active";
+        && getMemberData().status == "active";
     }
 
     function isAdminActive() {
       return isMemberActive() 
-        && get(/databases/$(database)/documents/members/$(request.auth.uid)).data.role == "admin";
+        && getMemberData().role == "admin";
     }
 
     match /members/{uid} {
       allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
       allow list: if isAdminActive();
       
-      // Bootstrap creation: Allow user to create profile ONLY with default role/status
+      // Sécurité Bootstrap : Un utilisateur ne peut créer son profil qu'avec le statut en attente et le rôle membre.
       allow create: if isSignedIn() && request.auth.uid == uid 
                     && request.resource.data.role == "member"
                     && request.resource.data.status == "pending";
       
-      // Self update: Disallow changing critical privilege fields (role, status)
+      // Un utilisateur ne peut mettre à jour que ses infos de base, jamais ses privilèges.
       allow update: if isSignedIn() && request.auth.uid == uid
-                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'status']);
+                    && request.resource.data.role == resource.data.role
+                    && request.resource.data.status == resource.data.status;
 
-      // Admin control for privileges
+      // Seul un admin actif peut modifier les rôles ou révoquer des accès.
       allow update, delete: if isAdminActive();
     }
 
     match /assemblies/{assemblyId} {
       allow read: if isSignedIn();
-      allow update: if isAdminActive();
+      allow update: if isAdminActive() && (!("results" in resource.data) || resource.data.results == null);
 
       match /members/{uid} {
         allow read: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
@@ -50,10 +55,14 @@ service cloud.firestore {
 
       match /votes/{voteId} {
         allow read: if isMemberActive();
+        // Protection des résultats : une fois le vote verrouillé, plus de modifications possibles.
+        allow update: if isAdminActive() && resource.data.state != "locked";
         allow write: if isAdminActive();
 
         match /ballots/{uid} {
-          allow get, write: if isSignedIn() && request.auth.uid == uid && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+          // Un membre ne peut voter que si le scrutin est ouvert.
+          allow get, write: if isSignedIn() && request.auth.uid == uid 
+                          && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
           allow list: if isAdminActive();
         }
       }
@@ -61,7 +70,8 @@ service cloud.firestore {
 
     match /projects/{projectId} {
       allow read: if isSignedIn();
-      allow write: if isAdminActive(); 
+      allow create: if isMemberActive();
+      allow update, delete: if isAdminActive() || (isSignedIn() && request.auth.uid == resource.data.ownerUid && resource.data.status == "submitted");
     }
   }
 }

@@ -37,58 +37,34 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const [isMemberLoading, setIsMemberLoading] = useState(true);
   const [pendingCred, setPendingCred] = useState<AuthCredential | null>(null);
   
-  // Guard for double bootstrap per session
   const didBootstrap = useRef(false);
 
-  // Diagnostic log on every render
-  console.log('[AUTH] render', { pathname, isUserLoading, uid: user?.uid });
-
-  // 1. Early Redirect Logic
+  // Redirection immédiate pour éviter les flashs d'UI de login
   useEffect(() => {
     if (!isUserLoading && user && pathname === '/login') {
-      console.log('[AUTH] user detected -> redirect /assembly');
       router.replace('/assembly');
-    } else if (!isUserLoading && !user && pathname === '/login') {
-      console.log('[AUTH] user null -> stay /login');
     }
   }, [user, isUserLoading, pathname, router]);
 
-  // 2. Handle OAuth Redirect Result on Mount
+  // Consommation du résultat Google Redirect
   useEffect(() => {
     const processRedirect = async () => {
       try {
-        console.log('[AUTH] Checking currentUser before redirect result', auth.currentUser?.uid);
         const result = await handleGoogleRedirectResult(auth);
         if (result?.user) {
-          console.log('[AUTH] Redirect result success', {
-            uid: result.user.uid,
-            email: result.user.email,
-            providerId: result.providerId
-          });
+          console.log('[AUTH] Redirect success:', result.user.email);
           bootstrapUser(result.user);
         }
       } catch (error: any) {
-        console.error('[AUTH][REDIRECT][ERROR]', { 
-          code: error.code, 
-          message: error.message, 
-          email: error.customData?.email, 
-          full: error 
-        });
-
-        // Handle the "account already exists" case
         if (error.code === 'auth/account-exists-with-different-credential') {
           const cred = GoogleAuthProvider.credentialFromError(error);
-          if (cred) {
-            setPendingCred(cred);
-            console.log('[AUTH] Pending credential stored for linking');
-          }
+          if (cred) setPendingCred(cred);
         }
       }
     };
     processRedirect();
   }, [auth]);
 
-  // 3. Secure Bootstrap Function
   const bootstrapUser = async (user: User) => {
     if (didBootstrap.current) return;
     didBootstrap.current = true;
@@ -97,57 +73,52 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
     try {
       const snap = await getDoc(memberRef);
       
-      const safeData = {
-        email: user.email,
-        displayName: user.displayName || user.email?.split('@')[0],
-        lastLoginAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      };
-
       if (!snap.exists()) {
-        console.log('[AUTH] Creating initial member profile with safe defaults');
+        console.log('[AUTH] Initializing new member profile...');
         await setDoc(memberRef, {
-          ...safeData,
           id: user.uid,
+          email: user.email,
+          displayName: user.displayName || user.email?.split('@')[0],
           role: 'member',
           status: 'pending',
           createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+          lastLoginAt: serverTimestamp(),
         });
       } else {
-        console.log('[AUTH] Updating member profile (safe fields only)');
-        // NEVER overwrite role/status here to prevent client-side elevation
-        await updateDoc(memberRef, safeData);
+        // Mise à jour uniquement des infos de connexion, sans toucher au rôle/status
+        await updateDoc(memberRef, {
+          lastLoginAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        });
       }
     } catch (e) {
       console.error('[AUTH] Bootstrap error:', e);
     }
   };
 
-  // 4. Listen to Member Profile & Bootstrap
   useEffect(() => {
     if (isUserLoading) return;
 
     if (!user) {
       setMember(null);
       setIsMemberLoading(false);
-      didBootstrap.current = false; // Reset guard on sign-out
+      didBootstrap.current = false;
       return;
     }
 
-    // Always attempt bootstrap on user detection
     bootstrapUser(user);
 
     const memberRef = doc(db, 'members', user.uid);
     const unsubscribe = onSnapshot(memberRef, (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data() as MemberProfile;
-        setMember({ ...data, id: docSnap.id });
+        setMember({ ...(docSnap.data() as MemberProfile), id: docSnap.id });
       } else {
         setMember(null);
       }
       setIsMemberLoading(false);
     }, (error) => {
-      console.error("[AUTH] Member listener error:", error.message);
+      console.error("[AUTH] Profile listener access denied (normal if rules propagated)");
       setIsMemberLoading(false);
     });
 
