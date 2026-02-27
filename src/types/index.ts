@@ -54,8 +54,10 @@ export interface Vote {
   createdAt?: any;
   createdBy?: string;
   ballotCount?: number;
-  eligibleCount?: number;
-  results?: { // Résultats officiels (après clôture/publication)
+  eligibleCountAtOpen?: number; // Snapshot of eligible voters at the moment the vote was opened
+  openedAt?: any; // Timestamp when the vote was opened
+  openedBy?: string; // UID of the admin who opened the vote
+  results?: { // Official results (after closing/publishing)
     winnerId: string;
     fullRanking: { id: string; rank: number; score?: number }[];
     computedAt: any;

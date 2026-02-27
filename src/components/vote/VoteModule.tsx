@@ -215,7 +215,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
             ) : (
               <ParticipationPanel 
                 ballotCount={vote.ballotCount} 
-                eligibleCount={vote.eligibleCount} 
+                eligibleCount={vote.eligibleCountAtOpen}
               />
             )}
           </div>
