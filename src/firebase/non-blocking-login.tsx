@@ -14,36 +14,58 @@ import {
   browserLocalPersistence,
 } from 'firebase/auth';
 
-/**
- * [AUTH] Stratégie Hybride : Tente le Popup (fiable sur hosted.app), 
- * bascule sur Redirect si les popups sont bloqués (mobile).
- */
-export const signInWithGoogle = async (authInstance: Auth) => {
-  console.log('[AUTH] Google Auth attempt', {
-    origin: window.location.origin,
-    method: 'Popup'
-  });
+const isUnstablePopupEnv = () => {
+  if (typeof window === 'undefined') return false;
+  const { hostname } = window.location;
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname.endsWith('.cloudworkstations.dev') ||
+    hostname.startsWith('10.') ||
+    hostname.startsWith('192.168.')
+  );
+};
 
+export const signInWithGoogle = async (authInstance: Auth) => {
   try {
     await setPersistence(authInstance, browserLocalPersistence);
     const provider = new GoogleAuthProvider();
-    provider.addScope('email');
-    provider.addScope('profile');
-    
+
+    // DEV / environnements instables : redirect direct
+    if (typeof window !== 'undefined' && isUnstablePopupEnv()) {
+      console.info('[AUTH] Unstable env detected -> using redirect login');
+      return signInWithRedirect(authInstance, provider);
+    }
+
+    // PROD : popup-first
     try {
-      // Priorité au Popup pour éviter les pertes de session sur hosted.app
       const result = await signInWithPopup(authInstance, provider);
       console.log('[AUTH] Popup Success:', result.user.uid);
       return result;
     } catch (popupError: any) {
-      if (popupError.code === 'auth/popup-blocked') {
+      const code = popupError?.code;
+
+      if (code === 'auth/popup-blocked') {
         console.warn('[AUTH] Popup blocked, falling back to Redirect');
         return signInWithRedirect(authInstance, provider);
       }
+
+      if (code === 'auth/popup-closed-by-user') {
+        console.info('[AUTH] Popup closed by user (non-blocking).');
+        return;
+      }
+
       throw popupError;
     }
-  } catch (error) {
-    console.error('[AUTH] Google Auth Error:', error);
+  } catch (error: any) {
+    const code = error?.code;
+
+    if (code === 'auth/popup-closed-by-user') {
+      console.info('[AUTH] Google Auth: popup closed (non-blocking).');
+      return;
+    }
+
+    console.error('[AUTH] Google Auth Error:', code, error?.message);
     throw error;
   }
 };

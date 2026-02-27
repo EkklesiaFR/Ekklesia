@@ -40,15 +40,14 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const didBootstrap = useRef(false);
   const hasProcessedRedirect = useRef(false);
 
-  // REDIRECTION EARLY : Si un utilisateur est authentifié et sur /login, on part sur /assembly
   useEffect(() => {
+    console.log('[AUTH-DEBUG] Auth state changed', { userUid: user?.uid, isUserLoading, pathname });
     if (!isUserLoading && user && pathname === '/login') {
       console.log('[AUTH] user detected -> redirect /assembly', { uid: user.uid });
       router.replace('/assembly');
     }
   }, [user, isUserLoading, pathname, router]);
 
-  // Consommation du résultat Google Redirect (Fallback pour mobile ou si Popup échoue)
   useEffect(() => {
     if (hasProcessedRedirect.current) return;
     
@@ -56,6 +55,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       console.log('[AUTH] Checking for redirect result...');
       try {
         const result = await handleGoogleRedirectResult(auth);
+        console.log('[AUTH-DEBUG] getRedirectResult returned:', result ? { uid: result.user.uid, email: result.user.email } : 'null');
         hasProcessedRedirect.current = true;
         
         if (result?.user) {
@@ -64,6 +64,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
         }
       } catch (error: any) {
         console.error('[AUTH] redirect result ERROR:', error.code);
+        console.log('[AUTH-DEBUG] getRedirectResult failed with error:', { code: error.code, message: error.message });
         if (error.code === 'auth/account-exists-with-different-credential') {
           const cred = GoogleAuthProvider.credentialFromError(error);
           if (cred) setPendingCred(cred);

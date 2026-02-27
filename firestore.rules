@@ -17,32 +17,69 @@ service cloud.firestore {
     }
 
     function isAdminActive() {
-      return isMemberActive() 
+      return isMemberActive()
         && getMemberData().role == "admin";
     }
 
+    // =========================
+    // MEMBERS (global)
+    // =========================
     match /members/{uid} {
-      allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
-      allow list: if isAdminActive();
-      
-      // Sécurité Bootstrap : Un utilisateur ne peut créer son profil qu'avec le statut en attente et le rôle membre.
-      allow create: if isSignedIn() && request.auth.uid == uid 
-                    && request.resource.data.role == "member"
-                    && request.resource.data.status == "pending";
-      
-      // Un utilisateur ne peut mettre à jour que ses infos de base, jamais ses privilèges.
-      allow update: if isSignedIn() && request.auth.uid == uid
-                    && request.resource.data.role == resource.data.role
-                    && request.resource.data.status == resource.data.status;
 
-      // Seul un admin actif peut modifier les rôles ou révoquer des accès.
-      allow update, delete: if isAdminActive();
+      // Read: user reads self, admin reads anyone
+      allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
+
+      // List: admin only
+      allow list: if isAdminActive();
+
+      // Create: self only, one-time, safe defaults + timestamps + allowed keys
+      allow create: if isSignedIn()
+        && request.auth.uid == uid
+        && !exists(/databases/$(database)/documents/members/$(uid))
+        && request.resource.data.role == "member"
+        && request.resource.data.status == "pending"
+        && request.resource.data.keys().hasAll(["createdAt", "updatedAt", "lastLoginAt"])
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.lastLoginAt is timestamp
+        && request.resource.data.keys().hasOnly([
+          "uid", "email", "displayName", "photoURL",
+          "role", "status",
+          "createdAt", "updatedAt", "lastLoginAt"
+        ]);
+
+      // Update: self can only update non-privileged fields (never role/status)
+      allow update: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
+          "email", "displayName", "photoURL",
+          "updatedAt", "lastLoginAt"
+        ])
+        && request.resource.data.updatedAt is timestamp
+        && request.resource.data.lastLoginAt is timestamp;
+
+      // Admin active can update anyone (including role/status)
+      // (delete interdit par défaut)
+      allow update: if isAdminActive();
+
+      allow delete: if false;
     }
 
+    // =========================
+    // ASSEMBLIES
+    // =========================
     match /assemblies/{assemblyId} {
       allow read: if isSignedIn();
-      allow update: if isAdminActive() && (!("results" in resource.data) || resource.data.results == null);
 
+      // Tu avais: allow update si admin actif et results non set
+      // Je garde la logique telle quelle.
+      allow update: if isAdminActive()
+        && (!("results" in resource.data) || resource.data.results == null);
+
+      // Subcollection: assemblies/{assemblyId}/members/{uid}
+      // On la sécurise sans casser: lecture self/admin, écriture admin only
       match /members/{uid} {
         allow read: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
         allow write: if isAdminActive();
@@ -55,23 +92,46 @@ service cloud.firestore {
 
       match /votes/{voteId} {
         allow read: if isMemberActive();
-        // Protection des résultats : une fois le vote verrouillé, plus de modifications possibles.
+
+        // Une fois verrouillé, pas d'update possible
         allow update: if isAdminActive() && resource.data.state != "locked";
-        allow write: if isAdminActive();
+        allow create, delete: if isAdminActive();
 
         match /ballots/{uid} {
-          // Un membre ne peut voter que si le scrutin est ouvert.
-          allow get, write: if isSignedIn() && request.auth.uid == uid 
-                          && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+          // Un membre ne peut voter que pour lui-même si le scrutin est open
+          allow get, create, update: if isSignedIn()
+            && request.auth.uid == uid
+            && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+
+          // (optionnel) lecture du ballot par son auteur uniquement
+          // si tu veux empêcher de relire les ballots, enlève get ci-dessus et mets ici:
+          // allow get: if isSignedIn() && request.auth.uid == uid;
+
           allow list: if isAdminActive();
+          allow delete: if false;
         }
       }
     }
 
+    // =========================
+    // PROJECTS
+    // =========================
     match /projects/{projectId} {
       allow read: if isSignedIn();
       allow create: if isMemberActive();
-      allow update, delete: if isAdminActive() || (isSignedIn() && request.auth.uid == resource.data.ownerUid && resource.data.status == "submitted");
+
+      // admin, ou owner tant que submitted (comme tu avais)
+      allow update, delete: if isAdminActive()
+        || (isSignedIn()
+            && request.auth.uid == resource.data.ownerUid
+            && resource.data.status == "submitted");
+    }
+
+    // =========================
+    // DEFAULT DENY
+    // =========================
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
