@@ -45,31 +45,41 @@ export function RequireActiveMember({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isUserLoading || isMemberLoading || isPublicPage) return;
+
+    // Si pas de user du tout, on renvoie vers login
     if (!user) {
       console.log('[GUARD] No user -> redirecting to /login');
       router.replace('/login');
+      return;
     }
-  }, [user, isUserLoading, isMemberLoading, router, isPublicPage]);
 
-  if ((isUserLoading || isMemberLoading) && !isPublicPage) {
+    console.log('[GUARD] User detected, path:', pathname, 'status:', member?.status);
+  }, [user, isUserLoading, isMemberLoading, router, isPublicPage, pathname, member]);
+
+  // Écran de chargement global pendant la résolution de l'auth ou du profil
+  if ((isUserLoading || (user && isMemberLoading)) && !isPublicPage) {
     return (
       <MainLayout statusText="Vérification">
         <div className="flex flex-col items-center justify-center py-32 space-y-6">
           <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full"></div>
-          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Chargement du profil...</p>
+          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Chargement de votre session sécurisée...</p>
         </div>
       </MainLayout>
     );
   }
 
+  // Empêcher le rendu si on redirige vers /login
   if (!user && !isPublicPage) return null;
 
-  if (user && member && !(isActiveMember || isAdmin) && !isPublicPage) {
-    return <RestrictedUI title="Compte en attente" description="Votre adhésion doit être validée par un administrateur." />;
+  // Gestion du cas "Compte en attente" ou "Bloqué"
+  // On ne redirige pas vers /login, on affiche une UI restreinte
+  if (user && !isPublicPage && !isActiveMember && !isAdmin) {
+    return <RestrictedUI title="Compte en attente" description="Votre demande d'adhésion est en cours de validation par l'assemblée." />;
   }
 
+  // Protection des routes admin
   if (pathname.startsWith('/admin') && !isAdmin && !isPublicPage) {
-    return <RestrictedUI title="Accès réservé" description="Droits d'administration requis." />;
+    return <RestrictedUI title="Accès réservé" description="Droits d'administration requis pour accéder à cette console." />;
   }
 
   return <>{children}</>;
