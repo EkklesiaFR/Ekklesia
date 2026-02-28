@@ -5,10 +5,10 @@ import Link from 'next/link';
 
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useDoc, useMemoFirebase } from '@/firebase';
 import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
-import { collection, query, orderBy, limit, where } from 'firebase/firestore';
+import { collection, query, limit, where, doc } from 'firebase/firestore';
 import type { Vote, Project } from '@/types';
 
 import { Badge } from '@/components/ui/badge';
@@ -77,12 +77,19 @@ function ResultsContent() {
   const db = useFirestore();
   const [selectedVoteId, setSelectedVoteId] = useState<string | null>(null);
 
+  // ✅ Dernier résultat "public"
+  const lastResultRef = useMemoFirebase(
+    () => doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'public', 'lastResult'),
+    [db]
+  );
+  const { data: lastResult } = useDoc<any>(lastResultRef);
+
+  // ✅ Requête robuste : pas de orderBy côté Firestore (évite index / champs manquants)
   const votesQuery = useMemoFirebase(
     () =>
       query(
         collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'),
         where('state', '==', 'locked'),
-        orderBy('updatedAt', 'desc'),
         limit(50)
       ),
     [db]
@@ -94,6 +101,26 @@ function ResultsContent() {
 
   const projectsById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
 
+  // ✅ Tri côté client, stable et compatible anciens votes
+  const sortedVotes = useMemo(() => {
+    const list = votes ?? [];
+    return [...list].sort((a, b) => {
+      const da =
+        (a.results as any)?.computedAt?.toMillis?.() ??
+        (a as any)?.lockedAt?.toMillis?.() ??
+        (a as any)?.updatedAt?.toMillis?.() ??
+        0;
+
+      const dbb =
+        (b.results as any)?.computedAt?.toMillis?.() ??
+        (b as any)?.lockedAt?.toMillis?.() ??
+        (b as any)?.updatedAt?.toMillis?.() ??
+        0;
+
+      return dbb - da;
+    });
+  }, [votes]);
+
   if (isVotesLoading) {
     return (
       <div className="py-24 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
@@ -101,6 +128,13 @@ function ResultsContent() {
       </div>
     );
   }
+
+  // Résumé dernier PV (si dispo)
+  const lastVoteId = lastResult?.voteId ? String(lastResult.voteId) : null;
+  const lastWinnerLabel = lastResult?.winnerLabel ?? null;
+  const lastVoteTitle = lastResult?.voteTitle ?? null;
+  const lastClosedAt = formatFr(lastResult?.closedAt);
+  const lastTotal = lastResult?.total ?? null;
 
   return (
     <div className="space-y-16 animate-in fade-in duration-700">
@@ -113,11 +147,60 @@ function ResultsContent() {
             Décisions de l&apos;Assemblée
           </h1>
         </div>
+
+        {/* ✅ Résumé "Dernière décision" */}
+        <div className="border bg-secondary/10 p-8 space-y-6">
+          <div className="flex items-center justify-between gap-6 flex-wrap">
+            <div className="space-y-2">
+              <Badge className="bg-black text-white rounded-none uppercase text-[9px]">
+                Dernière décision
+              </Badge>
+              <p className="text-2xl font-bold leading-tight">
+                {lastVoteTitle ?? (sortedVotes[0]?.question ?? '—')}
+              </p>
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground pt-1">
+                <span>Clôture : {lastClosedAt !== '—' ? lastClosedAt : formatFr((sortedVotes[0] as any)?.lockedAt)}</span>
+                <span>Bulletins : {lastTotal ?? ((sortedVotes[0]?.results as any)?.total ?? '—')}</span>
+              </div>
+            </div>
+
+            <div className="text-right">
+              <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Vainqueur</p>
+              <p className="text-sm font-black uppercase text-primary flex items-center justify-end gap-2">
+                <Trophy className="h-4 w-4" />
+                {lastWinnerLabel ??
+                  (sortedVotes[0]?.results?.winnerId
+                    ? projectsById.get(String(sortedVotes[0].results!.winnerId))?.title ?? String(sortedVotes[0].results!.winnerId)
+                    : '—')}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            {lastVoteId ? (
+              <Link href={`/results/${lastVoteId}`}>
+                <Button className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6">
+                  Voir PV
+                </Button>
+              </Link>
+            ) : sortedVotes[0]?.id ? (
+              <Link href={`/results/${sortedVotes[0].id}`}>
+                <Button className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6">
+                  Voir PV
+                </Button>
+              </Link>
+            ) : (
+              <Button disabled className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6">
+                Voir PV
+              </Button>
+            )}
+          </div>
+        </div>
       </header>
 
-      {votes && votes.length > 0 ? (
+      {sortedVotes.length > 0 ? (
         <div className="grid gap-8">
-          {votes.map((vote) => {
+          {sortedVotes.map((vote) => {
             const isSelected = selectedVoteId === vote.id;
 
             const totalBallots = (vote.results as any)?.total ?? (vote.results as any)?.totalBallots ?? 0;
@@ -220,7 +303,6 @@ function ResultsContent() {
                       </div>
                     </div>
 
-                    {/* Bloc scellé */}
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-3">
                         <h4 className="text-xs uppercase tracking-[0.2em] font-bold">Intégrité</h4>
