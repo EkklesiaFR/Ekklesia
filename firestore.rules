@@ -71,7 +71,9 @@ service cloud.firestore {
     // ASSEMBLIES
     // =========================
     match /assemblies/{assemblyId} {
-      allow read: if isSignedIn();
+
+      // ✅ Modèle 2: pending n'a aucun accès aux données de l'app
+      allow read: if isMemberActive();
 
       // Tu avais: allow update si admin actif et results non set
       // Je garde la logique telle quelle.
@@ -79,7 +81,7 @@ service cloud.firestore {
         && (!("results" in resource.data) || resource.data.results == null);
 
       // Subcollection: assemblies/{assemblyId}/members/{uid}
-      // On la sécurise sans casser: lecture self/admin, écriture admin only
+      // Lecture self/admin, écriture admin only
       match /members/{uid} {
         allow read: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
         allow write: if isAdminActive();
@@ -98,16 +100,14 @@ service cloud.firestore {
         allow create, delete: if isAdminActive();
 
         match /ballots/{uid} {
-          // Un membre ne peut voter que pour lui-même si le scrutin est open
-          allow get, create, update: if isSignedIn()
+          // ✅ Modèle 2: seul un membre actif peut écrire/relire son ballot en open
+          allow get, create, update: if isMemberActive()
             && request.auth.uid == uid
             && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
 
-          // (optionnel) lecture du ballot par son auteur uniquement
-          // si tu veux empêcher de relire les ballots, enlève get ci-dessus et mets ici:
-          // allow get: if isSignedIn() && request.auth.uid == uid;
-
+          // List: admin only (audit)
           allow list: if isAdminActive();
+
           allow delete: if false;
         }
       }
@@ -117,7 +117,10 @@ service cloud.firestore {
     // PROJECTS
     // =========================
     match /projects/{projectId} {
-      allow read: if isSignedIn();
+
+      // ✅ Modèle 2: pending ne peut pas lire les projets
+      allow read: if isMemberActive();
+
       allow create: if isMemberActive();
 
       // admin, ou owner tant que submitted (comme tu avais)
