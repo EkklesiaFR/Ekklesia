@@ -1,7 +1,6 @@
-import type {NextConfig} from 'next';
+import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
-  /* config options here */
   typescript: {
     ignoreBuildErrors: true,
   },
@@ -30,6 +29,13 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  /**
+   * ✅ Critical for Next 15 App Router:
+   * Prevent server bundler from stubbing Node "fs" in pdfkit/fontkit.
+   * Ensures pdfkit runs via real Node require() at runtime (App Hosting + prod build).
+   */
+  serverExternalPackages: ['pdfkit', 'fontkit', 'qrcode', 'blob-stream'],
 };
 
 export default nextConfig;

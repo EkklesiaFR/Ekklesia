@@ -1,8 +1,8 @@
 /// <reference types="node" />
 
 import { NextResponse } from 'next/server';
-import fs from 'fs';
-import path from 'path';
+import fs from 'node:fs';
+import path from 'node:path';
 
 import { getAdminDb } from '@/lib/firebase/admin';
 import { computeFinalSeal, type RankingRow } from '@/lib/pv/seal';
@@ -79,9 +79,9 @@ function extractPVFromVote(voteId: string, voteData: any) {
   };
 }
 
-function loadFontBuffer(relPath: string) {
-  const p = path.join(process.cwd(), relPath);
-  return fs.readFileSync(p);
+function loadFileBuffer(relPathFromRepoRoot: string): Buffer {
+  const abs = path.join(process.cwd(), relPathFromRepoRoot);
+  return fs.readFileSync(abs);
 }
 
 export async function GET(
@@ -91,8 +91,7 @@ export async function GET(
   try {
     const { assemblyId, voteId } = params;
 
-    // ✅ IMPORTANT : pas de check env ici.
-    // En prod App Hosting, Firebase Admin peut utiliser ADC sans FIREBASE_PRIVATE_KEY.
+    // ✅ IMPORTANT : pas de check env ici. App Hosting => ADC possible.
     let db;
     try {
       db = getAdminDb();
@@ -109,7 +108,6 @@ export async function GET(
     }
 
     const snap = await db.doc(`assemblies/${assemblyId}/votes/${voteId}`).get();
-
     if (!snap.exists) {
       return NextResponse.json({ error: 'Vote not found', assemblyId, voteId }, { status: 404 });
     }
@@ -133,11 +131,14 @@ export async function GET(
       );
     }
 
-    // pdfkit standalone => évite ENOENT Helvetica.afm
-    const [{ default: PDFDocument }, QRCode] = await Promise.all([
-      import('pdfkit/js/pdfkit.standalone.js'),
-      import('qrcode'),
-    ]);
+    /**
+     * ✅ IMPORTANT:
+     * We import "pdfkit" (NOT pdfkit.standalone) because we externalize it in next.config.ts
+     * so Next will not bundle/stub Node "fs" -> fixes readFileSync is not a function.
+     */
+    const [{ default: PDFDocument }, qrcodeMod] = await Promise.all([import('pdfkit'), import('qrcode')]);
+
+    const QRCode: any = (qrcodeMod as any).default ?? qrcodeMod;
 
     const lockedAtISO = (pv.lockedAt ?? pv.computedAt ?? new Date()).toISOString();
 
@@ -162,23 +163,26 @@ export async function GET(
       `&assemblyId=${encodeURIComponent(assemblyId)}` +
       `&seal=${encodeURIComponent(finalSeal)}`;
 
-    // QR en dataURL
-    const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, scale: 5 });
-    const qrBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+    // ✅ QR => PNG Buffer (jamais de string dans doc.image)
+    const qrBuffer: Buffer = await QRCode.toBuffer(verifyUrl, {
+      type: 'png',
+      margin: 1,
+      scale: 5,
+    });
 
-    // PDF doc
+    // ✅ Create PDF document
     const doc = new PDFDocument({
       size: 'A4',
       margins: { top: 56, left: 56, right: 56, bottom: 56 },
       info: { Title: `PV - ${pv.title}`, Author: 'Ekklesia', Subject: 'Procès-verbal scellé' },
     });
 
-    // Fonts Figtree (commit dans repo)
+    // ✅ Embed fonts (must exist in repo)
     let figtreeRegular: Buffer;
     let figtreeBold: Buffer;
     try {
-      figtreeRegular = loadFontBuffer('src/assets/fonts/Figtree-Regular.ttf');
-      figtreeBold = loadFontBuffer('src/assets/fonts/Figtree-Bold.ttf');
+      figtreeRegular = loadFileBuffer('src/assets/fonts/Figtree-Regular.ttf');
+      figtreeBold = loadFileBuffer('src/assets/fonts/Figtree-Bold.ttf');
     } catch (e: any) {
       return NextResponse.json(
         {
@@ -199,6 +203,9 @@ export async function GET(
     const BASE = 11;
     const SMALL = 9;
 
+    // ✅ Force custom font immediately (avoid default font fallback weirdness)
+    doc.font('Figtree');
+
     // HEADER
     doc.font('Figtree').fontSize(SMALL).fillColor('#666').text('EKKLESIA • PROCÈS-VERBAL OFFICIEL');
     doc.moveDown(0.6);
@@ -218,6 +225,7 @@ export async function GET(
     // SYNTHÈSE
     doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Synthèse');
     doc.moveDown(0.4);
+
     doc.font('Figtree').fontSize(BASE).fillColor('#000');
     doc.text(`Bulletins : ${pv.totalBallots}`);
     if (pv.eligible != null) doc.text(`Éligibles : ${pv.eligible}`);
@@ -227,6 +235,7 @@ export async function GET(
     // WINNER
     doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Vainqueur');
     doc.moveDown(0.4);
+
     doc.font('Figtree').fontSize(BASE).fillColor('#000');
     doc.text(pv.winnerId);
     doc.font('Figtree').fontSize(SMALL).fillColor('#666').text(`ID : ${pv.winnerId}`);
@@ -235,6 +244,7 @@ export async function GET(
     // INTEGRITY
     doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Intégrité');
     doc.moveDown(0.4);
+
     doc.font('Figtree').fontSize(SMALL).fillColor('#666').text(
       'Ce document est scellé cryptographiquement. Toute modification invalide le scellé.'
     );
