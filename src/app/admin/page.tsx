@@ -44,6 +44,18 @@ function memberKey(member: MemberProfile): string | undefined {
 }
 
 /**
+ * v0.3.0 helper: SHA-256 stable hash (hex) using Web Crypto API.
+ * Used to "seal" results for auditability.
+ */
+async function sha256Hex(input: string): Promise<string> {
+  const data = new TextEncoder().encode(input);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(hashBuffer))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+/**
  * Custom hook to count ballots for a vote.
  * - Realtime only when vote is open
  * - One-time count when draft/locked
@@ -224,7 +236,10 @@ function VoteRow({
   const winnerId = vote.state === 'locked' ? vote.results?.winnerId : null;
   const winnerProject = winnerId ? projectsById.get(String(winnerId)) : null;
   const winnerDisplay = winnerProject
-    ? (winnerProject.title ?? (winnerProject as any).name ?? (winnerProject as any).label ?? winnerProject.id)
+    ? (winnerProject.title ??
+        (winnerProject as any).name ??
+        (winnerProject as any).label ??
+        winnerProject.id)
     : winnerId;
 
   return (
@@ -436,6 +451,10 @@ function AdminContent() {
     }
   };
 
+  /**
+   * v0.3.0: publish results + seal with resultsHash + lockedAt + computedBy/method.
+   * Hash is computed from a canonical payload that excludes serverTimestamp() fields.
+   */
   const handlePublishResults = async (vote: Vote) => {
     setIsProcessing(vote.id);
     try {
@@ -458,7 +477,22 @@ function AdminContent() {
       const assemblyRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
       const publicResultRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'public', 'lastResult');
 
+      // Hash stable: exclude server timestamps from canonical data
+      const canonicalForHash = {
+        method: 'schulze',
+        voteId: vote.id,
+        projectIds: vote.projectIds,
+        total: ballots.length,
+        winnerId: results.winnerId,
+        fullRanking: results.ranking,
+      };
+
+      const resultsHash = await sha256Hex(JSON.stringify(canonicalForHash));
+
       const resultsData = {
+        method: 'schulze' as const,
+        computedBy: user?.uid ?? null,
+        resultsHash,
         winnerId: results.winnerId,
         fullRanking: results.ranking,
         computedAt: serverTimestamp(),
@@ -470,6 +504,7 @@ function AdminContent() {
       batch.update(voteRef, {
         state: 'locked',
         results: resultsData,
+        lockedAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       });
 
@@ -479,13 +514,18 @@ function AdminContent() {
         updatedAt: serverTimestamp(),
       });
 
-      batch.set(publicResultRef, {
-        ...resultsData,
-        voteId: vote.id,
-        voteTitle: vote.question,
-        closedAt: serverTimestamp(),
-        winnerLabel: projectsById.get(String(results.winnerId))?.title || 'Vainqueur',
-      });
+      batch.set(
+        publicResultRef,
+        {
+          ...resultsData,
+          voteId: vote.id,
+          voteTitle: vote.question,
+          closedAt: serverTimestamp(),
+          lockedAt: serverTimestamp(),
+          winnerLabel: projectsById.get(String(results.winnerId))?.title || 'Vainqueur',
+        },
+        { merge: true }
+      );
 
       await batch.commit();
       toast({ title: 'Résultats publiés', description: 'Le vainqueur a été déterminé.' });
