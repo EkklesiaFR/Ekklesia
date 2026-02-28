@@ -30,7 +30,7 @@ function inferProjectId() {
 }
 
 function runningOnGoogleInfra() {
-  // App Hosting / Cloud Run exposent généralement au moins un de ces envs
+  // App Hosting / Cloud Run
   return !!(
     process.env.K_SERVICE ||
     process.env.K_REVISION ||
@@ -42,8 +42,7 @@ function runningOnGoogleInfra() {
 export function getAdminApp() {
   if (admin.apps.length) return admin.app();
 
-  // ✅ Option A (recommandé) : Service account JSON complet dans 1 variable
-  // (utile si tu veux le faire via Secrets/Env en prod, mais pas obligatoire)
+  // Option A: JSON complet (si tu veux le mettre dans un Secret)
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (serviceAccountJson) {
     const parsed = JSON.parse(serviceAccountJson);
@@ -54,7 +53,7 @@ export function getAdminApp() {
     return admin.app();
   }
 
-  // ✅ Option B : trio FIREBASE_* (local)
+  // Option B: trio local
   const projectId = inferProjectId();
   const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
   const privateKey = normalizePrivateKey(process.env.FIREBASE_PRIVATE_KEY);
@@ -71,25 +70,14 @@ export function getAdminApp() {
     return admin.app();
   }
 
-  // ✅ Option C : PROD Google (App Hosting / Cloud Run) => ADC (PAS DE CLÉ)
-  // Firebase Admin récupère automatiquement les credentials via l’identité du service.
+  // Option C: PROD App Hosting => ADC (pas besoin de private key)
   if (runningOnGoogleInfra()) {
     admin.initializeApp({ projectId });
     return admin.app();
   }
 
-  // ❌ Sinon on fail clairement
-  const missing: string[] = [];
-  if (!process.env.FIREBASE_PROJECT_ID && !process.env.GOOGLE_CLOUD_PROJECT && !process.env.GCLOUD_PROJECT) {
-    missing.push('FIREBASE_PROJECT_ID');
-  }
-  if (!process.env.FIREBASE_CLIENT_EMAIL) missing.push('FIREBASE_CLIENT_EMAIL');
-  if (!process.env.FIREBASE_PRIVATE_KEY) missing.push('FIREBASE_PRIVATE_KEY');
-
   throw new Error(
-    `Missing Firebase Admin credentials. Provide FIREBASE_SERVICE_ACCOUNT or FIREBASE_* env vars. Missing: ${missing.join(
-      ', '
-    )}`
+    'Firebase Admin init failed: Provide FIREBASE_SERVICE_ACCOUNT or FIREBASE_PROJECT_ID/FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY (local).'
   );
 }
 

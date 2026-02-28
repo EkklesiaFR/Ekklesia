@@ -10,12 +10,7 @@ import { computeFinalSeal, type RankingRow } from '@/lib/pv/seal';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-type PdfDocLike = {
-  on: (evt: string, cb: (arg?: any) => void) => void;
-  end: () => void;
-};
-
-function bufferFromStream(doc: PdfDocLike): Promise<Buffer> {
+function bufferFromStream(doc: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     doc.on('data', (c: any) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
@@ -84,31 +79,35 @@ function extractPVFromVote(voteId: string, voteData: any) {
   };
 }
 
-function assertAdminEnv() {
-  const missing: string[] = [];
-  if (!process.env.FIREBASE_PROJECT_ID) missing.push('FIREBASE_PROJECT_ID');
-  if (!process.env.FIREBASE_CLIENT_EMAIL) missing.push('FIREBASE_CLIENT_EMAIL');
-  if (!process.env.FIREBASE_PRIVATE_KEY) missing.push('FIREBASE_PRIVATE_KEY');
-  return missing;
-}
-
-function loadFont(relPath: string) {
+function loadFontBuffer(relPath: string) {
   const p = path.join(process.cwd(), relPath);
   return fs.readFileSync(p);
 }
 
-export async function GET(_req: Request, { params }: { params: { assemblyId: string; voteId: string } }) {
+export async function GET(
+  _req: Request,
+  { params }: { params: { assemblyId: string; voteId: string } }
+) {
   try {
-    // 1) Env check
-    const missing = assertAdminEnv();
-    if (missing.length) {
-      return NextResponse.json({ error: 'Missing Firebase Admin credentials', missing }, { status: 500 });
-    }
-
     const { assemblyId, voteId } = params;
 
-    // 2) Firestore
-    const db = getAdminDb();
+    // ✅ IMPORTANT : pas de check env ici.
+    // En prod App Hosting, Firebase Admin peut utiliser ADC sans FIREBASE_PRIVATE_KEY.
+    let db;
+    try {
+      db = getAdminDb();
+    } catch (e: any) {
+      return NextResponse.json(
+        {
+          error: 'Firebase Admin init failed',
+          message: e?.message ?? String(e),
+          hint:
+            'Sur App Hosting, utilisez ADC (pas besoin de FIREBASE_PRIVATE_KEY). Si ensuite permission-denied => IAM Firestore.',
+        },
+        { status: 500 }
+      );
+    }
+
     const snap = await db.doc(`assemblies/${assemblyId}/votes/${voteId}`).get();
 
     if (!snap.exists) {
@@ -134,13 +133,11 @@ export async function GET(_req: Request, { params }: { params: { assemblyId: str
       );
     }
 
-    // 3) Dynamic imports
-    // ✅ pdfkit standalone = pas de Helvetica.afm via fs
-    const pdfkitMod: any = await import('pdfkit/js/pdfkit.standalone.js');
-    const PDFDocument: any = pdfkitMod.default ?? pdfkitMod;
-
-    const qrMod: any = await import('qrcode');
-    const QRCode: any = qrMod.default ?? qrMod;
+    // pdfkit standalone => évite ENOENT Helvetica.afm
+    const [{ default: PDFDocument }, QRCode] = await Promise.all([
+      import('pdfkit/js/pdfkit.standalone.js'),
+      import('qrcode'),
+    ]);
 
     const lockedAtISO = (pv.lockedAt ?? pv.computedAt ?? new Date()).toISOString();
 
@@ -158,39 +155,44 @@ export async function GET(_req: Request, { params }: { params: { assemblyId: str
       })),
     });
 
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9010';
-    const verifyUrl = `${appUrl}/verify?voteId=${encodeURIComponent(voteId)}&assemblyId=${encodeURIComponent(
-      assemblyId
-    )}&seal=${finalSeal}`;
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:9002';
+    const verifyUrl =
+      `${appUrl}/verify` +
+      `?voteId=${encodeURIComponent(voteId)}` +
+      `&assemblyId=${encodeURIComponent(assemblyId)}` +
+      `&seal=${encodeURIComponent(finalSeal)}`;
 
-    // ✅ QR en DataURL (évite pdfkit.image(Buffer) -> fs.readFileSync interne)
-    const qrDataUrl: string = await QRCode.toDataURL(verifyUrl, { margin: 1, scale: 5 });
+    // QR en dataURL
+    const qrDataUrl = await QRCode.toDataURL(verifyUrl, { margin: 1, scale: 5 });
+    const qrBuffer = Buffer.from(qrDataUrl.split(',')[1], 'base64');
 
-    // 4) PDF
-    const doc: any = new PDFDocument({
+    // PDF doc
+    const doc = new PDFDocument({
       size: 'A4',
       margins: { top: 56, left: 56, right: 56, bottom: 56 },
       info: { Title: `PV - ${pv.title}`, Author: 'Ekklesia', Subject: 'Procès-verbal scellé' },
     });
 
-    // ✅ Fonts Figtree (TTF)
+    // Fonts Figtree (commit dans repo)
+    let figtreeRegular: Buffer;
+    let figtreeBold: Buffer;
     try {
-      const regular = loadFont('src/assets/fonts/Figtree-Regular.ttf');
-      const bold = loadFont('src/assets/fonts/Figtree-Bold.ttf');
-      doc.registerFont('Figtree', regular);
-      doc.registerFont('FigtreeBold', bold);
-      doc.font('Figtree');
+      figtreeRegular = loadFontBuffer('src/assets/fonts/Figtree-Regular.ttf');
+      figtreeBold = loadFontBuffer('src/assets/fonts/Figtree-Bold.ttf');
     } catch (e: any) {
       return NextResponse.json(
         {
           error: 'Missing PDF fonts',
           message:
-            "Ajoute les fichiers : src/assets/fonts/Figtree-Regular.ttf et src/assets/fonts/Figtree-Bold.ttf",
+            "Impossible de charger les polices. Ajoute ces fichiers : src/assets/fonts/Figtree-Regular.ttf et src/assets/fonts/Figtree-Bold.ttf",
           detail: e?.message ?? String(e),
         },
         { status: 500 }
       );
     }
+
+    doc.registerFont('Figtree', figtreeRegular);
+    doc.registerFont('FigtreeBold', figtreeBold);
 
     const H1 = 22;
     const H2 = 13;
@@ -216,7 +218,6 @@ export async function GET(_req: Request, { params }: { params: { assemblyId: str
     // SYNTHÈSE
     doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Synthèse');
     doc.moveDown(0.4);
-
     doc.font('Figtree').fontSize(BASE).fillColor('#000');
     doc.text(`Bulletins : ${pv.totalBallots}`);
     if (pv.eligible != null) doc.text(`Éligibles : ${pv.eligible}`);
@@ -226,7 +227,6 @@ export async function GET(_req: Request, { params }: { params: { assemblyId: str
     // WINNER
     doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Vainqueur');
     doc.moveDown(0.4);
-
     doc.font('Figtree').fontSize(BASE).fillColor('#000');
     doc.text(pv.winnerId);
     doc.font('Figtree').fontSize(SMALL).fillColor('#666').text(`ID : ${pv.winnerId}`);
@@ -235,7 +235,6 @@ export async function GET(_req: Request, { params }: { params: { assemblyId: str
     // INTEGRITY
     doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Intégrité');
     doc.moveDown(0.4);
-
     doc.font('Figtree').fontSize(SMALL).fillColor('#666').text(
       'Ce document est scellé cryptographiquement. Toute modification invalide le scellé.'
     );
@@ -249,7 +248,7 @@ export async function GET(_req: Request, { params }: { params: { assemblyId: str
     // QR CODE
     const qrX = 56 + 340;
     const qrY = doc.y - 64;
-    doc.image(qrDataUrl, qrX, qrY, { width: 120, height: 120 });
+    doc.image(qrBuffer, qrX, qrY, { width: 120, height: 120 });
     doc.font('Figtree').fontSize(SMALL).fillColor('#666').text('Vérifier', qrX, qrY + 122, {
       width: 120,
       align: 'center',
