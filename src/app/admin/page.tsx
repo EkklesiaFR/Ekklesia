@@ -5,6 +5,7 @@ import Link from 'next/link';
 
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
+
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -129,6 +130,7 @@ function ActiveVoteCockpit({
   const openedByUser = activeVote.openedBy
     ? members.find((m) => memberKey(m) === activeVote.openedBy)
     : null;
+
   const openedByDisplay = openedByUser
     ? openedByUser.displayName || openedByUser.email
     : activeVote.openedBy || '—';
@@ -143,11 +145,7 @@ function ActiveVoteCockpit({
         <div className="space-y-1">
           <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
           <p className="font-bold text-base">
-            {isLoading
-              ? '...'
-              : eligibleCount
-                ? `${ballotCount} / ${eligibleCount}`
-                : ballotCount}
+            {isLoading ? '...' : eligibleCount ? `${ballotCount} / ${eligibleCount}` : ballotCount}
           </p>
         </div>
 
@@ -183,7 +181,7 @@ function VoteRow({
   isProcessing,
   onOpen,
   onPublish,
-  projects,
+  projectsById,
   members,
 }: {
   assemblyId: string;
@@ -191,7 +189,7 @@ function VoteRow({
   isProcessing: boolean;
   onOpen: (voteId: string) => void;
   onPublish: (vote: Vote) => void;
-  projects: Project[];
+  projectsById: Map<string, Project>;
   members: MemberProfile[];
 }) {
   const { ballotCount, isLoading } = useVoteMetrics(assemblyId, vote);
@@ -224,7 +222,7 @@ function VoteRow({
     : vote.openedBy || '—';
 
   const winnerId = vote.state === 'locked' ? vote.results?.winnerId : null;
-  const winnerProject = winnerId ? projects.find((p) => p.id === winnerId) : null;
+  const winnerProject = winnerId ? projectsById.get(String(winnerId)) : null;
   const winnerDisplay = winnerProject
     ? (winnerProject.title ?? (winnerProject as any).name ?? (winnerProject as any).label ?? winnerProject.id)
     : winnerId;
@@ -246,11 +244,7 @@ function VoteRow({
           <div className="space-y-1">
             <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
             <p className="font-bold text-lg">
-              {isLoading
-                ? '...'
-                : eligibleCount
-                  ? `${ballotCount} / ${eligibleCount}`
-                  : ballotCount}
+              {isLoading ? '...' : eligibleCount ? `${ballotCount} / ${eligibleCount}` : ballotCount}
             </p>
           </div>
 
@@ -287,7 +281,7 @@ function VoteRow({
         </div>
       </div>
 
-      <div className="flex-shrink-0 flex flex-col gap-4">
+      <div className="flex-shrink-0 flex flex-col gap-3">
         {vote.state === 'draft' && (
           <Button
             onClick={() => onOpen(vote.id)}
@@ -308,6 +302,18 @@ function VoteRow({
             <Lock className="h-3.5 w-3.5" /> Clôturer &amp; Publier
           </Button>
         )}
+
+        {vote.state === 'locked' && (
+          <Link href={`/admin/results/${vote.id}`}>
+            <Button
+              variant="outline"
+              disabled={isProcessing}
+              className="rounded-none font-bold uppercase tracking-widest text-[10px] h-12 px-6"
+            >
+              PV
+            </Button>
+          </Link>
+        )}
       </div>
     </div>
   );
@@ -324,7 +330,6 @@ function AdminContent() {
   const [filterState, setFilterState] = useState<Vote['state'] | 'all'>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Robust votes query (no server-side orderBy)
   const votesQuery = useMemoFirebase(
     () => collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes'),
     [db]
@@ -342,10 +347,7 @@ function AdminContent() {
 
   const activeVote = useMemo(() => (votes || []).find((v) => v.state === 'open'), [votes]);
 
-  const projectsById = useMemo(
-    () => new Map((projects || []).map((p) => [p.id, p])),
-    [projects]
-  );
+  const projectsById = useMemo(() => new Map((projects || []).map((p) => [p.id, p])), [projects]);
 
   const filterLabels: Record<Vote['state'] | 'all', string> = {
     all: 'Tous',
@@ -396,7 +398,6 @@ function AdminContent() {
   const handleOpenVote = async (voteId: string) => {
     setIsProcessing(voteId);
     try {
-      // Snapshot: eligible voters count at open time (active members)
       const membersRef = collection(db, 'members');
       const eligibleQuery = query(membersRef, where('status', '==', 'active'));
       const eligibleSnap = await getCountFromServer(eligibleQuery);
@@ -546,11 +547,7 @@ function AdminContent() {
         </TabsList>
 
         <TabsContent value="sessions" className="space-y-6">
-          <ActiveVoteCockpit
-            assemblyId={DEFAULT_ASSEMBLY_ID}
-            activeVote={activeVote}
-            members={members || []}
-          />
+          <ActiveVoteCockpit assemblyId={DEFAULT_ASSEMBLY_ID} activeVote={activeVote} members={members || []} />
 
           <div className="space-y-4 p-4 border bg-secondary/30">
             <div className="flex items-center justify-between gap-4">
@@ -588,7 +585,7 @@ function AdminContent() {
               isProcessing={isProcessing === v.id}
               onOpen={handleOpenVote}
               onPublish={handlePublishResults}
-              projects={projects || []}
+              projectsById={projectsById}
               members={members || []}
             />
           ))}
@@ -596,52 +593,98 @@ function AdminContent() {
 
         <TabsContent value="results" className="space-y-8">
           {(votes ?? [])
-            .filter((v) => !!v.results?.computedAt)
-            .map((v) => (
-              <div key={v.id} className="p-8 border bg-white space-y-8">
-                <div className="flex justify-between items-start border-b pb-6">
-                  <div>
-                    <Badge className="bg-black text-white rounded-none uppercase text-[9px]">PV Certifié</Badge>
-                    <h3 className="text-2xl font-bold">{v.question}</h3>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
-                    <p className="text-2xl font-black">{v.results?.total ?? 0}</p>
-                  </div>
-                </div>
+            .filter((v) => v.state === 'locked' && !!v.results?.computedAt)
+            .sort((a, b) => {
+              const da = (a.results?.computedAt as any)?.toMillis?.() ?? 0;
+              const dbb = (b.results?.computedAt as any)?.toMillis?.() ?? 0;
+              return dbb - da;
+            })
+            .map((v) => {
+              const totalBallots = (v.results as any)?.total ?? (v.results as any)?.totalBallots ?? 0;
+              const eligible = v.eligibleCountAtOpen ?? null;
+              const participationPct =
+                eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                  <div className="space-y-4">
-                    <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Vainqueur</p>
-                    <p className="text-2xl font-black uppercase text-primary">
-                      {projectsById.get(v.results?.winnerId ?? '')?.title || '—'}
-                    </p>
-                  </div>
+              const winnerTitle =
+                projectsById.get(v.results?.winnerId ?? '')?.title ||
+                (v.results?.winnerId ? String(v.results?.winnerId) : '—');
 
-                  <div className="space-y-4">
-                    <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                      Classement complet
-                    </p>
+              const computedAtFormatted =
+                (v.results as any)?.computedAt?.toDate
+                  ? (v.results as any).computedAt.toDate().toLocaleString('fr-FR', {
+                      day: '2-digit',
+                      month: '2-digit',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })
+                  : '—';
+
+              return (
+                <div key={v.id} className="p-8 border bg-white space-y-8">
+                  <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 border-b pb-6">
                     <div className="space-y-2">
-                      {(v.results?.fullRanking ?? []).map((r: any, idx: number) => (
-                        <div
-                          key={r.id}
-                          className="flex justify-between items-center text-sm border-b border-secondary pb-2"
+                      <Badge className="bg-black text-white rounded-none uppercase text-[9px]">Scrutin clôturé</Badge>
+                      <h3 className="text-2xl font-bold leading-tight">{v.question}</h3>
+
+                      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground pt-2">
+                        <span>PV : {computedAtFormatted}</span>
+                        <span>Éligibles : {eligible ?? '—'}</span>
+                        <span>Bulletins : {totalBallots}</span>
+                        <span>Participation : {participationPct !== null ? `${participationPct}%` : '—'}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                      <Link href={`/admin/results/${v.id}`}>
+                        <Button
+                          variant="outline"
+                          className="rounded-none font-bold uppercase tracking-widest text-[10px] h-10 px-6"
                         >
-                          <span className="font-bold flex items-center gap-3">
-                            <span className="w-5 h-5 flex items-center justify-center bg-secondary text-[10px]">
-                              {idx + 1}
+                          Voir PV
+                        </Button>
+                      </Link>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <div className="space-y-4">
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-primary">Vainqueur</p>
+                      <p className="text-2xl font-black uppercase text-primary">{winnerTitle}</p>
+                    </div>
+
+                    <div className="space-y-4">
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                        Classement (top 5)
+                      </p>
+
+                      <div className="space-y-2">
+                        {(v.results?.fullRanking ?? []).slice(0, 5).map((r: any, idx: number) => (
+                          <div
+                            key={r.id}
+                            className="flex justify-between items-center text-sm border-b border-secondary pb-2"
+                          >
+                            <span className="font-bold flex items-center gap-3">
+                              <span className="w-6 h-6 flex items-center justify-center bg-secondary text-[10px] font-black">
+                                {idx + 1}
+                              </span>
+                              {projectsById.get(r.id)?.title ?? r.id}
                             </span>
-                            {projectsById.get(r.id)?.title ?? r.id}
-                          </span>
-                          <span className="text-muted-foreground font-mono text-xs">{r.score ?? r.rank ?? '—'}</span>
-                        </div>
-                      ))}
+                            <span className="text-muted-foreground font-mono text-xs">{r.score ?? r.rank ?? '—'}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {((v.results?.fullRanking ?? []).length ?? 0) > 5 && (
+                        <p className="text-[10px] text-muted-foreground italic pt-2">
+                          Voir le PV pour le classement complet.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
         </TabsContent>
 
         <TabsContent value="projects" className="space-y-4">
@@ -654,6 +697,7 @@ function AdminContent() {
                 <h3 className="text-lg font-bold">{p.title}</h3>
                 <p className="text-xs text-muted-foreground">{p.budget}</p>
               </div>
+
               <div className="flex gap-2">
                 <Button
                   size="sm"
