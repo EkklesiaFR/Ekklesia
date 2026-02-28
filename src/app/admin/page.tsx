@@ -319,7 +319,7 @@ function VoteRow({
         )}
 
         {vote.state === 'locked' && (
-          <Link href={`/admin/results/${vote.id}`}>
+          <Link href={`/results/${vote.id}`}>
             <Button
               variant="outline"
               disabled={isProcessing}
@@ -676,7 +676,7 @@ function AdminContent() {
                     </div>
 
                     <div className="flex gap-3">
-                      <Link href={`/admin/results/${v.id}`}>
+                      <Link href={`/results/${v.id}`}>
                         <Button
                           variant="outline"
                           className="rounded-none font-bold uppercase tracking-widest text-[10px] h-10 px-6"

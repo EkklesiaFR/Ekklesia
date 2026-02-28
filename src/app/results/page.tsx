@@ -13,8 +13,65 @@ import type { Vote, Project } from '@/types';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, Trophy } from 'lucide-react';
+import { ChevronRight, Trophy, Copy, ShieldCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from '@/hooks/use-toast';
+
+function formatFr(ts: any): string {
+  if (!ts) return '—';
+  try {
+    const d = ts?.toDate ? ts.toDate() : null;
+    if (!d) return '—';
+    return d.toLocaleString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return '—';
+  }
+}
+
+function CopyRow({ label, value }: { label: string; value?: string | null }) {
+  const v = (value ?? '').trim();
+  const canCopy = !!v && typeof navigator !== 'undefined' && !!navigator.clipboard;
+
+  const onCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(v);
+      toast({ title: 'Copié', description: `${label} copié dans le presse-papier.` });
+    } catch (e) {
+      console.error(e);
+      toast({
+        variant: 'destructive',
+        title: 'Erreur',
+        description: "Impossible de copier.",
+      });
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3 border bg-white px-4 py-3">
+      <div className="min-w-0">
+        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{label}</p>
+        <p className="font-mono text-xs break-all">{v || '—'}</p>
+      </div>
+
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={!canCopy}
+        onClick={onCopy}
+        className="rounded-none h-9 px-3 gap-2"
+        title={canCopy ? `Copier ${label}` : 'Rien à copier'}
+      >
+        <Copy className="h-4 w-4" /> Copier
+      </Button>
+    </div>
+  );
+}
 
 function ResultsContent() {
   const db = useFirestore();
@@ -32,16 +89,10 @@ function ResultsContent() {
   );
   const { data: votes, isLoading: isVotesLoading } = useCollection<Vote>(votesQuery);
 
-  const projectsQuery = useMemoFirebase(
-    () => query(collection(db, 'projects'), limit(200)),
-    [db]
-  );
+  const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(200)), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  const projectsById = useMemo(
-    () => new Map((projects ?? []).map((p) => [p.id, p])),
-    [projects]
-  );
+  const projectsById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
 
   if (isVotesLoading) {
     return (
@@ -69,25 +120,20 @@ function ResultsContent() {
           {votes.map((vote) => {
             const isSelected = selectedVoteId === vote.id;
 
-            const totalBallots =
-              (vote.results as any)?.total ?? (vote.results as any)?.totalBallots ?? 0;
+            const totalBallots = (vote.results as any)?.total ?? (vote.results as any)?.totalBallots ?? 0;
             const eligible = vote.eligibleCountAtOpen ?? null;
-            const participationPct =
-              eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
+            const participationPct = eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
             const winnerId = vote.results?.winnerId ?? null;
             const winner = winnerId ? projectsById.get(String(winnerId)) : null;
 
-            const computedAtFormatted =
-              (vote.results as any)?.computedAt?.toDate
-                ? (vote.results as any).computedAt.toDate().toLocaleString('fr-FR', {
-                    day: '2-digit',
-                    month: '2-digit',
-                    year: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })
-                : '—';
+            const computedAtFormatted = formatFr((vote.results as any)?.computedAt);
+            const lockedAtFormatted = formatFr((vote as any)?.lockedAt);
+
+            const method = (vote.results as any)?.method ?? '—';
+            const computedBy = (vote.results as any)?.computedBy ?? '—';
+            const resultsHash = (vote.results as any)?.resultsHash ?? null;
+            const isSealed = !!resultsHash;
 
             const top5 = (vote.results?.fullRanking ?? []).slice(0, 5);
 
@@ -111,8 +157,20 @@ function ResultsContent() {
                       <Badge className="bg-black text-white rounded-none uppercase text-[9px]">
                         Scrutin archivé
                       </Badge>
+
+                      {isSealed && (
+                        <Badge className="rounded-none uppercase text-[9px] bg-primary/10 text-primary border border-primary/20 flex items-center gap-2">
+                          <ShieldCheck className="h-3.5 w-3.5" />
+                          Résultat scellé
+                        </Badge>
+                      )}
+
                       <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
                         PV : {computedAtFormatted}
+                      </span>
+
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                        Clôture : {lockedAtFormatted}
                       </span>
                     </div>
 
@@ -122,14 +180,13 @@ function ResultsContent() {
                       <span>Bulletins : {totalBallots}</span>
                       <span>Éligibles : {eligible ?? '—'}</span>
                       <span>Participation : {participationPct !== null ? `${participationPct}%` : '—'}</span>
+                      <span>Méthode : {method}</span>
                     </div>
                   </div>
 
                   <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto">
                     <div className="text-right">
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                        Vainqueur
-                      </p>
+                      <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Vainqueur</p>
                       <p className="text-sm font-black uppercase text-primary flex items-center justify-end gap-2">
                         <Trophy className="h-4 w-4" />
                         {winner?.title ?? (winnerId ? String(winnerId) : '—')}
@@ -137,10 +194,7 @@ function ResultsContent() {
                     </div>
 
                     <ChevronRight
-                      className={cn(
-                        'h-5 w-5 text-muted-foreground transition-transform',
-                        isSelected && 'rotate-90'
-                      )}
+                      className={cn('h-5 w-5 text-muted-foreground transition-transform', isSelected && 'rotate-90')}
                     />
                   </div>
                 </div>
@@ -149,19 +203,13 @@ function ResultsContent() {
                   <div className="px-8 pb-12 pt-6 border-t border-border animate-in slide-in-from-top-2 space-y-10">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                       <div className="p-6 border bg-secondary/10 space-y-1">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">
-                          Bulletins
-                        </p>
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
                         <p className="text-2xl font-black">{totalBallots}</p>
                       </div>
 
                       <div className="p-6 border bg-secondary/10 space-y-1">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">
-                          Participation
-                        </p>
-                        <p className="text-2xl font-black">
-                          {participationPct !== null ? `${participationPct}%` : '—'}
-                        </p>
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
+                        <p className="text-2xl font-black">{participationPct !== null ? `${participationPct}%` : '—'}</p>
                       </div>
 
                       <div className="p-6 border bg-primary/10 ring-1 ring-primary/10 space-y-1">
@@ -172,13 +220,47 @@ function ResultsContent() {
                       </div>
                     </div>
 
+                    {/* Bloc scellé */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="text-xs uppercase tracking-[0.2em] font-bold">Intégrité</h4>
+                        <Badge
+                          className={cn(
+                            'rounded-none uppercase text-[9px]',
+                            isSealed ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-secondary text-muted-foreground'
+                          )}
+                        >
+                          {isSealed ? 'Scellé (hash)' : 'Non scellé'}
+                        </Badge>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="border bg-white px-4 py-3">
+                          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+                            computedBy
+                          </p>
+                          <p className="font-mono text-xs break-all">{computedBy}</p>
+                        </div>
+
+                        <div className="border bg-white px-4 py-3">
+                          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">lockedAt</p>
+                          <p className="font-mono text-xs">{lockedAtFormatted}</p>
+                        </div>
+
+                        <div className="border bg-white px-4 py-3">
+                          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">method</p>
+                          <p className="font-mono text-xs">{method}</p>
+                        </div>
+
+                        <CopyRow label="resultsHash" value={resultsHash} />
+                      </div>
+                    </div>
+
                     <div className="space-y-4">
                       <div className="flex items-center justify-between gap-4">
-                        <h4 className="text-xs uppercase tracking-[0.2em] font-bold">
-                          Classement (top 5)
-                        </h4>
+                        <h4 className="text-xs uppercase tracking-[0.2em] font-bold">Classement (top 5)</h4>
 
-                        <Link href={`/admin/results/${vote.id}`}>
+                        <Link href={`/results/${vote.id}`}>
                           <Button
                             variant="outline"
                             className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6"
@@ -201,28 +283,20 @@ function ResultsContent() {
                               <div
                                 className={cn(
                                   'w-10 h-10 flex items-center justify-center font-black',
-                                  idx === 0
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'bg-secondary text-muted-foreground'
+                                  idx === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
                                 )}
                               >
                                 #{idx + 1}
                               </div>
 
                               <div className="min-w-0">
-                                <p className="font-bold uppercase truncate">
-                                  {projectsById.get(r.id)?.title ?? r.id}
-                                </p>
-                                <p className="text-[10px] text-muted-foreground font-mono truncate">
-                                  {r.id}
-                                </p>
+                                <p className="font-bold uppercase truncate">{projectsById.get(r.id)?.title ?? r.id}</p>
+                                <p className="text-[10px] text-muted-foreground font-mono truncate">{r.id}</p>
                               </div>
                             </div>
 
                             <div className="text-right">
-                              <p className="text-[10px] uppercase font-bold text-muted-foreground">
-                                Score
-                              </p>
+                              <p className="text-[10px] uppercase font-bold text-muted-foreground">Score</p>
                               <p className="font-mono text-xs">{r.score ?? r.rank ?? '—'}</p>
                             </div>
                           </div>
