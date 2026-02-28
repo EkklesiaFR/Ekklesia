@@ -25,46 +25,23 @@ service cloud.firestore {
     // MEMBERS (global)
     // =========================
     match /members/{uid} {
-
-      // Read: user reads self, admin reads anyone
       allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
-
-      // List: admin only
       allow list: if isAdminActive();
 
-      // Create: self only, one-time, safe defaults + timestamps + allowed keys
+      // Create: self only, pending + member only
       allow create: if isSignedIn()
         && request.auth.uid == uid
-        && !exists(/databases/$(database)/documents/members/$(uid))
         && request.resource.data.role == "member"
-        && request.resource.data.status == "pending"
-        && request.resource.data.keys().hasAll(["createdAt", "updatedAt", "lastLoginAt"])
-        && request.resource.data.createdAt is timestamp
-        && request.resource.data.updatedAt is timestamp
-        && request.resource.data.lastLoginAt is timestamp
-        && request.resource.data.keys().hasOnly([
-          "uid", "email", "displayName", "photoURL",
-          "role", "status",
-          "createdAt", "updatedAt", "lastLoginAt"
-        ]);
+        && request.resource.data.status == "pending";
 
-      // Update: self can only update non-privileged fields (never role/status)
+      // Self update: never role/status
       allow update: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.data.role == resource.data.role
-        && request.resource.data.status == resource.data.status
-        && request.resource.data.diff(resource.data).changedKeys().hasOnly([
-          "email", "displayName", "photoURL",
-          "updatedAt", "lastLoginAt"
-        ])
-        && request.resource.data.updatedAt is timestamp
-        && request.resource.data.lastLoginAt is timestamp;
+        && request.resource.data.status == resource.data.status;
 
-      // Admin active can update anyone (including role/status)
-      // (delete interdit par défaut)
-      allow update: if isAdminActive();
-
-      allow delete: if false;
+      // Admin can update/delete
+      allow update, delete: if isAdminActive();
     }
 
     // =========================
@@ -75,13 +52,9 @@ service cloud.firestore {
       // ✅ Modèle 2: pending n'a aucun accès aux données de l'app
       allow read: if isMemberActive();
 
-      // Tu avais: allow update si admin actif et results non set
-      // Je garde la logique telle quelle.
       allow update: if isAdminActive()
         && (!("results" in resource.data) || resource.data.results == null);
 
-      // Subcollection: assemblies/{assemblyId}/members/{uid}
-      // Lecture self/admin, écriture admin only
       match /members/{uid} {
         allow read: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
         allow write: if isAdminActive();
@@ -95,17 +68,17 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
 
-        // Une fois verrouillé, pas d'update possible
+        // vote immutable after locked
         allow update: if isAdminActive() && resource.data.state != "locked";
         allow create, delete: if isAdminActive();
 
         match /ballots/{uid} {
-          // ✅ Modèle 2: seul un membre actif peut écrire/relire son ballot en open
+          // ✅ ballot visible/écrivable seulement si vote open + membre actif + propriétaire
           allow get, create, update: if isMemberActive()
             && request.auth.uid == uid
             && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
 
-          // List: admin only (audit)
+          // Audit
           allow list: if isAdminActive();
 
           allow delete: if false;
@@ -123,7 +96,6 @@ service cloud.firestore {
 
       allow create: if isMemberActive();
 
-      // admin, ou owner tant que submitted (comme tu avais)
       allow update, delete: if isAdminActive()
         || (isSignedIn()
             && request.auth.uid == resource.data.ownerUid
