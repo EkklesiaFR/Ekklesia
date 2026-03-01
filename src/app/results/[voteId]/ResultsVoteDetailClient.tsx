@@ -14,7 +14,15 @@ import type { Vote, Project } from '@/types';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, Copy, Download, ShieldCheck, Trophy } from 'lucide-react';
+import {
+  ChevronLeft,
+  Copy,
+  Download,
+  ShieldCheck,
+  Trophy,
+  CheckCircle2,
+  XCircle,
+} from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
@@ -70,6 +78,44 @@ function CopyRow({ label, value }: { label: string; value?: string | null }) {
   );
 }
 
+function StatCard({
+  label,
+  value,
+  sub,
+  tone = 'neutral',
+}: {
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  tone?: 'neutral' | 'good' | 'bad' | 'brand';
+}) {
+  const toneClass =
+    tone === 'brand'
+      ? 'bg-primary/10 ring-1 ring-primary/10'
+      : tone === 'good'
+        ? 'bg-primary/5 ring-1 ring-primary/10'
+        : tone === 'bad'
+          ? 'bg-destructive/5 ring-1 ring-destructive/10'
+          : 'bg-secondary/10';
+
+  const labelClass =
+    tone === 'brand'
+      ? 'text-primary'
+      : tone === 'bad'
+        ? 'text-destructive'
+        : 'text-muted-foreground';
+
+  return (
+    <div className={cn('p-6 border space-y-1', toneClass)}>
+      <p className={cn('text-[10px] uppercase font-bold', labelClass)}>{label}</p>
+      <div className="flex items-end justify-between gap-3">
+        <p className="text-2xl font-black">{value}</p>
+        {sub ? <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{sub}</p> : null}
+      </div>
+    </div>
+  );
+}
+
 function ResultsDetailContent({ voteId }: { voteId: string }) {
   const db = useFirestore();
 
@@ -98,7 +144,10 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
         <p className="text-xs uppercase tracking-widest font-bold text-muted-foreground">PV introuvable</p>
         <div className="pt-8">
           <Link href="/results">
-            <Button variant="outline" className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6 gap-2">
+            <Button
+              variant="outline"
+              className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6 gap-2"
+            >
               <ChevronLeft className="h-4 w-4" /> Retour archives
             </Button>
           </Link>
@@ -109,7 +158,19 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
 
   const totalBallots = (vote.results as any)?.total ?? (vote.results as any)?.totalBallots ?? 0;
   const eligible = (vote as any).eligibleCountAtOpen ?? null;
-  const participationPct = eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
+
+  const participationPct =
+    eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
+
+  const abstentionPct =
+    eligible && eligible > 0 && participationPct !== null ? Math.max(0, 100 - participationPct) : null;
+
+  const quorumPct = Number((vote as any).quorumPct ?? 0) || 0;
+
+  const isValid =
+    quorumPct <= 0 ? true : participationPct !== null ? participationPct >= quorumPct : false;
+
+  const validityLabel = isValid ? 'Valide' : 'Invalide';
 
   const computedAtFormatted = formatFr((vote.results as any)?.computedAt);
   const lockedAtFormatted = formatFr((vote as any)?.lockedAt);
@@ -133,10 +194,7 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
     <div className="space-y-12 animate-in fade-in duration-700">
       <div className="flex items-center justify-between gap-6">
         <Link href="/results">
-          <Button
-            variant="outline"
-            className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6 gap-2"
-          >
+          <Button variant="outline" className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6 gap-2">
             <ChevronLeft className="h-4 w-4" /> Archives
           </Button>
         </Link>
@@ -177,28 +235,80 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
           <span>Clôture : {lockedAtFormatted}</span>
           <span>Méthode : {method}</span>
         </div>
+
+        {/* Ligne “règlement” courte */}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+          <span>Quorum : {quorumPct}%</span>
+          <span>Validité : {validityLabel}</span>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        <div className="p-6 border bg-secondary/10 space-y-1">
-          <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
-          <p className="text-2xl font-black">{totalBallots}</p>
-        </div>
+      {/* ✅ 4 cards stats */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <StatCard
+          label="Bulletins"
+          value={totalBallots}
+          sub={eligible && eligible > 0 ? `${totalBallots} / ${eligible}` : undefined}
+        />
 
-        <div className="p-6 border bg-secondary/10 space-y-1">
-          <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
-          <p className="text-2xl font-black">{participationPct !== null ? `${participationPct}%` : '—'}</p>
-        </div>
+        <StatCard
+          label="Participation"
+          value={participationPct !== null ? `${participationPct}%` : '—'}
+          sub={eligible && eligible > 0 && abstentionPct !== null ? `abstention ${abstentionPct}%` : undefined}
+        />
 
-        <div className="p-6 border bg-primary/10 ring-1 ring-primary/10 space-y-2">
-          <p className="text-[10px] uppercase font-bold text-primary">Vainqueur</p>
-          <p className="text-lg font-black uppercase text-primary leading-tight flex items-center gap-2">
-            <Trophy className="h-5 w-5" />
-            {winner?.title ?? (winnerId ? String(winnerId) : '—')}
-          </p>
-          <p className="text-[10px] text-muted-foreground font-mono break-all">{winnerId ?? '—'}</p>
-        </div>
+        <StatCard label="Quorum" value={`${quorumPct}%`} sub="seuil requis" />
+
+        <StatCard
+          label="Validité"
+          value={
+            <span className={cn(isValid ? 'text-primary' : 'text-destructive')}>
+              {validityLabel}
+            </span>
+          }
+          sub={quorumPct > 0 ? `seuil ${quorumPct}%` : 'aucun seuil'}
+          tone={isValid ? 'good' : 'bad'}
+        />
       </div>
+
+      {/* ✅ Vainqueur en grand */}
+      <section className={cn('border p-8', isValid ? 'bg-primary/5 border-primary/20' : 'bg-secondary/10')}>
+        <div className="flex items-start justify-between gap-6">
+          <div className="space-y-3 min-w-0">
+            <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Vainqueur</p>
+
+            <div className="flex items-center gap-3">
+              <div
+                className={cn(
+                  'w-12 h-12 flex items-center justify-center',
+                  isValid ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                )}
+              >
+                <Trophy className="h-6 w-6" />
+              </div>
+
+              <div className="min-w-0">
+                <h2 className="text-2xl md:text-3xl font-black uppercase leading-tight text-black truncate">
+                  {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                </h2>
+                <p className="text-[10px] text-muted-foreground font-mono break-all">{winnerId ?? '—'}</p>
+              </div>
+            </div>
+          </div>
+
+          <Badge
+            className={cn(
+              'rounded-none uppercase text-[9px] h-7 px-3 flex items-center gap-2',
+              isValid
+                ? 'bg-primary/10 text-primary border border-primary/20'
+                : 'bg-destructive/10 text-destructive border border-destructive/20'
+            )}
+          >
+            {isValid ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+            {validityLabel}
+          </Badge>
+        </div>
+      </section>
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
