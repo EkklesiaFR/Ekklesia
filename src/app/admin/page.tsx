@@ -129,6 +129,9 @@ function ActiveVoteCockpit({
     eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
   const abstention = participation !== null ? 100 - participation : null;
 
+  const quorumPct = (activeVote as any).quorumPct ?? 0;
+  const isValid = participation !== null ? participation >= quorumPct : null;
+
   const openedAtFormatted = activeVote.openedAt?.toDate
     ? activeVote.openedAt.toDate().toLocaleString('fr-FR', {
         day: '2-digit',
@@ -153,7 +156,7 @@ function ActiveVoteCockpit({
         Vote en cours : <span className="font-normal">{activeVote.question}</span>
       </h4>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-4 text-sm">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-x-6 gap-y-4 text-sm">
         <div className="space-y-1">
           <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
           <p className="font-bold text-base">
@@ -169,6 +172,22 @@ function ActiveVoteCockpit({
         <div className="space-y-1">
           <p className="text-[10px] uppercase font-bold text-muted-foreground">Abstention</p>
           <p className="font-bold text-base">{abstention !== null ? `${abstention}%` : '—'}</p>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum</p>
+          <p className="font-bold text-base">{quorumPct}%</p>
+        </div>
+
+        <div className="space-y-1">
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Validité</p>
+          <p className="font-bold text-base">
+            {isValid === null ? '—' : isValid ? (
+              <span className="text-green-700">Valide</span>
+            ) : (
+              <span className="text-red-700">Invalide</span>
+            )}
+          </p>
         </div>
 
         <div className="space-y-1">
@@ -211,6 +230,9 @@ function VoteRow({
     eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
   const abstention = participation !== null ? 100 - participation : null;
 
+  const quorumPct = (vote as any).quorumPct ?? 0;
+  const isValid = participation !== null ? participation >= quorumPct : null;
+
   const stateBadgeClass =
     {
       draft: 'bg-gray-400 text-white',
@@ -250,7 +272,7 @@ function VoteRow({
           <h3 className="text-xl font-bold">{vote.question}</h3>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-sm pr-8">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-x-6 gap-y-3 text-sm pr-8">
           <div className="space-y-1">
             <p className="text-[10px] uppercase font-bold text-muted-foreground">Éligibles</p>
             <p className="font-bold text-lg">{eligibleCount ?? '—'}</p>
@@ -274,11 +296,27 @@ function VoteRow({
           </div>
 
           <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum</p>
+            <p className="font-bold text-lg">{quorumPct}%</p>
+          </div>
+
+          <div className="space-y-1">
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Validité</p>
+            <p className="font-bold text-lg">
+              {isValid === null ? '—' : isValid ? (
+                <span className="text-green-700">Valide</span>
+              ) : (
+                <span className="text-red-700">Invalide</span>
+              )}
+            </p>
+          </div>
+
+          <div className="space-y-1">
             <p className="text-[10px] uppercase font-bold text-muted-foreground">Ouvert le</p>
             <p className="font-mono text-xs">{openedAtFormatted}</p>
           </div>
 
-          <div className="space-y-1">
+          <div className="space-y-1 md:col-span-2">
             <p className="text-[10px] uppercase font-bold text-muted-foreground">Ouvert par</p>
             <p className="font-mono text-xs truncate" title={openedByDisplay}>
               {openedByDisplay}
@@ -645,6 +683,9 @@ function AdminContent() {
               const participationPct =
                 eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
+              const quorumPct = (v as any).quorumPct ?? 0;
+              const isValid = participationPct !== null ? participationPct >= quorumPct : null;
+
               const winnerTitle =
                 projectsById.get(v.results?.winnerId ?? '')?.title ||
                 (v.results?.winnerId ? String(v.results?.winnerId) : '—');
@@ -672,6 +713,17 @@ function AdminContent() {
                         <span>Éligibles : {eligible ?? '—'}</span>
                         <span>Bulletins : {totalBallots}</span>
                         <span>Participation : {participationPct !== null ? `${participationPct}%` : '—'}</span>
+                        <span>Quorum : {quorumPct}%</span>
+                        <span>
+                          Validité :{' '}
+                          {isValid === null ? (
+                            '—'
+                          ) : isValid ? (
+                            <span className="text-green-700">Valide</span>
+                          ) : (
+                            <span className="text-red-700">Invalide</span>
+                          )}
+                        </span>
                       </div>
                     </div>
 
