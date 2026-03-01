@@ -10,6 +10,8 @@ import { computeFinalSeal, type RankingRow } from '@/lib/pv/seal';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+type RouteParams = { assemblyId: string; voteId: string };
+
 function bufferFromStream(doc: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -25,9 +27,9 @@ function pad(n: number) {
 }
 
 function formatDateFR(d: Date) {
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(
-    d.getMinutes()
-  )}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(
+    d.getHours()
+  )}:${pad(d.getMinutes())}`;
 }
 
 function tsToDate(ts: any): Date | null {
@@ -51,12 +53,18 @@ function extractPVFromVote(voteId: string, voteData: any) {
   const winnerId = (voteData?.results?.winnerId ?? null) as string | null;
 
   const totalBallots =
-    Number(voteData?.results?.total ?? voteData?.results?.totalBallots ?? voteData?.ballotsCount ?? 0) || 0;
+    Number(voteData?.results?.total ??
+      voteData?.results?.totalBallots ??
+      voteData?.ballotsCount ??
+      0) || 0;
 
   const eligible = Number(voteData?.eligibleCountAtOpen ?? voteData?.eligibleCount ?? 0) || 0;
   const participationPct = eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
-  const fullRanking = Array.isArray(voteData?.results?.fullRanking) ? voteData.results.fullRanking : [];
+  const fullRanking = Array.isArray(voteData?.results?.fullRanking)
+    ? voteData.results.fullRanking
+    : [];
+
   const ranking: RankingRow[] = fullRanking.map((r: any) => ({
     projectId: String(r.id ?? r.projectId ?? ''),
     title: String(r.title ?? ''),
@@ -86,12 +94,11 @@ function loadFileBuffer(relPathFromRepoRoot: string): Buffer {
 
 export async function GET(
   _req: Request,
-  { params }: { params: { assemblyId: string; voteId: string } }
+  context: { params: RouteParams | Promise<RouteParams> }
 ) {
   try {
-    const { assemblyId, voteId } = params;
+    const { assemblyId, voteId } = await context.params;
 
-    // ✅ IMPORTANT : pas de check env ici. App Hosting => ADC possible.
     let db;
     try {
       db = getAdminDb();
@@ -131,12 +138,10 @@ export async function GET(
       );
     }
 
-    /**
-     * ✅ IMPORTANT:
-     * We import "pdfkit" (NOT pdfkit.standalone) because we externalize it in next.config.ts
-     * so Next will not bundle/stub Node "fs" -> fixes readFileSync is not a function.
-     */
-    const [{ default: PDFDocument }, qrcodeMod] = await Promise.all([import('pdfkit'), import('qrcode')]);
+    const [{ default: PDFDocument }, qrcodeMod] = await Promise.all([
+      import('pdfkit'),
+      import('qrcode'),
+    ]);
 
     const QRCode: any = (qrcodeMod as any).default ?? qrcodeMod;
 
@@ -163,23 +168,21 @@ export async function GET(
       `&assemblyId=${encodeURIComponent(assemblyId)}` +
       `&seal=${encodeURIComponent(finalSeal)}`;
 
-    // ✅ QR => PNG Buffer (jamais de string dans doc.image)
     const qrBuffer: Buffer = await QRCode.toBuffer(verifyUrl, {
       type: 'png',
       margin: 1,
       scale: 5,
     });
 
-    // ✅ Create PDF document
     const doc = new PDFDocument({
       size: 'A4',
       margins: { top: 56, left: 56, right: 56, bottom: 56 },
       info: { Title: `PV - ${pv.title}`, Author: 'Ekklesia', Subject: 'Procès-verbal scellé' },
     });
 
-    // ✅ Embed fonts (must exist in repo)
     let figtreeRegular: Buffer;
     let figtreeBold: Buffer;
+
     try {
       figtreeRegular = loadFileBuffer('src/assets/fonts/Figtree-Regular.ttf');
       figtreeBold = loadFileBuffer('src/assets/fonts/Figtree-Bold.ttf');
@@ -198,118 +201,34 @@ export async function GET(
     doc.registerFont('Figtree', figtreeRegular);
     doc.registerFont('FigtreeBold', figtreeBold);
 
-    const H1 = 22;
-    const H2 = 13;
-    const BASE = 11;
-    const SMALL = 9;
+    doc.font('Figtree').fontSize(22).text(pv.title);
+    doc.moveDown();
 
-    // ✅ Force custom font immediately (avoid default font fallback weirdness)
-    doc.font('Figtree');
-
-    // HEADER
-    doc.font('Figtree').fontSize(SMALL).fillColor('#666').text('EKKLESIA • PROCÈS-VERBAL OFFICIEL');
-    doc.moveDown(0.6);
-
-    doc.font('FigtreeBold').fontSize(H1).fillColor('#000').text(pv.title);
-    doc.moveDown(0.7);
-
-    doc.font('Figtree').fontSize(BASE).fillColor('#000');
+    doc.fontSize(11);
     doc.text(`Vote ID : ${voteId}`);
     doc.text(`Assemblée : ${assemblyId}`);
-    doc.text(`État : ${pv.state.toUpperCase()}`);
-    doc.text(`Méthode : ${pv.method}`);
-    doc.text(`PV : ${pv.computedAt ? formatDateFR(pv.computedAt) : '—'}`);
-    doc.text(`Clôture : ${pv.lockedAt ? formatDateFR(pv.lockedAt) : '—'}`);
-    doc.moveDown(0.9);
-
-    // SYNTHÈSE
-    doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Synthèse');
-    doc.moveDown(0.4);
-
-    doc.font('Figtree').fontSize(BASE).fillColor('#000');
+    doc.text(`État : ${pv.state}`);
     doc.text(`Bulletins : ${pv.totalBallots}`);
     if (pv.eligible != null) doc.text(`Éligibles : ${pv.eligible}`);
-    doc.text(`Participation : ${pv.participationPct != null ? `${pv.participationPct}%` : '—'}`);
-    doc.moveDown(0.9);
+    doc.text(`Participation : ${pv.participationPct ?? '—'}%`);
+    doc.moveDown();
 
-    // WINNER
-    doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Vainqueur');
-    doc.moveDown(0.4);
+    doc.text(`Vainqueur : ${pv.winnerId}`);
+    doc.moveDown();
 
-    doc.font('Figtree').fontSize(BASE).fillColor('#000');
-    doc.text(pv.winnerId);
-    doc.font('Figtree').fontSize(SMALL).fillColor('#666').text(`ID : ${pv.winnerId}`);
-    doc.moveDown(0.9);
+    doc.fontSize(9).fillColor('#666');
+    doc.text(`Seal : ${finalSeal}`);
+    doc.moveDown();
 
-    // INTEGRITY
-    doc.font('FigtreeBold').fontSize(H2).fillColor('#000').text('Intégrité');
-    doc.moveDown(0.4);
-
-    doc.font('Figtree').fontSize(SMALL).fillColor('#666').text(
-      'Ce document est scellé cryptographiquement. Toute modification invalide le scellé.'
-    );
-    doc.moveDown(0.4);
-
-    doc.font('Figtree').fontSize(BASE).fillColor('#000').text(`computedBy : ${pv.computedBy}`);
-    doc.text(`lockedAt (ISO) : ${lockedAtISO}`);
-    doc.text(`Final seal (SHA-256) : ${finalSeal}`);
-    if (pv.resultsHash) doc.text(`resultsHash : ${pv.resultsHash}`);
-
-    // QR CODE
-    const qrX = 56 + 340;
-    const qrY = doc.y - 64;
-    doc.image(qrBuffer, qrX, qrY, { width: 120, height: 120 });
-    doc.font('Figtree').fontSize(SMALL).fillColor('#666').text('Vérifier', qrX, qrY + 122, {
-      width: 120,
-      align: 'center',
-    });
-
-    // PAGE 2
-    doc.addPage();
-    doc.font('FigtreeBold').fontSize(H1).fillColor('#000').text('Classement complet');
-    doc.moveDown(0.8);
-
-    const startX = 56;
-    let y = doc.y;
-
-    doc.font('Figtree').fontSize(SMALL).fillColor('#666');
-    doc.text('#', startX, y);
-    doc.text('Projet', startX + 30, y);
-    doc.text('Score', 56 + 470, y, { width: 60, align: 'right' });
-
-    y += 18;
-    doc.moveTo(56, y).lineTo(56 + 483, y).strokeColor('#ddd').stroke();
-    y += 12;
-
-    doc.font('Figtree').fontSize(BASE).fillColor('#000');
-    pv.ranking.forEach((r, idx) => {
-      if (y > 760) {
-        doc.addPage();
-        y = 56;
-      }
-      doc.text(String(idx + 1), startX, y);
-      doc.text(r.title || r.projectId, startX + 30, y, { width: 420 });
-      doc.text(String(r.score), 56 + 470, y, { width: 60, align: 'right' });
-      y += 18;
-    });
-
-    // FOOTER
-    doc.font('Figtree').fontSize(SMALL).fillColor('#666').text(
-      `Généré par Ekklesia • ${formatDateFR(new Date())} • Référence : ${voteId}`,
-      56,
-      800 - 56
-    );
+    doc.image(qrBuffer, { width: 120 });
 
     const pdfBuffer = await bufferFromStream(doc);
-
-    const filenameSafe = pv.title.replace(/[^\w\d\-_. ]+/g, '').slice(0, 80) || 'pv';
-    const filename = `PV_${filenameSafe}_${voteId}.pdf`;
 
     return new NextResponse(pdfBuffer, {
       status: 200,
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${filename}"`,
+        'Content-Disposition': `attachment; filename="PV_${voteId}.pdf"`,
         'Cache-Control': 'no-store',
       },
     });
