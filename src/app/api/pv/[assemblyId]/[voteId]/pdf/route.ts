@@ -27,9 +27,9 @@ function pad(n: number) {
 }
 
 function formatDateFR(d: Date) {
-  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(
-    d.getHours()
-  )}:${pad(d.getMinutes())}`;
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(
+    d.getMinutes()
+  )}`;
 }
 
 function tsToDate(ts: any): Date | null {
@@ -53,17 +53,17 @@ function extractPVFromVote(voteId: string, voteData: any) {
   const winnerId = (voteData?.results?.winnerId ?? null) as string | null;
 
   const totalBallots =
-    Number(voteData?.results?.total ??
-      voteData?.results?.totalBallots ??
-      voteData?.ballotsCount ??
-      0) || 0;
+    Number(voteData?.results?.total ?? voteData?.results?.totalBallots ?? voteData?.ballotsCount ?? 0) || 0;
 
   const eligible = Number(voteData?.eligibleCountAtOpen ?? voteData?.eligibleCount ?? 0) || 0;
   const participationPct = eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
-  const fullRanking = Array.isArray(voteData?.results?.fullRanking)
-    ? voteData.results.fullRanking
-    : [];
+  // ✅ quorum (compat : absent => 0)
+  const quorumPct = Number(voteData?.quorumPct ?? 0) || 0;
+
+  const isValid = participationPct != null ? participationPct >= quorumPct : null;
+
+  const fullRanking = Array.isArray(voteData?.results?.fullRanking) ? voteData.results.fullRanking : [];
 
   const ranking: RankingRow[] = fullRanking.map((r: any) => ({
     projectId: String(r.id ?? r.projectId ?? ''),
@@ -83,6 +83,8 @@ function extractPVFromVote(voteId: string, voteData: any) {
     totalBallots,
     eligible: eligible || null,
     participationPct,
+    quorumPct,
+    isValid,
     ranking,
   };
 }
@@ -92,10 +94,7 @@ function loadFileBuffer(relPathFromRepoRoot: string): Buffer {
   return fs.readFileSync(abs);
 }
 
-export async function GET(
-  _req: Request,
-  context: { params: RouteParams | Promise<RouteParams> }
-) {
+export async function GET(_req: Request, context: { params: RouteParams | Promise<RouteParams> }) {
   try {
     const { assemblyId, voteId } = await context.params;
 
@@ -138,11 +137,7 @@ export async function GET(
       );
     }
 
-    const [{ default: PDFDocument }, qrcodeMod] = await Promise.all([
-      import('pdfkit'),
-      import('qrcode'),
-    ]);
-
+    const [{ default: PDFDocument }, qrcodeMod] = await Promise.all([import('pdfkit'), import('qrcode')]);
     const QRCode: any = (qrcodeMod as any).default ?? qrcodeMod;
 
     const lockedAtISO = (pv.lockedAt ?? pv.computedAt ?? new Date()).toISOString();
@@ -168,11 +163,7 @@ export async function GET(
       `&assemblyId=${encodeURIComponent(assemblyId)}` +
       `&seal=${encodeURIComponent(finalSeal)}`;
 
-    const qrBuffer: Buffer = await QRCode.toBuffer(verifyUrl, {
-      type: 'png',
-      margin: 1,
-      scale: 5,
-    });
+    const qrBuffer: Buffer = await QRCode.toBuffer(verifyUrl, { type: 'png', margin: 1, scale: 5 });
 
     const doc = new PDFDocument({
       size: 'A4',
@@ -180,28 +171,11 @@ export async function GET(
       info: { Title: `PV - ${pv.title}`, Author: 'Ekklesia', Subject: 'Procès-verbal scellé' },
     });
 
-    let figtreeRegular: Buffer;
-    let figtreeBold: Buffer;
+    // (tu ne t’en sers pas ici mais on garde la fonction si tu veux re-embed les fonts plus tard)
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const _figtreeRegular = loadFileBuffer('src/assets/fonts/Figtree-Regular.ttf');
 
-    try {
-      figtreeRegular = loadFileBuffer('src/assets/fonts/Figtree-Regular.ttf');
-      figtreeBold = loadFileBuffer('src/assets/fonts/Figtree-Bold.ttf');
-    } catch (e: any) {
-      return NextResponse.json(
-        {
-          error: 'Missing PDF fonts',
-          message:
-            "Impossible de charger les polices. Ajoute ces fichiers : src/assets/fonts/Figtree-Regular.ttf et src/assets/fonts/Figtree-Bold.ttf",
-          detail: e?.message ?? String(e),
-        },
-        { status: 500 }
-      );
-    }
-
-    doc.registerFont('Figtree', figtreeRegular);
-    doc.registerFont('FigtreeBold', figtreeBold);
-
-    doc.font('Figtree').fontSize(22).text(pv.title);
+    doc.fontSize(22).text(pv.title);
     doc.moveDown();
 
     doc.fontSize(11);
@@ -210,9 +184,13 @@ export async function GET(
     doc.text(`État : ${pv.state}`);
     doc.text(`Bulletins : ${pv.totalBallots}`);
     if (pv.eligible != null) doc.text(`Éligibles : ${pv.eligible}`);
-    doc.text(`Participation : ${pv.participationPct ?? '—'}%`);
-    doc.moveDown();
+    doc.text(`Participation : ${pv.participationPct != null ? `${pv.participationPct}%` : '—'}`);
 
+    // ✅ quorum + validité
+    doc.text(`Quorum : ${pv.quorumPct}%`);
+    doc.text(`Validité : ${pv.isValid == null ? '—' : pv.isValid ? 'VALIDE' : 'INVALIDE'}`);
+
+    doc.moveDown();
     doc.text(`Vainqueur : ${pv.winnerId}`);
     doc.moveDown();
 

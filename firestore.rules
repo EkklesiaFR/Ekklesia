@@ -68,8 +68,15 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
 
-        // vote immutable after locked
-        allow update: if isAdminActive() && resource.data.state != "locked";
+        // ✅ vote immutable after locked
+        // ✅ quorumPct is editable ONLY in draft. Once state != draft => quorumPct cannot change.
+        allow update: if isAdminActive()
+          && resource.data.state != "locked"
+          && (
+            resource.data.state == "draft"
+            || request.resource.data.quorumPct == resource.data.quorumPct
+          );
+
         allow create, delete: if isAdminActive();
 
         match /ballots/{uid} {

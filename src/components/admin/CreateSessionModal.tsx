@@ -2,12 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useFirestore, useUser } from '@/firebase';
-import {
-  collection,
-  serverTimestamp,
-  addDoc,
-  Timestamp,
-} from 'firebase/firestore';
+import { collection, serverTimestamp, addDoc, Timestamp } from 'firebase/firestore';
 
 import {
   Dialog,
@@ -36,11 +31,14 @@ interface CreateSessionModalProps {
 
 type CloseMode = 'manual' | 'scheduled';
 
-export function CreateSessionModal({
-  isOpen,
-  onClose,
-  availableProjects,
-}: CreateSessionModalProps) {
+const QUORUM_PRESETS = [0, 50, 60, 66, 75];
+
+function clampPct(n: number) {
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+export function CreateSessionModal({ isOpen, onClose, availableProjects }: CreateSessionModalProps) {
   const { user } = useUser();
   const db = useFirestore();
 
@@ -52,6 +50,9 @@ export function CreateSessionModal({
   // datetime-local => string "YYYY-MM-DDTHH:mm"
   const [closesAtLocal, setClosesAtLocal] = useState<string>('');
 
+  // ✅ Quorum (%)
+  const [quorumPct, setQuorumPct] = useState<number>(60);
+
   // Reset propre à l’ouverture/fermeture
   useEffect(() => {
     if (!isOpen) return;
@@ -60,14 +61,13 @@ export function CreateSessionModal({
     setSelectedProjectIds([]);
     setCloseMode('manual');
     setClosesAtLocal('');
+    setQuorumPct(60); // suggestion par défaut
   }, [isOpen]);
 
   const trimmedTitle = useMemo(() => title.trim(), [title]);
 
   const handleToggleProject = (id: string) => {
-    setSelectedProjectIds(prev =>
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-    );
+    setSelectedProjectIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   };
 
   const parseClosesAt = (): Timestamp | null => {
@@ -86,6 +86,9 @@ export function CreateSessionModal({
     if (trimmedTitle.length < 6) return false;
     if (selectedProjectIds.length < 2) return false;
 
+    const qp = clampPct(quorumPct);
+    if (qp < 0 || qp > 100) return false;
+
     if (closeMode === 'scheduled') {
       const ts = parseClosesAt();
       if (!ts) return false;
@@ -94,7 +97,7 @@ export function CreateSessionModal({
     }
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, trimmedTitle, selectedProjectIds, closeMode, closesAtLocal]);
+  }, [user, trimmedTitle, selectedProjectIds, closeMode, closesAtLocal, quorumPct]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -121,6 +124,8 @@ export function CreateSessionModal({
       });
       return;
     }
+
+    const qp = clampPct(quorumPct);
 
     const closesAt = parseClosesAt();
     if (closeMode === 'scheduled' && !closesAt) {
@@ -156,6 +161,9 @@ export function CreateSessionModal({
 
         // ✅ optionnel : UI countdown (si null => "Clôture manuelle")
         closesAt: closeMode === 'scheduled' ? closesAt : null,
+
+        // ✅ quorum (0 => toujours valide)
+        quorumPct: qp,
       });
 
       toast({
@@ -199,16 +207,53 @@ export function CreateSessionModal({
               className="rounded-none h-14 text-lg font-bold"
               required
             />
-            <p className="text-[10px] text-muted-foreground">
-              Min. 6 caractères. Visible par les membres.
-            </p>
+            <p className="text-[10px] text-muted-foreground">Min. 6 caractères. Visible par les membres.</p>
+          </div>
+
+          {/* Quorum */}
+          <div className="space-y-4">
+            <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">
+              Quorum (%)
+            </Label>
+
+            <div className="flex flex-wrap gap-2">
+              {QUORUM_PRESETS.map((p) => (
+                <Button
+                  key={p}
+                  type="button"
+                  variant={quorumPct === p ? 'default' : 'outline'}
+                  onClick={() => setQuorumPct(p)}
+                  className="rounded-none h-10 px-4 uppercase font-bold text-[10px]"
+                >
+                  {p}%
+                </Button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">
+                  Valeur personnalisée
+                </Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={quorumPct}
+                  onChange={(e) => setQuorumPct(clampPct(Number(e.target.value)))}
+                  className="rounded-none h-14 font-bold"
+                />
+              </div>
+
+              <p className="text-[10px] text-muted-foreground">
+                Suggestion Ekklesia : <span className="font-bold">60%</span> (au-delà de 40% d’abstention, scrutin invalide).
+              </p>
+            </div>
           </div>
 
           {/* Clôture */}
           <div className="space-y-6">
-            <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">
-              Clôture
-            </Label>
+            <Label className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">Clôture</Label>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <button
@@ -223,9 +268,7 @@ export function CreateSessionModal({
                   <Calendar className="h-4 w-4" />
                   <p className="text-xs uppercase tracking-widest font-bold">Clôture manuelle</p>
                 </div>
-                <p className="text-[10px] text-muted-foreground mt-2">
-                  Un admin clôture et publie les résultats.
-                </p>
+                <p className="text-[10px] text-muted-foreground mt-2">Un admin clôture et publie les résultats.</p>
               </button>
 
               <button
@@ -297,9 +340,7 @@ export function CreateSessionModal({
               ))}
             </div>
 
-            <p className="text-[10px] text-muted-foreground">
-              Minimum : 2 projets.
-            </p>
+            <p className="text-[10px] text-muted-foreground">Minimum : 2 projets.</p>
           </div>
 
           <DialogFooter className="pt-8 gap-4">
@@ -317,11 +358,7 @@ export function CreateSessionModal({
               disabled={isSubmitting || !canSubmit}
               className="rounded-none h-14 px-10 uppercase font-bold text-xs gap-2"
             >
-              {isSubmitting ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <Calendar className="h-4 w-4" />
-              )}
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Calendar className="h-4 w-4" />}
               Créer brouillon
             </Button>
           </DialogFooter>

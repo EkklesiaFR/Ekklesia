@@ -1,4 +1,3 @@
-
 export type MemberStatus = 'active' | 'pending' | 'blocked' | 'revoked';
 export type Role = 'admin' | 'member';
 
@@ -24,7 +23,7 @@ export interface Project {
   ownerName?: string;
   ownerBio?: string;
   links?: { label: string; url: string }[];
-  status: "draft" | "submitted" | "approved" | "elected" | "rejected" | "candidate";
+  status: 'draft' | 'submitted' | 'approved' | 'elected' | 'rejected' | 'candidate';
   createdAt: any;
   updatedAt: any;
   ownerUid?: string;
@@ -54,10 +53,20 @@ export interface Vote {
   createdAt?: any;
   createdBy?: string;
   ballotCount?: number;
+
   eligibleCountAtOpen?: number; // Snapshot of eligible voters at the moment the vote was opened
   openedAt?: any; // Timestamp when the vote was opened
   openedBy?: string; // UID of the admin who opened the vote
-  results?: { // Official results (after closing/publishing)
+
+  /**
+   * Quorum minimum en % (0-100) pour considérer le vote comme valide.
+   * - Si absent => traité comme 0 (compat votes historiques)
+   * - Calcul basé sur eligibleCountAtOpen (déjà figé à l'ouverture)
+   */
+  quorumPct?: number;
+
+  results?: {
+    // Official results (after closing/publishing)
     winnerId: string;
     fullRanking: { id: string; rank: number; score?: number }[];
     computedAt: any;
