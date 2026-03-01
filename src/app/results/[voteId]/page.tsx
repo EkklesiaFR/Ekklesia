@@ -1,5 +1,13 @@
 import ResultsVoteDetailClient from '@/app/results/[voteId]/ResultsVoteDetailClient';
 
-export default function Page({ params }: { params: { voteId: string } }) {
-  return <ResultsVoteDetailClient voteId={params.voteId} />;
+type Params = { voteId: string };
+
+export default async function Page({
+  params,
+}: {
+  params: Params | Promise<Params>;
+}) {
+  const { voteId } = await params;
+
+  return <ResultsVoteDetailClient voteId={voteId} />;
 }
