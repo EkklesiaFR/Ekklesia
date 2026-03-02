@@ -2,12 +2,15 @@ import { NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase/admin';
 import { computeFinalSeal } from '@/lib/pv/seal';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
-  const voteId = searchParams.get('voteId');
-  const assemblyId = searchParams.get('assemblyId');
-  const providedSeal = searchParams.get('seal');
+  const voteId = searchParams.get('voteId')?.trim();
+  const assemblyId = searchParams.get('assemblyId')?.trim();
+  const providedSeal = searchParams.get('seal')?.trim();
 
   if (!voteId || !assemblyId || !providedSeal) {
     return NextResponse.json({ ok: false, error: 'Missing parameters' }, { status: 400 });
@@ -21,35 +24,42 @@ export async function GET(req: Request) {
   }
 
   const voteData = snap.data();
-  const results = voteData?.results;
+  if (!voteData) {
+    return NextResponse.json({ ok: false, error: 'Vote data empty' }, { status: 404 });
+  }
 
-  if (!results?.winnerId || !results?.fullRanking) {
+  const results = voteData.results;
+  if (!results?.winnerId || !Array.isArray(results.fullRanking) || results.fullRanking.length === 0) {
     return NextResponse.json({ ok: false, error: 'Vote not finalized' }, { status: 400 });
   }
 
   const lockedAtISO = (voteData.lockedAt?.toDate?.() ?? new Date()).toISOString();
 
+  const ballotsCount = Number(results.totalBallots ?? results.total ?? 0) || 0;
+
+  const eligible = Number(voteData.eligibleCountAtOpen ?? 0) || 0;
+  const participationPct = eligible > 0 ? Math.round((100 * ballotsCount) / eligible) : null;
+
   const expectedSeal = computeFinalSeal({
     voteId,
-    method: results.method,
+    method: String(results.method ?? 'schulze'),
     lockedAtISO,
-    ballotsCount: results.totalBallots ?? results.total ?? 0,
-    participationPct: voteData.eligibleCountAtOpen
-      ? Math.round((100 * (results.totalBallots ?? 0)) / voteData.eligibleCountAtOpen)
-      : null,
-    winnerId: results.winnerId,
+    ballotsCount,
+    participationPct,
+    winnerId: String(results.winnerId),
     ranking: results.fullRanking.map((r: any) => ({
-      projectId: r.id ?? r.projectId,
-      title: r.title,
-      score: r.score ?? r.rank,
+      projectId: String(r?.id ?? r?.projectId ?? ''),
+      title: String(r?.title ?? ''),
+      score: Number(r?.score ?? r?.rank ?? 0) || 0,
     })),
   });
 
   return NextResponse.json({
     ok: expectedSeal === providedSeal,
-    expectedSeal,
-    providedSeal,
     voteId,
     assemblyId,
+    // Option: tu peux cacher expectedSeal en prod si tu veux
+    expectedSeal,
+    providedSeal,
   });
 }
