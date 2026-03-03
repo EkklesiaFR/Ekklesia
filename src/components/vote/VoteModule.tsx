@@ -292,7 +292,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
             <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
             <p className="text-xs text-muted-foreground leading-relaxed italic">
               Classez les projets par préférence (1 = favori). Glissez les cartes pour réorganiser.
-              Votre vote est secret et peut être modifié jusqu'à la clôture.
+              Votre vote est secret et peut être modifié jusqu&apos;à la clôture.
             </p>
           </div>
         </header>
