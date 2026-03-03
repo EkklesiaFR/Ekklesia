@@ -256,9 +256,9 @@ async function fetchBallotsForPseudolist(db: any, assemblyId: string, voteId: st
   }
 }
 
-export async function GET(_req: Request, { params }: { params: RouteParams }) {
+export async function GET(_req: Request, { params }: { params: Promise<RouteParams> }) {
   try {
-    const { assemblyId, voteId } = params;
+    const { assemblyId, voteId } = await params;
 
     let db;
     try {
