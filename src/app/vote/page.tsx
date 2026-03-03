@@ -61,7 +61,7 @@ function VoteGate() {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center space-y-8">
         <h1 className="text-4xl font-bold tracking-tight text-black">Aucun vote ouvert</h1>
-        <p className="text-muted-foreground max-w-sm mx-auto">Il n'y a pas d'assemblée active pour le moment.</p>
+        <p className="text-muted-foreground max-w-sm mx-auto">Il n&apos;y a pas d&apos;assemblée active pour le moment.</p>
         <Link href="/assembly">
           <Button variant="outline" className="rounded-none h-14 px-8 uppercase font-bold text-xs tracking-widest gap-2">
             <ArrowLeft className="h-4 w-4" /> Retour au Dashboard
@@ -76,7 +76,7 @@ function VoteGate() {
     return (
       <div className="flex flex-col items-center justify-center py-32 text-center space-y-4">
         <h1 className="text-2xl font-bold text-destructive">Scrutin non configuré</h1>
-        <p className="text-muted-foreground">L'assemblée est ouverte mais le scrutin n'est pas encore prêt. Veuillez contacter un administrateur.</p>
+        <p className="text-muted-foreground">L&apos;assemblée est ouverte mais le scrutin n&apos;est pas encore prêt. Veuillez contacter un administrateur.</p>
         <Link href="/assembly" className="pt-4">
           <Button variant="ghost" className="uppercase font-bold text-xs tracking-widest">Retour</Button>
         </Link>

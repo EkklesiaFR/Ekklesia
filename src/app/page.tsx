@@ -24,7 +24,7 @@ export default function Home() {
             </h1>
           </div>
           <p className="text-xl md:text-2xl text-muted-foreground leading-relaxed max-w-2xl font-medium">
-            Plateforme de participation citoyenne et de vote institutionnel pour l'Assemblée.
+            Plateforme de participation citoyenne et de vote institutionnel pour l&apos;assemblée.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 pt-4">
@@ -32,7 +32,7 @@ export default function Home() {
               <Link href="/assembly">
                 <Button size="lg" className="w-full sm:w-auto bg-black hover:bg-black/90 text-white rounded-none px-10 py-8 text-lg flex items-center gap-3">
                   <LayoutDashboard className="h-5 w-5" />
-                  Accéder à l'assemblée
+                  Accéder à l&apos;assemblée
                 </Button>
               </Link>
             ) : (
@@ -70,7 +70,7 @@ export default function Home() {
           <div className="space-y-4">
             <h3 className="text-xs font-bold uppercase tracking-widest">Engagement</h3>
             <p className="text-muted-foreground text-sm leading-relaxed">
-              Participez activement aux décisions qui façonnent l'avenir de notre communauté.
+              Participez activement aux décisions qui façonnent l&apos;avenir de notre communauté.
             </p>
           </div>
         </section>

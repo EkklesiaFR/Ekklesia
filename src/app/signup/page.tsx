@@ -78,7 +78,7 @@ export default function SignupPage() {
     <MainLayout statusText="Inscription">
       <div className="flex flex-col items-center justify-center py-12 space-y-10 animate-in fade-in duration-700">
         <header className="space-y-4 text-center">
-          <h1 className="text-4xl font-bold tracking-tight text-black">Rejoindre l'Assemblée</h1>
+          <h1 className="text-4xl font-bold tracking-tight text-black">Rejoindre l&apos;Assemblée</h1>
           <p className="text-muted-foreground max-w-sm mx-auto">Créez votre compte pour participer aux décisions de la communauté.</p>
         </header>
 
@@ -106,7 +106,7 @@ export default function SignupPage() {
               </div>
             </div>
             <Button type="submit" disabled={isLoading || isUserLoading} className="w-full h-12 rounded-none font-bold uppercase tracking-widest text-xs gap-2">
-              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><UserPlus className="h-4 w-4" /> S'inscrire</>}
+              {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <><UserPlus className="h-4 w-4" /> S&apos;inscrire</>}
             </Button>
           </form>
           <p className="text-center text-sm text-muted-foreground">Déjà membre ? <Link href="/login" className="font-bold text-black hover:underline">Se connecter</Link></p>
