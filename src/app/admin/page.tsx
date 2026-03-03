@@ -21,7 +21,6 @@ import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 import {
   collection,
   doc,
-  getDocs,
   getCountFromServer,
   orderBy,
   query,
@@ -34,25 +33,12 @@ import {
 
 import { Plus, BarChart3, Settings, Users, Activity, Lock, Play, Search } from 'lucide-react';
 
-import { computeSchulzeResults } from '@/lib/tally';
-import type { Project, MemberProfile, Vote, Ballot } from '@/types';
+import type { Project, MemberProfile, Vote } from '@/types';
 
 /** Helper: supports members shaped as {id} or {uid} */
 function memberKey(member: MemberProfile): string | undefined {
   const m = member as unknown as { id?: string; uid?: string };
   return m.id ?? m.uid;
-}
-
-/**
- * v0.3.0 helper: SHA-256 stable hash (hex) using Web Crypto API.
- * Used to "seal" results for auditability.
- */
-async function sha256Hex(input: string): Promise<string> {
-  const data = new TextEncoder().encode(input);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('');
 }
 
 /**
@@ -132,8 +118,8 @@ function ActiveVoteCockpit({
   const quorumPct = (activeVote as any).quorumPct ?? 0;
   const isValid = participation !== null ? participation >= quorumPct : null;
 
-  const openedAtFormatted = activeVote.openedAt?.toDate
-    ? activeVote.openedAt.toDate().toLocaleString('fr-FR', {
+  const openedAtFormatted = (activeVote as any).openedAt?.toDate
+    ? (activeVote as any).openedAt.toDate().toLocaleString('fr-FR', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -142,18 +128,18 @@ function ActiveVoteCockpit({
       })
     : '—';
 
-  const openedByUser = activeVote.openedBy
-    ? members.find((m) => memberKey(m) === activeVote.openedBy)
+  const openedByUser = (activeVote as any).openedBy
+    ? members.find((m) => memberKey(m) === (activeVote as any).openedBy)
     : null;
 
   const openedByDisplay = openedByUser
-    ? openedByUser.displayName || openedByUser.email
-    : activeVote.openedBy || '—';
+    ? (openedByUser as any).displayName || (openedByUser as any).email
+    : (activeVote as any).openedBy || '—';
 
   return (
     <div className="p-6 border bg-secondary/30 space-y-4">
       <h4 className="font-bold text-lg">
-        Vote en cours : <span className="font-normal">{activeVote.question}</span>
+        Vote en cours : <span className="font-normal">{(activeVote as any).question}</span>
       </h4>
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-x-6 gap-y-4 text-sm">
@@ -240,8 +226,8 @@ function VoteRow({
       locked: 'bg-black text-white',
     }[vote.state] ?? 'bg-black text-white';
 
-  const openedAtFormatted = vote.openedAt?.toDate
-    ? vote.openedAt.toDate().toLocaleString('fr-FR', {
+  const openedAtFormatted = (vote as any).openedAt?.toDate
+    ? (vote as any).openedAt.toDate().toLocaleString('fr-FR', {
         day: '2-digit',
         month: '2-digit',
         year: 'numeric',
@@ -250,12 +236,12 @@ function VoteRow({
       })
     : '—';
 
-  const openedByUser = vote.openedBy ? members.find((m) => memberKey(m) === vote.openedBy) : null;
+  const openedByUser = (vote as any).openedBy ? members.find((m) => memberKey(m) === (vote as any).openedBy) : null;
   const openedByDisplay = openedByUser
-    ? openedByUser.displayName || openedByUser.email
-    : vote.openedBy || '—';
+    ? (openedByUser as any).displayName || (openedByUser as any).email
+    : (vote as any).openedBy || '—';
 
-  const winnerId = vote.state === 'locked' ? vote.results?.winnerId : null;
+  const winnerId = vote.state === 'locked' ? (vote as any).results?.winnerId : null;
   const winnerProject = winnerId ? projectsById.get(String(winnerId)) : null;
   const winnerDisplay = winnerProject
     ? (winnerProject.title ??
@@ -269,7 +255,7 @@ function VoteRow({
       <div className="space-y-4 flex-grow">
         <div className="flex items-center gap-3">
           <Badge className={stateBadgeClass}>{vote.state}</Badge>
-          <h3 className="text-xl font-bold">{vote.question}</h3>
+          <h3 className="text-xl font-bold">{(vote as any).question}</h3>
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-6 gap-x-6 gap-y-3 text-sm pr-8">
@@ -420,14 +406,14 @@ function AdminContent() {
         if (filterState !== 'all' && vote.state !== filterState) return false;
         if (!q) return true;
 
-        const winnerProject = vote.results?.winnerId ? projectsById.get(vote.results.winnerId) : null;
+        const winnerProject = (vote as any).results?.winnerId ? projectsById.get((vote as any).results.winnerId) : null;
         const winnerTitle = winnerProject?.title ?? '';
 
         const searchCorpus = [
-          vote.question,
+          (vote as any).question,
           vote.id,
           vote.state === 'locked' ? winnerTitle : '',
-          vote.state === 'locked' ? vote.results?.winnerId : '',
+          vote.state === 'locked' ? (vote as any).results?.winnerId : '',
         ]
           .join(' ')
           .toLowerCase();
@@ -437,8 +423,8 @@ function AdminContent() {
       .sort((a, b) => {
         if (stateOrder[a.state] !== stateOrder[b.state]) return stateOrder[a.state] - stateOrder[b.state];
 
-        const dateA = a.openedAt ?? a.createdAt;
-        const dateB = b.openedAt ?? b.createdAt;
+        const dateA = (a as any).openedAt ?? (a as any).createdAt;
+        const dateB = (b as any).openedAt ?? (b as any).createdAt;
 
         if (dateA?.toMillis && dateB?.toMillis) return dateB.toMillis() - dateA.toMillis();
         if (dateA) return -1;
@@ -465,7 +451,7 @@ function AdminContent() {
         state: 'open',
         eligibleCountAtOpen,
         openedAt: serverTimestamp(),
-        openedBy: user?.uid ?? null,
+        openedBy: (user as any)?.uid ?? null,
         updatedAt: serverTimestamp(),
       });
 
@@ -490,82 +476,52 @@ function AdminContent() {
   };
 
   /**
-   * v0.3.0: publish results + seal with resultsHash + lockedAt + computedBy/method.
-   * Hash is computed from a canonical payload that excludes serverTimestamp() fields.
+   * Publish results server-side:
+   * - Admin client does NOT download ballots anymore.
+   * - Server reads ballots (Admin SDK), computes Schulze, locks vote, updates public lastResult.
    */
   const handlePublishResults = async (vote: Vote) => {
     setIsProcessing(vote.id);
     try {
-      const ballotsRef = collection(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', vote.id, 'ballots');
-      const ballotsSnap = await getDocs(ballotsRef);
-      const ballots = ballotsSnap.docs.map((d) => d.data() as Ballot);
-
-      if (ballots.length === 0) {
+      const idToken = await (user as any)?.getIdToken?.();
+      if (!idToken) {
         toast({
           variant: 'destructive',
-          title: 'Aucun bulletin',
-          description: "Impossible de clore un scrutin sans votes.",
+          title: 'Non authentifié',
+          description: "Impossible d'obtenir un token.",
         });
         return;
       }
 
-      const results = computeSchulzeResults(vote.projectIds, ballots);
-
-      const voteRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', vote.id);
-      const assemblyRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
-      const publicResultRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'public', 'lastResult');
-
-      // Hash stable: exclude server timestamps from canonical data
-      const canonicalForHash = {
-        method: 'schulze',
-        voteId: vote.id,
-        projectIds: vote.projectIds,
-        total: ballots.length,
-        winnerId: results.winnerId,
-        fullRanking: results.ranking,
-      };
-
-      const resultsHash = await sha256Hex(JSON.stringify(canonicalForHash));
-
-      const resultsData = {
-        method: 'schulze' as const,
-        computedBy: user?.uid ?? null,
-        resultsHash,
-        winnerId: results.winnerId,
-        fullRanking: results.ranking,
-        computedAt: serverTimestamp(),
-        total: ballots.length,
-      };
-
-      const batch = writeBatch(db);
-
-      batch.update(voteRef, {
-        state: 'locked',
-        results: resultsData,
-        lockedAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      batch.update(assemblyRef, {
-        state: 'locked',
-        activeVoteId: null,
-        updatedAt: serverTimestamp(),
-      });
-
-      batch.set(
-        publicResultRef,
+      const res = await fetch(
+        `/api/admin/assemblies/${DEFAULT_ASSEMBLY_ID}/votes/${vote.id}/publish`,
         {
-          ...resultsData,
-          voteId: vote.id,
-          voteTitle: vote.question,
-          closedAt: serverTimestamp(),
-          lockedAt: serverTimestamp(),
-          winnerLabel: projectsById.get(String(results.winnerId))?.title || 'Vainqueur',
-        },
-        { merge: true }
+          method: 'POST',
+          headers: { Authorization: `Bearer ${idToken}` },
+        }
       );
 
-      await batch.commit();
+      const data = await res.json().catch(() => null);
+
+      if (!res.ok) {
+        const msg =
+          data?.error ||
+          (res.status === 401
+            ? 'Non autorisé'
+            : res.status === 403
+            ? 'Accès admin requis'
+            : res.status === 409
+            ? 'Vote non ouvert'
+            : 'Échec du dépouillement');
+        toast({ variant: 'destructive', title: 'Erreur', description: msg });
+        return;
+      }
+
+      if (data?.alreadyLocked) {
+        toast({ title: 'Déjà clôturé', description: 'Ce scrutin était déjà verrouillé.' });
+        return;
+      }
+
       toast({ title: 'Résultats publiés', description: 'Le vainqueur a été déterminé.' });
     } catch (e) {
       console.error(e);
@@ -671,15 +627,15 @@ function AdminContent() {
 
         <TabsContent value="results" className="space-y-8">
           {(votes ?? [])
-            .filter((v) => v.state === 'locked' && !!v.results?.computedAt)
+            .filter((v) => v.state === 'locked' && !!(v as any).results?.computedAt)
             .sort((a, b) => {
-              const da = (a.results?.computedAt as any)?.toMillis?.() ?? 0;
-              const dbb = (b.results?.computedAt as any)?.toMillis?.() ?? 0;
+              const da = ((a as any).results?.computedAt as any)?.toMillis?.() ?? 0;
+              const dbb = ((b as any).results?.computedAt as any)?.toMillis?.() ?? 0;
               return dbb - da;
             })
             .map((v) => {
-              const totalBallots = (v.results as any)?.total ?? (v.results as any)?.totalBallots ?? 0;
-              const eligible = v.eligibleCountAtOpen ?? null;
+              const totalBallots = ((v as any).results as any)?.total ?? ((v as any).results as any)?.totalBallots ?? 0;
+              const eligible = (v as any).eligibleCountAtOpen ?? null;
               const participationPct =
                 eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
@@ -687,12 +643,12 @@ function AdminContent() {
               const isValid = participationPct !== null ? participationPct >= quorumPct : null;
 
               const winnerTitle =
-                projectsById.get(v.results?.winnerId ?? '')?.title ||
-                (v.results?.winnerId ? String(v.results?.winnerId) : '—');
+                projectsById.get((v as any).results?.winnerId ?? '')?.title ||
+                ((v as any).results?.winnerId ? String((v as any).results?.winnerId) : '—');
 
               const computedAtFormatted =
-                (v.results as any)?.computedAt?.toDate
-                  ? (v.results as any).computedAt.toDate().toLocaleString('fr-FR', {
+                ((v as any).results as any)?.computedAt?.toDate
+                  ? ((v as any).results as any).computedAt.toDate().toLocaleString('fr-FR', {
                       day: '2-digit',
                       month: '2-digit',
                       year: 'numeric',
@@ -706,7 +662,7 @@ function AdminContent() {
                   <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6 border-b pb-6">
                     <div className="space-y-2">
                       <Badge className="bg-black text-white rounded-none uppercase text-[9px]">Scrutin clôturé</Badge>
-                      <h3 className="text-2xl font-bold leading-tight">{v.question}</h3>
+                      <h3 className="text-2xl font-bold leading-tight">{(v as any).question}</h3>
 
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground pt-2">
                         <span>PV : {computedAtFormatted}</span>
@@ -751,7 +707,7 @@ function AdminContent() {
                       </p>
 
                       <div className="space-y-2">
-                        {(v.results?.fullRanking ?? []).slice(0, 5).map((r: any, idx: number) => (
+                        {(((v as any).results?.fullRanking ?? []) as any[]).slice(0, 5).map((r: any, idx: number) => (
                           <div
                             key={r.id}
                             className="flex justify-between items-center text-sm border-b border-secondary pb-2"
@@ -767,7 +723,7 @@ function AdminContent() {
                         ))}
                       </div>
 
-                      {((v.results?.fullRanking ?? []).length ?? 0) > 5 && (
+                      {((((v as any).results?.fullRanking ?? []) as any[]).length ?? 0) > 5 && (
                         <p className="text-[10px] text-muted-foreground italic pt-2">
                           Voir le PV pour le classement complet.
                         </p>
@@ -784,10 +740,10 @@ function AdminContent() {
             <div key={p.id} className="p-6 border bg-white flex justify-between items-center">
               <div>
                 <Badge variant="outline" className="mb-2 uppercase text-[9px]">
-                  {p.status}
+                  {(p as any).status}
                 </Badge>
-                <h3 className="text-lg font-bold">{p.title}</h3>
-                <p className="text-xs text-muted-foreground">{p.budget}</p>
+                <h3 className="text-lg font-bold">{(p as any).title}</h3>
+                <p className="text-xs text-muted-foreground">{(p as any).budget}</p>
               </div>
 
               <div className="flex gap-2">
@@ -835,8 +791,8 @@ function AdminContent() {
               </TableHeader>
               <TableBody>
                 {(members ?? []).map((m) => (
-                  <TableRow key={(m as any).id ?? (m as any).uid ?? m.email}>
-                    <TableCell>{m.email}</TableCell>
+                  <TableRow key={(m as any).id ?? (m as any).uid ?? (m as any).email}>
+                    <TableCell>{(m as any).email}</TableCell>
                     <TableCell className="capitalize">{(m as any).role}</TableCell>
                     <TableCell>
                       <Badge
@@ -860,7 +816,7 @@ function AdminContent() {
       <CreateSessionModal
         isOpen={isSessionModalOpen}
         onClose={() => setIsSessionModalOpen(false)}
-        availableProjects={(projects ?? []).filter((p) => p.status === 'candidate')}
+        availableProjects={(projects ?? []).filter((p) => (p as any).status === 'candidate')}
       />
     </div>
   );
