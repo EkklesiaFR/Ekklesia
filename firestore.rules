@@ -2,58 +2,59 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // =========================
+    // HELPERS
+    // =========================
+
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function getMemberData() {
-      return get(/databases/$(database)/documents/members/$(request.auth.uid)).data;
+    function memberDoc() {
+      return get(/databases/$(database)/documents/members/$(request.auth.uid));
     }
 
     function isMemberActive() {
       return isSignedIn()
-        && exists(/databases/$(database)/documents/members/$(request.auth.uid))
-        && getMemberData().status == "active";
+        && memberDoc().exists()
+        && memberDoc().data.status == "active";
     }
 
     function isAdminActive() {
       return isMemberActive()
-        && getMemberData().role == "admin";
+        && memberDoc().data.role == "admin";
     }
 
     // =========================
-    // MEMBERS (global)
+    // MEMBERS
     // =========================
+
     match /members/{uid} {
+
       allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
       allow list: if isAdminActive();
 
-      // Create: self only, pending + member only
       allow create: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.data.role == "member"
         && request.resource.data.status == "pending";
 
-      // Self update: never role/status
+      // Self update without changing role/status
       allow update: if isSignedIn()
         && request.auth.uid == uid
         && request.resource.data.role == resource.data.role
         && request.resource.data.status == resource.data.status;
 
-      // Admin can update/delete
       allow update, delete: if isAdminActive();
     }
 
     // =========================
     // ASSEMBLIES
     // =========================
+
     match /assemblies/{assemblyId} {
 
-      // ✅ Modèle 2: pending n'a aucun accès aux données de l'app
       allow read: if isMemberActive();
-
-      allow update: if isAdminActive()
-        && (!("results" in resource.data) || resource.data.results == null);
 
       match /members/{uid} {
         allow read: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
@@ -65,30 +66,47 @@ service cloud.firestore {
         allow write: if isAdminActive();
       }
 
+      // =========================
+      // VOTES
+      // =========================
+
       match /votes/{voteId} {
+
         allow read: if isMemberActive();
 
-        // ✅ vote immutable after locked
-        // ✅ quorumPct is editable ONLY in draft. Once state != draft => quorumPct cannot change.
+        allow create: if isAdminActive();
+
+        // 🔒 VOTE IMMUTABLE AFTER LOCKED
         allow update: if isAdminActive()
           && resource.data.state != "locked"
           && (
+            // quorumPct modifiable uniquement en draft
             resource.data.state == "draft"
             || request.resource.data.quorumPct == resource.data.quorumPct
           );
 
-        allow create, delete: if isAdminActive();
+        allow delete: if false; // jamais supprimable
+
+        // =========================
+        // BALLOTS
+        // =========================
 
         match /ballots/{uid} {
-          // ✅ ballot visible/écrivable seulement si vote open + membre actif + propriétaire
-          allow get, create, update: if isMemberActive()
-            && request.auth.uid == uid
-            && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
 
-          // Audit
+          function voteIsOpen() {
+            return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+          }
+
+          allow get: if isMemberActive()
+            && request.auth.uid == uid;
+
+          allow create, update: if isMemberActive()
+            && request.auth.uid == uid
+            && voteIsOpen();
+
           allow list: if isAdminActive();
 
-          allow delete: if false;
+          allow delete: if false; // jamais supprimable
         }
       }
     }
@@ -96,22 +114,25 @@ service cloud.firestore {
     // =========================
     // PROJECTS
     // =========================
+
     match /projects/{projectId} {
 
-      // ✅ Modèle 2: pending ne peut pas lire les projets
       allow read: if isMemberActive();
 
       allow create: if isMemberActive();
 
       allow update, delete: if isAdminActive()
-        || (isSignedIn()
-            && request.auth.uid == resource.data.ownerUid
-            && resource.data.status == "submitted");
+        || (
+          isSignedIn()
+          && request.auth.uid == resource.data.ownerUid
+          && resource.data.status == "submitted"
+        );
     }
 
     // =========================
     // DEFAULT DENY
     // =========================
+
     match /{document=**} {
       allow read, write: if false;
     }
