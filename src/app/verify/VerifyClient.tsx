@@ -4,8 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 type VerifyResponse =
-  | { ok: true; match: true }
-  | { ok: true; match: false }
+  | { ok: true; match: boolean; expectedSeal?: string; providedSeal?: string; voteId?: string; assemblyId?: string }
   | { ok: false; error: string };
 
 export default function VerifyClient() {
@@ -27,6 +26,7 @@ export default function VerifyClient() {
       }
 
       setState('loading');
+
       try {
         const r = await fetch(
           `/api/verify?voteId=${encodeURIComponent(voteId)}&assemblyId=${encodeURIComponent(
@@ -34,11 +34,18 @@ export default function VerifyClient() {
           )}&seal=${encodeURIComponent(seal)}`,
           { cache: 'no-store' }
         );
+
         const json = (await r.json()) as VerifyResponse;
         setRes(json);
-        setState(r.ok ? 'done' : 'error');
+
+        if (!r.ok || json.ok === false) {
+          setState('error');
+          return;
+        }
+
+        setState('done');
       } catch {
-        setRes({ ok: false, error: 'Erreur réseau.' });
+        setRes({ ok: false, error: 'Erreur réseau ou réponse invalide.' });
         setState('error');
       }
     };
@@ -60,7 +67,13 @@ export default function VerifyClient() {
       : '';
 
   const statusColor =
-    state === 'loading' ? 'text-muted-foreground' : res?.ok && res.match ? 'text-green-600' : 'text-red-600';
+    state === 'loading'
+      ? 'text-muted-foreground'
+      : res?.ok === true && res.match
+      ? 'text-green-600'
+      : res
+      ? 'text-red-600'
+      : 'text-muted-foreground';
 
   return (
     <div className="border p-6 max-w-xl w-full bg-white">
@@ -71,6 +84,13 @@ export default function VerifyClient() {
         <div>Vote ID : {voteId || '—'}</div>
         <div>Assembly ID : {assemblyId || '—'}</div>
       </div>
+
+      {res?.ok === true ? (
+        <div className="mt-4 text-xs text-muted-foreground space-y-1">
+          {res.providedSeal ? <div>Seal fourni : {res.providedSeal.slice(0, 16)}…</div> : null}
+          {res.expectedSeal ? <div>Seal attendu : {res.expectedSeal.slice(0, 16)}…</div> : null}
+        </div>
+      ) : null}
     </div>
   );
 }
