@@ -116,7 +116,7 @@ export function SubmitProjectModal({ isOpen, onOpenChange }: SubmitProjectModalP
         <DialogHeader className="space-y-4">
           <DialogTitle className="text-2xl font-bold uppercase tracking-tight">Déposer un Projet</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground uppercase tracking-widest font-medium">
-            Contribuez à l'avenir de l'assemblée.
+            Contribuez à l&apos;avenir de l&apos;assemblée.
           </DialogDescription>
         </DialogHeader>
 
@@ -145,7 +145,7 @@ export function SubmitProjectModal({ isOpen, onOpenChange }: SubmitProjectModalP
                 className="h-8 text-[9px] uppercase font-bold tracking-wider gap-2 text-primary hover:text-primary hover:bg-primary/10"
               >
                 {isGenerating ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
-                Optimiser avec l'IA
+                Optimiser avec l&apos;IA
               </Button>
             </div>
             <Textarea 

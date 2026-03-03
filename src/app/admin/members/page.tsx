@@ -217,7 +217,7 @@ export default function AdminMembersPage() {
       {loading || isMemberLoading ? (
         <div className="flex flex-col items-center justify-center py-32 space-y-6">
           <div className="w-12 h-12 border-t-2 border-primary animate-spin rounded-full" />
-          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Vérification de l'accès…</p>
+          <p className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground">Vérification de l&apos;accès…</p>
         </div>
       ) : !isAdmin || !isActiveMember ? (
         <div className="flex flex-col items-center justify-center py-24 space-y-8 text-center animate-in fade-in duration-700">

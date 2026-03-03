@@ -34,7 +34,7 @@ function ProjectsContent() {
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-black">Les Projets Citoyens</h1>
         </div>
         <p className="text-xl text-muted-foreground max-w-2xl font-medium">
-          Découvrez les initiatives portées par les membres de l'assemblée pour transformer notre environnement.
+          Découvrez les initiatives portées par les membres de l&apos;assemblée pour transformer notre environnement.
         </p>
       </header>
 
