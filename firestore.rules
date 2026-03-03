@@ -3,64 +3,82 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================
-    // HELPERS
+    // HELPERS (robustes)
     // =========================
 
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function memberDoc() {
-      return get(/databases/$(database)/documents/members/$(request.auth.uid));
+    function memberPath() {
+      return /databases/$(database)/documents/members/$(request.auth.uid);
+    }
+
+    function hasMemberDoc() {
+      return isSignedIn() && exists(memberPath());
+    }
+
+    function memberData() {
+      return get(memberPath()).data;
     }
 
     function isMemberActive() {
-      return isSignedIn()
-        && memberDoc().exists()
-        && memberDoc().data.status == "active";
+      return hasMemberDoc()
+        && memberData().status == "active";
     }
 
     function isAdminActive() {
       return isMemberActive()
-        && memberDoc().data.role == "admin";
+        && memberData().role == "admin";
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
     }
 
     // =========================
-    // MEMBERS
+    // MEMBERS (root)
     // =========================
-
     match /members/{uid} {
 
-      allow get: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
+      // Self can read self, admin can read anyone
+      allow get: if isSelf(uid) || isAdminActive();
+
+      // Admin can list all members
       allow list: if isAdminActive();
 
-      allow create: if isSignedIn()
-        && request.auth.uid == uid
+      // Self can create own profile only as pending/member
+      allow create: if isSelf(uid)
         && request.resource.data.role == "member"
         && request.resource.data.status == "pending";
 
-      // Self update without changing role/status
-      allow update: if isSignedIn()
-        && request.auth.uid == uid
+      // Self can update ONLY non-sensitive fields (role/status immutable for self)
+      allow update: if isSelf(uid)
         && request.resource.data.role == resource.data.role
         && request.resource.data.status == resource.data.status;
 
+      // Admin can update/delete any member
       allow update, delete: if isAdminActive();
     }
 
     // =========================
     // ASSEMBLIES
     // =========================
-
     match /assemblies/{assemblyId} {
 
+      // Pending has no access
       allow read: if isMemberActive();
 
+      // (Optionnel) tu peux restreindre l'update du doc assembly aux admins :
+      allow create, update, delete: if isAdminActive();
+
+      // Assembly-scoped member mirror (si vous l'utilisez)
       match /members/{uid} {
-        allow read: if isSignedIn() && (request.auth.uid == uid || isAdminActive());
+        allow read: if isSelf(uid) || isAdminActive();
         allow write: if isAdminActive();
       }
 
+      // Public docs (ex: lastResult)
       match /public/{docId} {
         allow read: if true;
         allow write: if isAdminActive();
@@ -69,44 +87,48 @@ service cloud.firestore {
       // =========================
       // VOTES
       // =========================
-
       match /votes/{voteId} {
 
         allow read: if isMemberActive();
-
         allow create: if isAdminActive();
 
-        // 🔒 VOTE IMMUTABLE AFTER LOCKED
+        // 🔒 Vote immutable after locked
+        // + quorumPct modifiable uniquement en draft
         allow update: if isAdminActive()
           && resource.data.state != "locked"
           && (
-            // quorumPct modifiable uniquement en draft
             resource.data.state == "draft"
             || request.resource.data.quorumPct == resource.data.quorumPct
           );
 
-        allow delete: if false; // jamais supprimable
+        // jamais supprimable
+        allow delete: if false;
 
         // =========================
         // BALLOTS
         // =========================
-
         match /ballots/{uid} {
 
-          function voteIsOpen() {
-            return get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
+          function votePath() {
+            return /databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId);
           }
 
-          allow get: if isMemberActive()
-            && request.auth.uid == uid;
+          function voteIsOpen() {
+            return exists(votePath()) && get(votePath()).data.state == "open";
+          }
 
+          // Self can read own ballot (even after close)
+          allow get: if isMemberActive() && isSelf(uid);
+
+          // Self can create/update own ballot ONLY while vote is open
           allow create, update: if isMemberActive()
-            && request.auth.uid == uid
+            && isSelf(uid)
             && voteIsOpen();
 
+          // Admin can list ballots (audit)
           allow list: if isAdminActive();
 
-          allow delete: if false; // jamais supprimable
+          allow delete: if false;
         }
       }
     }
@@ -114,13 +136,16 @@ service cloud.firestore {
     // =========================
     // PROJECTS
     // =========================
-
     match /projects/{projectId} {
 
+      // Only active members can read projects
       allow read: if isMemberActive();
 
+      // Active members can create projects (si tu veux plus strict: isAdminActive())
       allow create: if isMemberActive();
 
+      // Admin can update/delete any project
+      // Owner can update/delete only while "submitted"
       allow update, delete: if isAdminActive()
         || (
           isSignedIn()
@@ -132,7 +157,6 @@ service cloud.firestore {
     // =========================
     // DEFAULT DENY
     // =========================
-
     match /{document=**} {
       allow read, write: if false;
     }
