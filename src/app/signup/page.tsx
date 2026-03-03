@@ -4,19 +4,16 @@ import { MainLayout } from '@/components/layout/MainLayout';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useAuth, useUser, useFirestore } from '@/firebase';
+import { useAuth, useUser } from '@/firebase';
 import { signUpEmail } from '@/firebase/non-blocking-login';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { UserPlus, Mail, Lock, Loader2 } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
 import Link from 'next/link';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
 export default function SignupPage() {
   const auth = useAuth();
-  const db = useFirestore();
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const [email, setEmail] = useState('');
@@ -41,22 +38,8 @@ export default function SignupPage() {
     setIsLoading(true);
     try {
       // 1. Création de l'utilisateur dans Firebase Auth
-      const userCredential = await signUpEmail(auth, email, password);
-      const newUser = userCredential.user;
-      
-      // 2. Création immédiate du document de profil membre
-      if (newUser) {
-        const memberRef = doc(db, 'members', newUser.uid);
-        await setDoc(memberRef, {
-          id: newUser.uid,
-          email: email,
-          role: 'member',
-          status: 'pending',
-          displayName: email.split('@')[0],
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        });
-      }
+      // v0.4.3: Le document Firestore est maintenant géré par bootstrapUser dans AuthStatusProvider
+      await signUpEmail(auth, email, password);
 
       toast({ 
         title: "Compte créé !", 
