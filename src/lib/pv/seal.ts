@@ -1,10 +1,19 @@
-import { createHash } from 'crypto';
+import 'server-only';
+import { createHmac } from 'crypto';
 
 export type RankingRow = {
   projectId: string;
   title: string;
   score: number;
 };
+
+function requirePvSalt(): string {
+  const salt = process.env.PV_SALT;
+  if (!salt) {
+    throw new Error('PV_SALT is not configured (Secret Manager).');
+  }
+  return salt;
+}
 
 export function computeFinalSeal(input: {
   voteId: string;
@@ -16,7 +25,7 @@ export function computeFinalSeal(input: {
   ranking: RankingRow[];
 }) {
   const canonical = JSON.stringify({
-    v: 1,
+    v: 2, // version du seal (important)
     voteId: input.voteId,
     method: input.method,
     lockedAt: input.lockedAtISO,
@@ -30,5 +39,9 @@ export function computeFinalSeal(input: {
     })),
   });
 
-  return createHash('sha256').update(canonical).digest('hex');
+  const key = requirePvSalt();
+
+  return createHmac('sha256', key)
+    .update(canonical)
+    .digest('hex');
 }

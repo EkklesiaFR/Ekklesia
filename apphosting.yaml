@@ -2,8 +2,24 @@
 # https://firebase.google.com/docs/app-hosting/configure
 
 runConfig:
-  # Valeur maintenue à 1 pour limiter les coûts et stabiliser le trafic
   maxInstances: 1
 
-# Note: Ce changement mineur est destiné à déclencher une nouvelle révision 
-# pour tenter de résoudre le conflit de tags de trafic dans Cloud Run.
+env:
+  # Public (ok car NEXT_PUBLIC_* = injecté côté navigateur)
+  - variable: NEXT_PUBLIC_APP_URL
+    value: https://studio--studio-2289029551-f232a.us-central1.hosted.app
+    availability:
+      - BUILD
+      - RUNTIME
+
+  # Runtime only
+  - variable: PV_INCLUDE_PSEUDOLIST
+    value: "true"
+    availability:
+      - RUNTIME
+
+  # ✅ Secret (Cloud Secret Manager) — safe à versionner dans git
+  - variable: PV_SALT
+    secret: PV_SALT
+    availability:
+      - RUNTIME
