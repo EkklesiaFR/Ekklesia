@@ -7,10 +7,6 @@ export type RankingRow = {
   score: number;
 };
 
-/**
- * v0.4.3: Versioned and strictly sorted canonical stringify to ensure 
- * seal identity between client and server environments.
- */
 function requirePvSalt(): string {
   const salt = process.env.PV_SALT;
   if (!salt) {
@@ -28,25 +24,19 @@ export function computeFinalSeal(input: {
   winnerId: string;
   ranking: RankingRow[];
 }) {
-  // Sort ranking by projectId to ensure determinism in array order
-  const sortedRanking = [...input.ranking]
-    .sort((a, b) => a.projectId.localeCompare(b.projectId))
-    .map((r) => ({
-      projectId: r.projectId,
-      score: r.score,
-      title: r.title,
-    }));
-
-  // Canonical payload with strictly ordered keys (v2)
   const canonical = JSON.stringify({
-    ballotsCount: input.ballotsCount,
-    lockedAt: input.lockedAtISO,
-    method: input.method,
-    participationPct: input.participationPct ?? null,
-    ranking: sortedRanking,
-    v: 2,
+    v: 2, // version du seal (important)
     voteId: input.voteId,
+    method: input.method,
+    lockedAt: input.lockedAtISO,
+    ballotsCount: input.ballotsCount,
+    participationPct: input.participationPct ?? null,
     winnerId: input.winnerId,
+    ranking: input.ranking.map((r) => ({
+      projectId: r.projectId,
+      title: r.title,
+      score: r.score,
+    })),
   });
 
   const key = requirePvSalt();

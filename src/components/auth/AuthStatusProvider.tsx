@@ -40,21 +40,59 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   const didBootstrap = useRef(false);
   const hasProcessedRedirect = useRef(false);
 
-  // v0.4.3: Centralized bootstrap logic to prevent duplicate document creation
-  const bootstrapUser = async (firebaseUser: User) => {
+  useEffect(() => {
+    console.log('[AUTH-DEBUG] Auth state changed', { userUid: user?.uid, isUserLoading, pathname });
+    if (!isUserLoading && user && pathname === '/login') {
+      console.log('[AUTH] user detected -> redirect /assembly', { uid: user.uid });
+      router.replace('/assembly');
+    }
+  }, [user, isUserLoading, pathname, router]);
+
+  useEffect(() => {
+    if (hasProcessedRedirect.current) return;
+    
+    const processRedirect = async () => {
+      console.log('[AUTH] Checking for redirect result...');
+      try {
+        const result = await handleGoogleRedirectResult(auth);
+        
+        if (result?.user) {
+          console.log(`[AUTH-DEBUG] redirect result OK uid=${result.user.uid}`);
+          console.log('[AUTH] redirect result SUCCESS:', result.user.uid);
+          hasProcessedRedirect.current = true;
+          await bootstrapUser(result.user);
+        } else {
+          console.log('[AUTH-DEBUG] redirect result EMPTY');
+          hasProcessedRedirect.current = true;
+        }
+      } catch (error: any) {
+        console.log(`[AUTH-DEBUG] redirect result ERROR code=${error.code} message=${error.message}`);
+        console.error('[AUTH] redirect result ERROR:', error.code);
+        
+        if (error.code === 'auth/account-exists-with-different-credential') {
+          const cred = GoogleAuthProvider.credentialFromError(error);
+          if (cred) setPendingCred(cred);
+        }
+        hasProcessedRedirect.current = true;
+      }
+    };
+    processRedirect();
+  }, [auth]);
+
+  const bootstrapUser = async (user: User) => {
     if (didBootstrap.current) return;
     didBootstrap.current = true;
 
-    const memberRef = doc(db, 'members', firebaseUser.uid);
+    const memberRef = doc(db, 'members', user.uid);
     try {
       const snap = await getDoc(memberRef);
       if (!snap.exists()) {
-        console.log('[AUTH] Creating new member profile:', firebaseUser.uid);
+        console.log('[AUTH] Creating new member profile:', user.uid);
         await setDoc(memberRef, {
-          uid: firebaseUser.uid,
-          email: firebaseUser.email,
-          displayName: firebaseUser.displayName || firebaseUser.email?.split('@')[0],
-          photoURL: firebaseUser.photoURL,
+          uid: user.uid,
+          email: user.email,
+          displayName: user.displayName || user.email?.split('@')[0],
+          photoURL: user.photoURL,
           role: 'member',
           status: 'pending',
           createdAt: serverTimestamp(),
@@ -62,7 +100,7 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
           lastLoginAt: serverTimestamp(),
         });
       } else {
-        console.log('[AUTH] Updating last login for:', firebaseUser.uid);
+        console.log('[AUTH] Updating last login for:', user.uid);
         await updateDoc(memberRef, {
           lastLoginAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
@@ -74,36 +112,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
   };
 
   useEffect(() => {
-    if (!isUserLoading && user && pathname === '/login' && hasProcessedRedirect.current) {
-      console.log('[AUTH] user detected -> redirect /assembly', { uid: user.uid });
-      router.replace('/assembly');
-    }
-  }, [user, isUserLoading, pathname, router]);
-
-  useEffect(() => {
-    if (hasProcessedRedirect.current) return;
-    
-    const processRedirect = async () => {
-      try {
-        const result = await handleGoogleRedirectResult(auth);
-        if (result?.user) {
-          console.log('[AUTH] redirect result SUCCESS:', result.user.uid);
-          await bootstrapUser(result.user);
-        }
-      } catch (error: any) {
-        console.error('[AUTH] redirect result ERROR:', error.code);
-        if (error.code === 'auth/account-exists-with-different-credential') {
-          const cred = GoogleAuthProvider.credentialFromError(error);
-          if (cred) setPendingCred(cred);
-        }
-      } finally {
-        hasProcessedRedirect.current = true;
-      }
-    };
-    processRedirect();
-  }, [auth]);
-
-  useEffect(() => {
     if (isUserLoading) return;
 
     if (!user) {
@@ -112,7 +120,6 @@ export function AuthStatusProvider({ children }: { children: ReactNode }) {
       didBootstrap.current = false;
       return;
     }
-
     setIsMemberLoading(true);
     bootstrapUser(user);
 

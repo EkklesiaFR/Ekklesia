@@ -49,9 +49,9 @@ service cloud.firestore {
     // =========================
     match /assemblies/{assemblyId} {
 
+      // ✅ Modèle 2: pending n'a aucun accès aux données de l'app
       allow read: if isMemberActive();
 
-      // Interdire toute modif de l'assemblée si elle contient des résultats verrouillés
       allow update: if isAdminActive()
         && (!("results" in resource.data) || resource.data.results == null);
 
@@ -68,9 +68,8 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow read: if isMemberActive();
 
-        // ✅ Vote immuable après verrouillage
-        // ✅ Quorum modifiable uniquement en draft
-        // ✅ Empêcher la modification des résultats une fois écrits
+        // ✅ vote immutable after locked
+        // ✅ quorumPct is editable ONLY in draft. Once state != draft => quorumPct cannot change.
         allow update: if isAdminActive()
           && resource.data.state != "locked"
           && (
@@ -81,11 +80,14 @@ service cloud.firestore {
         allow create, delete: if isAdminActive();
 
         match /ballots/{uid} {
+          // ✅ ballot visible/écrivable seulement si vote open + membre actif + propriétaire
           allow get, create, update: if isMemberActive()
             && request.auth.uid == uid
             && get(/databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId)).data.state == "open";
 
+          // Audit
           allow list: if isAdminActive();
+
           allow delete: if false;
         }
       }
@@ -95,14 +97,21 @@ service cloud.firestore {
     // PROJECTS
     // =========================
     match /projects/{projectId} {
+
+      // ✅ Modèle 2: pending ne peut pas lire les projets
       allow read: if isMemberActive();
+
       allow create: if isMemberActive();
+
       allow update, delete: if isAdminActive()
         || (isSignedIn()
             && request.auth.uid == resource.data.ownerUid
             && resource.data.status == "submitted");
     }
 
+    // =========================
+    // DEFAULT DENY
+    // =========================
     match /{document=**} {
       allow read, write: if false;
     }
