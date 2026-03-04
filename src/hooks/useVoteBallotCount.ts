@@ -1,115 +1,80 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { collection, getCountFromServer, onSnapshot, query } from 'firebase/firestore';
 import { useFirestore } from '@/firebase';
+import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { collection, doc, getCountFromServer, onSnapshot } from 'firebase/firestore';
+import type { Vote } from '@/types';
 
-interface UseVoteBallotCountParams {
+interface UseVoteBallotCountProps {
   assemblyId: string;
   voteId: string;
-  status: 'open' | 'locked' | 'closed' | 'draft' | string;
+  status: Vote['state'];
+  mode: 'realtime' | 'frozen';
   frozenCount?: number;
-  mode?: 'once' | 'realtime';
 }
 
-interface UseVoteBallotCountReturn {
-  count: number;
-  isLoading: boolean;
-  error?: string;
-}
-
-/**
- * A hook to count ballots for a given vote, with different strategies based on the vote status.
- * - For 'draft' votes, returns 0 immediately.
- * - For 'open' votes, it can count in realtime or once.
- * - For 'locked' or 'closed' votes, it prefers the frozen count from vote.results.totalBallots.
- * - If the frozen count is missing for a locked/closed vote, it falls back to a one-time count.
- */
-export function useVoteBallotCount({
-  assemblyId,
-  voteId,
-  status,
-  frozenCount,
-  mode = 'once',
-}: UseVoteBallotCountParams): UseVoteBallotCountReturn {
-  const db = useFirestore();
-  const [count, setCount] = useState<number>(0);
+export function useVoteBallotCount({ assemblyId, voteId, status, mode, frozenCount }: UseVoteBallotCountProps) {
+  const [count, setCount] = useState(frozenCount ?? 0);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | undefined>();
+  const db = useFirestore();
+
+  const { isAdmin, isMemberLoading } = useAuthStatus();
 
   useEffect(() => {
-    // 1. Short-circuit for draft votes, which can have no ballots.
-    if (status === 'draft') {
-      setCount(0);
+    if (!assemblyId || !voteId || status !== 'open') {
       setIsLoading(false);
+      if (status === 'locked' && frozenCount != null) setCount(frozenCount);
       return;
     }
 
-    // 2. If status is final and we have a frozen count, use it immediately.
-    if ((status === 'locked' || status === 'closed') && typeof frozenCount === 'number') {
-      setCount(frozenCount);
-      setIsLoading(false);
-      return;
-    }
+    if (isMemberLoading) return;
 
-    // 3. Ensure essential IDs and db connection are present before querying.
-    if (!db || !assemblyId || !voteId) {
-      setIsLoading(false);
-      return;
-    }
-
-    const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
-    const q = query(ballotsRef);
-
-    // 4. Determine the effective mode.
-    // Fallback to 'once' if the vote is finished but lacks a frozenCount.
-    const effectiveMode = (status === 'locked' || status === 'closed') ? 'once' : mode;
-
-    if (effectiveMode === 'realtime') {
-      // 5. Realtime mode: Subscribe to snapshot changes.
+    // MEMBER: read vote.ballotCount (no ballots list)
+    if (!isAdmin) {
+      const voteDocRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
       const unsubscribe = onSnapshot(
-        q,
+        voteDocRef,
+        (docSnap) => {
+          if (docSnap.exists()) setCount((docSnap.data() as any).ballotCount ?? 0);
+          setIsLoading(false);
+        },
+        (error) => {
+          console.error('useVoteBallotCount (member) error:', error);
+          setIsLoading(false);
+        }
+      );
+      return () => unsubscribe();
+    }
+
+    // ADMIN: can count ballots
+    const ballotsColRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
+
+    if (mode === 'realtime') {
+      const unsubscribe = onSnapshot(
+        ballotsColRef,
         (snapshot) => {
           setCount(snapshot.size);
           setIsLoading(false);
         },
-        (err) => {
-          console.error('[useVoteBallotCount] Realtime count error:', err);
-          setError(err.message);
+        (error) => {
+          console.error('useVoteBallotCount (admin realtime) error:', error);
           setIsLoading(false);
         }
       );
-
-      return () => unsubscribe(); // Cleanup subscription
-    } else {
-      // 6. One-time mode: Use efficient server-side aggregation.
-      let isCancelled = false;
-
-      const fetchCount = async () => {
-        try {
-          const snapshot = await getCountFromServer(q);
-          if (!isCancelled) {
-            setCount(snapshot.data().count);
-          }
-        } catch (err: any) {
-          console.error('[useVoteBallotCount] One-time count error:', err);
-          if (!isCancelled) {
-            setError(err.message);
-          }
-        } finally {
-          if (!isCancelled) {
-            setIsLoading(false);
-          }
-        }
-      };
-
-      fetchCount();
-
-      return () => {
-        isCancelled = true;
-      };
+      return () => unsubscribe();
     }
-  }, [db, assemblyId, voteId, status, frozenCount, mode]);
 
-  return { count, isLoading, error };
+    getCountFromServer(ballotsColRef)
+      .then((snapshot) => {
+        setCount(snapshot.data().count);
+        setIsLoading(false);
+      })
+      .catch((error) => {
+        console.error('useVoteBallotCount (admin frozen) error:', error);
+        setIsLoading(false);
+      });
+  }, [assemblyId, voteId, status, mode, db, frozenCount, isAdmin, isMemberLoading]);
+
+  return { count, isLoading };
 }
