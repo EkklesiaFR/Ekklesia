@@ -5,9 +5,12 @@ service cloud.firestore {
     // =========================
     // HELPERS (robustes)
     // =========================
-
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return isSignedIn() && request.auth.uid == uid;
     }
 
     function memberPath() {
@@ -23,17 +26,11 @@ service cloud.firestore {
     }
 
     function isMemberActive() {
-      return hasMemberDoc()
-        && memberData().status == "active";
+      return hasMemberDoc() && memberData().status == "active";
     }
 
     function isAdminActive() {
-      return isMemberActive()
-        && memberData().role == "admin";
-    }
-
-    function isSelf(uid) {
-      return isSignedIn() && request.auth.uid == uid;
+      return isMemberActive() && memberData().role == "admin";
     }
 
     // =========================
@@ -52,7 +49,8 @@ service cloud.firestore {
         && request.resource.data.role == "member"
         && request.resource.data.status == "pending";
 
-      // Self can update ONLY non-sensitive fields (role/status immutable for self)
+      // Self can update ONLY non-sensitive fields
+      // (role/status immutable for self)
       allow update: if isSelf(uid)
         && request.resource.data.role == resource.data.role
         && request.resource.data.status == resource.data.status;
@@ -69,8 +67,38 @@ service cloud.firestore {
       // Pending has no access
       allow read: if isMemberActive();
 
-      // (Optionnel) tu peux restreindre l'update du doc assembly aux admins :
+      // Only admin can create/update/delete assemblies
       allow create, update, delete: if isAdminActive();
+
+      // -------------------------
+      // PRESENCE (online heartbeat)
+      // Path: assemblies/{assemblyId}/presence/{uid}
+      // -------------------------
+      match /presence/{uid} {
+
+        // Any active member can read presence (for realtime count)
+        allow get: if isMemberActive();
+        allow list: if isMemberActive();
+
+        // A member can write ONLY their own presence doc
+        // Keep it strict: only allow the expected fields.
+        allow create, update: if isMemberActive()
+          && isSelf(uid)
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            "uid",
+            "status",
+            "sessionId",
+            "lastSeenAt",
+            "photoURL",
+            "displayName"
+          ])
+          && (request.resource.data.status in ["online", "offline"])
+          && (request.resource.data.lastSeenAt is timestamp);
+
+        // No deletes from clients (optional)
+        allow delete: if false;
+      }
 
       // Assembly-scoped member mirror (si vous l'utilisez)
       match /members/{uid} {
