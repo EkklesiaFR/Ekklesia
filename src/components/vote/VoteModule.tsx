@@ -360,7 +360,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
 
             {/* ✅ Tendance admin en plus */}
             {canShowAdminTrends && (
-              <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} projects={projects} />
+              <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} />
             )}
           </div>
         ) : (

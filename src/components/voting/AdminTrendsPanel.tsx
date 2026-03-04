@@ -1,55 +1,28 @@
 'use client';
 
-import { useMemo } from 'react';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
-import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
-import { collection } from 'firebase/firestore';
-import type { Ballot, Project } from '@/types';
-import { computeSchulzeResults } from '@/lib/tally';
 import { TrendingUp, BarChart3 } from 'lucide-react';
+import { useAdminTrends } from '@/hooks/useAdminTrends';
 
 interface AdminTrendsPanelProps {
   assemblyId: string;
   voteId: string;
-  projects: Project[];
 }
 
 /**
- * IMPORTANT : Ne doit être monté que côté admin.
- * Fait une LIST sur /ballots (donc coûteux si monté pour tout le monde).
+ * Version scalable :
+ * - Ne LIST plus /ballots côté client
+ * - Appelle une API admin sécurisée (cookie session)
+ * - Polling + cache côté serveur
  */
-export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPanelProps) {
-  const { isAdmin, isMemberLoading } = useAuthStatus();
-  const db = useFirestore();
+export function AdminTrendsPanel({ assemblyId, voteId }: AdminTrendsPanelProps) {
+  const { trends, isLoading, error } = useAdminTrends(assemblyId, voteId);
 
-  const ballotsQuery = useMemoFirebase(() => {
-    // Sécurité: ne retourne une query QUE si admin actif (et profil chargé)
-    if (!db || isMemberLoading || isAdmin !== true) return null;
-    return collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
-  }, [db, assemblyId, voteId, isAdmin, isMemberLoading]);
+  const winnerTitle =
+    trends?.winnerProject?.title ?? trends?.winnerId ?? '—';
 
-  const { data: ballots, isLoading } = useCollection<Ballot>(ballotsQuery);
+  const winnerImg = trends?.winnerProject?.imageUrl ?? null;
 
-  const results = useMemo(() => {
-    if (!ballots || projects.length === 0) return null;
-    return computeSchulzeResults(projects.map((p) => p.id), ballots);
-  }, [ballots, projects]);
-
-  const winnerProject = useMemo(() => {
-    if (!results?.winnerId) return null;
-    return projects.find((p) => p.id === results.winnerId) ?? null;
-  }, [results?.winnerId, projects]);
-
-  // Fallbacks d'image (sans casser si la clé n'existe pas)
-  const winnerImg =
-    winnerProject
-      ? ((winnerProject as any).imageUrl ??
-        (winnerProject as any).coverImageUrl ??
-        (winnerProject as any).thumbnailUrl ??
-        null)
-      : null;
-
-  if (isLoading || isMemberLoading) {
+  if (isLoading && !trends) {
     return (
       <div className="bg-secondary/30 p-6 border space-y-4 animate-pulse">
         <div className="h-4 bg-muted rounded w-2/3" />
@@ -58,7 +31,22 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
     );
   }
 
-  if (!results) {
+  if (error) {
+    return (
+      <div className="bg-secondary/30 p-6 border space-y-3">
+        <div className="flex items-center gap-3">
+          <TrendingUp className="h-4 w-4 text-muted-foreground" />
+          <h3 className="text-xs font-bold uppercase tracking-widest">Tendance live (Admin)</h3>
+        </div>
+        <p className="text-sm text-muted-foreground">
+          Impossible de charger la tendance (admin only).
+        </p>
+      </div>
+    );
+  }
+
+  // Pas encore de bulletins
+  if (!trends || trends.ballotCount === 0) {
     return (
       <div className="bg-secondary/30 p-6 border space-y-3">
         <div className="flex items-center gap-3">
@@ -81,7 +69,7 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
         {winnerImg ? (
           <img
             src={winnerImg}
-            alt={winnerProject?.title ? `Image de ${winnerProject.title}` : 'Image projet'}
+            alt={trends?.winnerProject?.title ? `Image de ${trends.winnerProject.title}` : 'Image projet'}
             className="w-20 h-[60px] object-cover rounded-md border bg-white"
             loading="lazy"
           />
@@ -93,12 +81,12 @@ export function AdminTrendsPanel({ assemblyId, voteId, projects }: AdminTrendsPa
 
         <div className="flex-1 min-w-0">
           <p className="text-sm text-muted-foreground">En tête</p>
-          <p className="text-lg font-bold truncate">{winnerProject?.title ?? results.winnerId ?? '—'}</p>
+          <p className="text-lg font-bold truncate">{winnerTitle}</p>
         </div>
       </div>
 
       <div className="text-xs text-muted-foreground pt-2 border-t border-black/5">
-        Basé sur {ballots?.length ?? 0} bulletin(s). Le classement peut évoluer.
+        Basé sur {trends.ballotCount} bulletin(s). Le classement peut évoluer.
       </div>
     </div>
   );
