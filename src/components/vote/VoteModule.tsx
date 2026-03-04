@@ -1,9 +1,8 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
-import { useUser, useFirestore } from '@/firebase';
+import { useUser } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
-import { doc, serverTimestamp, runTransaction } from 'firebase/firestore';
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -196,12 +195,11 @@ function ParticipationPanel({
 export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModuleProps) {
   const { user } = useUser();
   const { isAdmin, isMemberLoading } = useAuthStatus();
-  const db = useFirestore();
 
   const [currentRanking, setCurrentRanking] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // ✅ Compteur fiable (live quand open)
+  // ✅ Compteur figé (votes clos) : fallback multi champs
   const frozenCount =
     (vote as any)?.results?.totalBallots ?? (vote as any)?.results?.total ?? undefined;
 
@@ -213,7 +211,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     mode: 'realtime',
   });
 
-  // ✅ Fallback multi-champs date (évite les surprises)
+  // ✅ Fallback multi-champs date
   const closesAt =
     (vote as any)?.closesAt ?? (vote as any)?.endsAt ?? (vote as any)?.closedAt ?? null;
 
@@ -226,41 +224,40 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userBallot, projects]);
 
+  /**
+   * ✅ IMPORTANT:
+   * On envoie le vote via l'API Route /api/assemblies/:assemblyId/votes/:voteId/ballots
+   * pour que le serveur (Admin SDK) incrémente vote.ballotCount atomiquement.
+   */
   const handleVoteSubmit = async () => {
     if (!user) return;
     setIsSaving(true);
-
-    const userBallotRef = doc(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots', user.uid);
-
+  
     try {
-      await runTransaction(db, async (transaction) => {
-        const ballotSnap = await transaction.get(userBallotRef);
-        const isNewBallot = !ballotSnap.exists();
-        const timestamp = serverTimestamp();
-
-        if (isNewBallot) {
-          console.log(`[VOTE] [BALLOT] creating for ${user.uid}`);
-          transaction.set(userBallotRef, {
-            ranking: currentRanking,
-            castAt: timestamp,
-            updatedAt: timestamp,
-          });
-        } else {
-          console.log(`[VOTE] [BALLOT] updating for ${user.uid}`);
-          transaction.update(userBallotRef, {
-            ranking: currentRanking,
-            updatedAt: timestamp,
-          });
-        }
+      const idToken = await user.getIdToken();
+  
+      const res = await fetch(`/api/assemblies/${assemblyId}/votes/${vote.id}/ballots`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({ ranking: currentRanking }),
       });
-
+  
+      if (!res.ok) {
+        const payload = await res.json().catch(() => null);
+        const msg = payload?.error || `HTTP ${res.status}`;
+        throw new Error(msg);
+      }
+  
       toast({ title: 'Vote enregistré', description: 'Votre classement a été pris en compte.' });
     } catch (e: any) {
-      console.error('[VOTE] Submission error:', e.code, e.message);
+      console.error('[VOTE] API submit error:', e?.message || e);
       toast({
         variant: 'destructive',
-        title: `Erreur (${e.code || 'UNKNOWN'})`,
-        description: "Impossible de sauvegarder votre vote.",
+        title: 'Erreur',
+        description: e?.message ? `Impossible de sauvegarder votre vote: ${e.message}` : "Impossible de sauvegarder votre vote.",
       });
     } finally {
       setIsSaving(false);
@@ -337,12 +334,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
       </div>
 
       <aside className="space-y-12 lg:bg-secondary/5 lg:p-12 border-l border-border">
-        {/* ✅ Mini résumé placé au sommet de l'aside */}
-        <MiniHeaderOverlay
-          ballotCount={ballotCount}
-          isLoading={isBallotCountLoading}
-          closesAt={closesAt}
-        />
+        <MiniHeaderOverlay ballotCount={ballotCount} isLoading={isBallotCountLoading} closesAt={closesAt} />
 
         {vote.state === 'draft' ? (
           <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-4">
@@ -351,17 +343,13 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
           </div>
         ) : vote.state === 'open' ? (
           <div className="space-y-12">
-            {/* ✅ Stats pour tout le monde */}
             <ParticipationPanel
               ballotCount={ballotCount}
               eligibleCount={vote.eligibleCountAtOpen}
               isLoading={isBallotCountLoading}
             />
 
-            {/* ✅ Tendance admin en plus */}
-            {canShowAdminTrends && (
-              <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} />
-            )}
+            {canShowAdminTrends && <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} />}
           </div>
         ) : (
           <div className="space-y-12">
