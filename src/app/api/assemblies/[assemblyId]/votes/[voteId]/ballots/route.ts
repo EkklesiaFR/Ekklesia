@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
 import { cookies } from 'next/headers';
 import { getAuth, type DecodedIdToken } from 'firebase-admin/auth';
 import { FieldValue, type Transaction } from 'firebase-admin/firestore';
@@ -11,27 +12,24 @@ interface BallotRequestBody {
   ranking: string[];
 }
 
-function getBearerToken(req: Request): string | null {
+function getBearerToken(req: NextRequest): string | null {
   const authHeader = req.headers.get('authorization') || req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) return null;
   const token = authHeader.slice('Bearer '.length).trim();
   return token.length ? token : null;
 }
 
-function uniqueNonEmptyStrings(input: unknown): string[] | null {
-  if (!Array.isArray(input)) return null;
-  const arr = input.filter((x) => typeof x === 'string' && x.trim().length > 0) as string[];
-  const uniq = Array.from(new Set(arr));
-  if (uniq.length !== arr.length) return null; // duplicates
-  return uniq;
-}
+type RouteContext = {
+  params: Promise<{
+    assemblyId: string;
+    voteId: string;
+  }>;
+};
 
-export async function POST(
-  req: Request,
-  { params }: { params: { assemblyId: string; voteId: string } }
-) {
+export async function POST(req: NextRequest, context: RouteContext) {
   try {
-    const { assemblyId, voteId } = params;
+    const { assemblyId, voteId } = await context.params;
+
     if (!assemblyId || !voteId) {
       return NextResponse.json({ error: 'Missing assemblyId or voteId' }, { status: 400 });
     }
@@ -53,10 +51,8 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // --- BODY ---
     const body = (await req.json()) as BallotRequestBody;
-    const ranking = uniqueNonEmptyStrings(body?.ranking);
-    if (!ranking || ranking.length === 0) {
+    if (!body || !Array.isArray(body.ranking) || body.ranking.length === 0) {
       return NextResponse.json({ error: 'Invalid ballot data' }, { status: 400 });
     }
 
@@ -66,40 +62,14 @@ export async function POST(
     const ballotsCol = voteRef.collection('ballots');
     const ballotRef = ballotsCol.doc(decodedToken.uid);
 
-    // ✅ Backfill base count (Admin SDK aggregation) — outside transaction ok
-    // (Used only if vote.ballotCount missing/null)
+    // ✅ Backfill base count (Admin SDK aggregation)
     const countSnap = await ballotsCol.count().get();
     const baseCount = countSnap.data().count ?? 0;
 
     await db.runTransaction(async (tx: Transaction) => {
       const [voteSnap, ballotSnap] = await Promise.all([tx.get(voteRef), tx.get(ballotRef)]);
 
-      if (!voteSnap.exists) {
-        throw Object.assign(new Error('Vote not found'), { code: 'vote/not-found' });
-      }
-
-      const voteData = voteSnap.data() as any;
-
-      // ✅ Block voting unless open
-      if (voteData?.state !== 'open') {
-        throw Object.assign(new Error('Vote is closed'), { code: 'vote/closed' });
-      }
-
-      // ✅ Optional: validate ranking against projects list if present on vote doc
-      // (If you store vote.projectIds = string[])
-      const projectIds = Array.isArray(voteData?.projectIds) ? (voteData.projectIds as string[]) : null;
-      if (projectIds && projectIds.length > 0) {
-        // must be same length + contain only known ids
-        if (ranking.length !== projectIds.length) {
-          throw Object.assign(new Error('Invalid ranking length'), { code: 'vote/invalid-ranking' });
-        }
-        const allowed = new Set(projectIds);
-        if (!ranking.every((id) => allowed.has(id))) {
-          throw Object.assign(new Error('Invalid ranking ids'), { code: 'vote/invalid-ranking' });
-        }
-      }
-
-      const currentBallotCount = voteData?.ballotCount;
+      const currentBallotCount = voteSnap.exists ? (voteSnap.data() as any)?.ballotCount : undefined;
 
       // ✅ Initialize ballotCount once if missing/null (so members can read it)
       if (currentBallotCount === undefined || currentBallotCount === null) {
@@ -108,13 +78,17 @@ export async function POST(
 
       // ✅ increment only on first vote for this user
       if (!ballotSnap.exists) {
-        tx.update(voteRef, { ballotCount: FieldValue.increment(1) });
+        tx.set(
+          voteRef,
+          { ballotCount: FieldValue.increment(1) },
+          { merge: true }
+        );
       }
 
       tx.set(
         ballotRef,
         {
-          ranking,
+          ranking: body.ranking,
           updatedAt: FieldValue.serverTimestamp(),
           ...(ballotSnap.exists ? {} : { castAt: FieldValue.serverTimestamp() }),
         },
@@ -128,18 +102,6 @@ export async function POST(
 
     const code = error?.code || error?.errorInfo?.code;
 
-    // Vote guards
-    if (code === 'vote/not-found') {
-      return NextResponse.json({ error: 'Vote not found' }, { status: 404 });
-    }
-    if (code === 'vote/closed') {
-      return NextResponse.json({ error: 'Vote is closed' }, { status: 403 });
-    }
-    if (code === 'vote/invalid-ranking') {
-      return NextResponse.json({ error: 'Invalid ranking' }, { status: 400 });
-    }
-
-    // Auth guards
     if (
       code === 'auth/session-cookie-expired' ||
       code === 'auth/id-token-expired' ||

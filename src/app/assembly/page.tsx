@@ -1,29 +1,47 @@
 'use client';
 
+import Link from 'next/link';
+import { doc } from 'firebase/firestore';
+import { Activity, LayoutGrid, Settings } from 'lucide-react';
+
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
-import Link from 'next/link';
-import { Activity, LayoutGrid, Settings } from 'lucide-react';
 import type { Vote, Assembly } from '@/types';
-import { LastVoteResultCard } from '@/components/voting/LastVoteResultCard';
+
 import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
-import { doc } from 'firebase/firestore';
 import { ActiveVotePanel } from '@/components/assembly/ActiveVotePanel';
+import { LastVoteResultCard } from '@/components/voting/LastVoteResultCard';
+
+import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
+import { useOnlinePresence } from '@/hooks/useOnlinePresence';
+import { OnlinePresenceStrip } from '@/components/assembly/OnlinePresenceStrip';
 
 function AssemblyDashboardContent() {
   const { isAdmin } = useAuthStatus();
   const db = useFirestore();
 
+  // --- assembly ---
   const assemblyRef = useMemoFirebase(() => doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), [db]);
   const { data: activeAssembly, isLoading: isAssemblyLoading } = useDoc<Assembly>(assemblyRef);
 
+  // --- active vote ---
   const voteRef = useMemoFirebase(() => {
     if (!activeAssembly?.activeVoteId || activeAssembly.state !== 'open') return null;
     return doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', activeAssembly.activeVoteId);
   }, [db, activeAssembly]);
+
   const { data: activeVote } = useDoc<Vote>(voteRef);
+
+  // ✅ heartbeat présence (dashboard only)
+  usePresenceHeartbeat(DEFAULT_ASSEMBLY_ID);
+
+  // ✅ online presence
+  const { onlineCount, deltaLastMinute, isLoading: isOnlineLoading } = useOnlinePresence(
+    DEFAULT_ASSEMBLY_ID
+  );
 
   if (isAssemblyLoading) {
     return (
@@ -35,6 +53,11 @@ function AssemblyDashboardContent() {
 
   const isOpen = activeAssembly?.state === 'open' && !!activeVote;
 
+  // Denominator affichage (si vote ouvert)
+  const totalCount: number | null = isOpen
+    ? (((activeVote as any)?.eligibleCountAtOpen as number | undefined) ?? null)
+    : null;
+
   return (
     <div className="space-y-16 animate-in fade-in duration-700">
       <header className="space-y-2">
@@ -45,6 +68,15 @@ function AssemblyDashboardContent() {
           Une voix, une communauté.
         </h1>
       </header>
+
+      {/* ✅ Strip présence en direct AU-DESSUS des 2 cartes */}
+      <OnlinePresenceStrip
+        onlineCount={onlineCount}
+        totalCount={totalCount}
+        deltaLastMinute={deltaLastMinute}
+        isLoading={isOnlineLoading}
+        href="/vote"
+      />
 
       {!isOpen ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -60,15 +92,16 @@ function AssemblyDashboardContent() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          {/* ✅ Panel vote enrichi */}
           <ActiveVotePanel assembly={activeAssembly as Assembly} vote={activeVote as Vote} />
-
           <LastVoteResultCard />
         </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-16 border-t">
-        <Link href="/projects" className="group border p-8 bg-white hover:border-black transition-all space-y-6">
+        <Link
+          href="/projects"
+          className="group border p-8 bg-white hover:border-black transition-all space-y-6"
+        >
           <LayoutGrid className="h-6 w-6" />
           <h3 className="text-xl font-bold">Les Projets</h3>
         </Link>
