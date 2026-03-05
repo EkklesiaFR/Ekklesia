@@ -1,4 +1,4 @@
-"use client";
+'use client';
 
 import Link from 'next/link';
 import { LogOut, LogIn } from 'lucide-react';
@@ -7,51 +7,74 @@ import { cn } from '@/lib/utils';
 import { useUser, useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
+import { EkklesiaAssemblyLogo } from '@/components/icons/EkklesiaAssemblyLogo';
 
-export function Header({ 
-  role, 
+export function Header({
+  role,
   statusText,
-  isVoteOpen: isVoteOpenProp
-}: { 
-  role?: string; 
+  isVoteOpen: isVoteOpenProp,
+  isAssemblyActive = false,
+}: {
+  role?: string;
   statusText?: string;
   isVoteOpen?: boolean;
+  isAssemblyActive?: boolean;
 }) {
   const { user, isUserLoading } = useUser();
   const { member } = useAuthStatus();
   const auth = useAuth();
-  
-  const isVoteOpen = isVoteOpenProp ?? (statusText === "Vote ouvert");
+
+  const isVoteOpen = isVoteOpenProp ?? statusText === 'Vote ouvert';
 
   const handleLogout = () => {
     signOut(auth);
   };
 
   const getDisplayName = () => {
-    if (!user) return "Membre";
+    if (!user) return 'Membre';
     if (user.displayName) return user.displayName;
-    return user.email?.split('@')[0] || "Membre";
+    return user.email?.split('@')[0] || 'Membre';
   };
 
   return (
     <header className="w-full border-b border-border bg-background py-6">
       <div className="mx-auto max-w-[900px] flex items-center justify-between px-6">
+        {/* Left: Brand + status */}
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-2xl font-bold tracking-tight text-black font-headline">
-            Ekklesia
+          <Link
+            href="/"
+            className="flex items-center gap-3 text-2xl font-bold tracking-tight text-black font-headline"
+            aria-label="Accueil Ekklesia"
+          >
+            <span
+              className={cn(
+                'inline-flex items-center justify-center',
+                'transition-transform duration-200 ease-out transform-gpu',
+                // premium micro motion (no rotation)
+                isAssemblyActive && 'scale-[1.06] -translate-y-[0.5px]'
+              )}
+            >
+              <EkklesiaAssemblyLogo title="Ekklesia" className="h-6 w-6 text-black" />
+            </span>
+
+            <span>Ekklesia</span>
           </Link>
+
           {statusText && (
             <div className="flex items-center gap-4 border-l pl-8 border-border h-6">
-              <span className={cn(
-                "text-[13px] font-medium tracking-tight font-body",
-                isVoteOpen ? "text-[#7DC092]" : "text-black"
-              )}>
+              <span
+                className={cn(
+                  'text-[13px] font-medium tracking-tight font-body',
+                  isVoteOpen ? 'text-[#7DC092]' : 'text-black'
+                )}
+              >
                 {statusText}
               </span>
             </div>
           )}
         </div>
-        
+
+        {/* Right: Account / Auth (desktop only) */}
         <div className="hidden md:flex items-center gap-8">
           {!isUserLoading && user ? (
             <div className="flex items-center gap-8">
@@ -63,28 +86,35 @@ export function Header({
                   role={member?.role || 'none'} — status={member?.status || 'none'}
                 </span>
               </div>
-              <Button 
-                variant="ghost" 
-                size="sm" 
+
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleLogout}
-                className="h-auto p-0 text-[13px] font-medium hover:bg-transparent flex items-center gap-2 text-muted-foreground hover:text-black transition-colors font-body"
+                className={cn(
+                  'h-auto p-0 text-[13px] font-medium hover:bg-transparent',
+                  'flex items-center gap-2 text-muted-foreground hover:text-black transition-colors font-body'
+                )}
               >
                 <span>Déconnexion</span>
                 <LogOut className="h-3 w-3" />
               </Button>
             </div>
-          ) : !isUserLoading && (
+          ) : !isUserLoading ? (
             <Link href="/login">
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-auto p-0 text-[13px] font-medium hover:bg-transparent flex items-center gap-2 hover:text-[#7DC092] transition-colors font-body"
+              <Button
+                variant="ghost"
+                size="sm"
+                className={cn(
+                  'h-auto p-0 text-[13px] font-medium hover:bg-transparent',
+                  'flex items-center gap-2 hover:text-[#7DC092] transition-colors font-body'
+                )}
               >
                 <span>Connexion</span>
                 <LogIn className="h-3.5 w-3.5" />
               </Button>
             </Link>
-          )}
+          ) : null}
         </div>
       </div>
     </header>
