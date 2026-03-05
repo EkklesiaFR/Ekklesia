@@ -63,7 +63,7 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
         aria-current={isActive ? 'page' : undefined}
         className={cn(
           'relative flex min-w-[64px] flex-col items-center justify-center gap-1 px-2 py-2',
-          'transition-all duration-200 active:scale-[0.98]',
+          'transition-transform duration-200 active:scale-[0.98]',
           isDisabled && 'pointer-events-none opacity-40'
         )}
       >
@@ -84,11 +84,10 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
           {tab.label}
         </span>
 
-        {/* Active indicator (premium, subtle) */}
         <span
           className={cn(
-            'absolute -bottom-0.5 h-1 w-1 rounded-full transition-opacity duration-200',
-            isActive ? 'opacity-100 bg-[#7DC092]' : 'opacity-0'
+            'absolute bottom-0 h-[2px] w-7 rounded-full transition-all duration-300',
+            isActive ? 'bg-[#7DC092] opacity-100' : 'opacity-0'
           )}
         />
       </Link>
@@ -99,22 +98,34 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
     <nav
       className={cn(
         'fixed bottom-0 left-0 right-0 z-50 md:hidden',
-        // premium "glass" effect
         'bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/70',
         'border-t border-black/10',
         'h-[calc(4.5rem+env(safe-area-inset-bottom))] pb-[env(safe-area-inset-bottom)]'
       )}
       aria-label="Navigation principale"
     >
-      <div className="relative flex h-full items-center justify-between px-3">
-        {/* Left */}
-        <div className="flex flex-1 items-center justify-between px-6">
+      <div className="absolute inset-x-0 top-0 h-px bg-black/5" />
+
+      <div className="relative flex h-full items-center">
+
+        {/* LEFT TABS */}
+        <div className="flex flex-1 items-center justify-around pl-4">
           {tabsLeft.map((tab) => (
             <NavItem key={tab.label} tab={tab} />
           ))}
         </div>
 
-        {/* Center FAB (logo) */}
+        {/* CENTER SPACER (important) */}
+        <div className="w-[72px]" />
+
+        {/* RIGHT TABS */}
+        <div className="flex flex-1 items-center justify-around pr-4">
+          {tabsRight.map((tab) => (
+            <NavItem key={tab.label} tab={tab} />
+          ))}
+        </div>
+
+        {/* CENTER FAB */}
         <div className="pointer-events-none absolute left-1/2 top-0 flex -translate-x-1/2 -translate-y-1/3 items-center justify-center">
           <Link
             href="/assembly"
@@ -122,34 +133,34 @@ export function MobileNav({ isVoteOpen }: MobileNavProps) {
             aria-current={isAssemblyActive ? 'page' : undefined}
             className={cn(
               'pointer-events-auto relative flex h-14 w-14 items-center justify-center rounded-full',
-              'shadow-xl ring-1 ring-black/10 transition-all duration-200 active:scale-95',
-              isAssemblyActive ? 'bg-[#7DC092] text-white scale-110' : 'bg-white text-zinc-900 hover:bg-zinc-50'
+              'shadow-[0_10px_25px_rgba(0,0,0,0.12)] ring-1 ring-black/10',
+              'transition-all duration-200 active:scale-95 hover:scale-[1.03]'
             )}
           >
+            <div
+              className={cn(
+                'absolute inset-0 rounded-full',
+                isAssemblyActive
+                  ? 'bg-[#7DC092] shadow-[0_8px_20px_rgba(125,192,146,0.35)]'
+                  : 'bg-white'
+              )}
+            />
+
             <EkklesiaAssemblyLogo
               title="Assemblée"
               className={cn(
-                // bigger + better optical centering
-                'h-8 w-8 translate-y-[0.5px]',
+                'relative h-8 w-8 translate-y-[0.5px]',
                 isAssemblyActive ? 'text-white' : 'text-zinc-900'
               )}
             />
           </Link>
 
-          {/* Vote open: subtle ring (no heavy glow) */}
           {isVoteOpen && (
             <span
               aria-hidden="true"
-              className={cn('absolute inset-0 rounded-full', 'ring-2 ring-[#7DC092]/30', 'animate-pulse')}
+              className="absolute inset-0 rounded-full ring-2 ring-[#7DC092]/30 animate-pulse"
             />
           )}
-        </div>
-
-        {/* Right */}
-        <div className="flex flex-1 items-center justify-between px-6">
-          {tabsRight.map((tab) => (
-            <NavItem key={tab.label} tab={tab} />
-          ))}
         </div>
       </div>
     </nav>
