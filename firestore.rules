@@ -3,7 +3,7 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // =========================
-    // HELPERS (robustes)
+    // HELPERS
     // =========================
     function isSignedIn() {
       return request.auth != null;
@@ -13,50 +13,71 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
-    function memberPath() {
-      return /databases/$(database)/documents/members/$(request.auth.uid);
+    function rootMemberPath(uid) {
+      return /databases/$(database)/documents/members/$(uid);
     }
 
-    function hasMemberDoc() {
-      return isSignedIn() && exists(memberPath());
+    function assemblyMemberPath(assemblyId, uid) {
+      return /databases/$(database)/documents/assemblies/$(assemblyId)/members/$(uid);
     }
 
-    function memberData() {
-      return get(memberPath()).data;
+    function rootExists() {
+      return isSignedIn() && exists(rootMemberPath(request.auth.uid));
     }
 
-    function isMemberActive() {
-      return hasMemberDoc() && memberData().status == "active";
+    function mirrorExists(assemblyId) {
+      return isSignedIn() && exists(assemblyMemberPath(assemblyId, request.auth.uid));
     }
 
-    function isAdminActive() {
-      return isMemberActive() && memberData().role == "admin";
+    function rootData() {
+      return get(rootMemberPath(request.auth.uid)).data;
+    }
+
+    function mirrorData(assemblyId) {
+      return get(assemblyMemberPath(assemblyId, request.auth.uid)).data;
+    }
+
+    // ✅ Actif si ROOT active OU MIRROR active
+    function isMemberActive(assemblyId) {
+      return isSignedIn() && (
+        (rootExists() && rootData().status == "active") ||
+        (mirrorExists(assemblyId) && mirrorData(assemblyId).status == "active")
+      );
+    }
+
+    // ✅ Admin actif si (ROOT admin+active) OU (MIRROR admin+active)
+    function isAdminActive(assemblyId) {
+      return isSignedIn() && (
+        (rootExists() && rootData().status == "active" && rootData().role == "admin") ||
+        (mirrorExists(assemblyId) && mirrorData(assemblyId).status == "active" && mirrorData(assemblyId).role == "admin")
+      );
+    }
+
+    // Pour les collections root hors assembly (projects, members list)
+    function isMemberActiveRoot() {
+      return rootExists() && rootData().status == "active";
+    }
+
+    function isAdminActiveRoot() {
+      return rootExists() && rootData().status == "active" && rootData().role == "admin";
     }
 
     // =========================
     // MEMBERS (root)
     // =========================
     match /members/{uid} {
+      allow get: if isSelf(uid) || isAdminActiveRoot();
+      allow list: if isAdminActiveRoot();
 
-      // Self can read self, admin can read anyone
-      allow get: if isSelf(uid) || isAdminActive();
-
-      // Admin can list all members
-      allow list: if isAdminActive();
-
-      // Self can create own profile only as pending/member
       allow create: if isSelf(uid)
         && request.resource.data.role == "member"
         && request.resource.data.status == "pending";
 
-      // Self can update ONLY non-sensitive fields
-      // (role/status immutable for self)
       allow update: if isSelf(uid)
         && request.resource.data.role == resource.data.role
         && request.resource.data.status == resource.data.status;
 
-      // Admin can update/delete any member
-      allow update, delete: if isAdminActive();
+      allow update, delete: if isAdminActiveRoot();
     }
 
     // =========================
@@ -64,25 +85,16 @@ service cloud.firestore {
     // =========================
     match /assemblies/{assemblyId} {
 
-      // Pending has no access
-      allow read: if isMemberActive();
-
-      // Only admin can create/update/delete assemblies
-      allow create, update, delete: if isAdminActive();
+      allow get, list: if isMemberActive(assemblyId);
+      allow create, update, delete: if isAdminActive(assemblyId);
 
       // -------------------------
-      // PRESENCE (online heartbeat)
-      // Path: assemblies/{assemblyId}/presence/{uid}
+      // PRESENCE
       // -------------------------
       match /presence/{uid} {
+        allow get, list: if isMemberActive(assemblyId);
 
-        // Any active member can read presence (for realtime count)
-        allow get: if isMemberActive();
-        allow list: if isMemberActive();
-
-        // A member can write ONLY their own presence doc
-        // Keep it strict: only allow the expected fields.
-        allow create, update: if isMemberActive()
+        allow create, update: if isMemberActive(assemblyId)
           && isSelf(uid)
           && request.resource.data.uid == request.auth.uid
           && request.resource.data.keys().hasOnly([
@@ -96,20 +108,24 @@ service cloud.firestore {
           && (request.resource.data.status in ["online", "offline"])
           && (request.resource.data.lastSeenAt is timestamp);
 
-        // No deletes from clients (optional)
         allow delete: if false;
       }
 
-      // Assembly-scoped member mirror (si vous l'utilisez)
+      // -------------------------
+      // MEMBERS MIRROR
+      // -------------------------
       match /members/{uid} {
-        allow read: if isSelf(uid) || isAdminActive();
-        allow write: if isAdminActive();
+        allow get: if isSelf(uid) || isAdminActive(assemblyId);
+        allow list: if isAdminActive(assemblyId);
+        allow create, update, delete: if isAdminActive(assemblyId);
       }
 
-      // Public docs (ex: lastResult)
+      // -------------------------
+      // PUBLIC DOCS
+      // -------------------------
       match /public/{docId} {
-        allow read: if true;
-        allow write: if isAdminActive();
+        allow get, list: if true;
+        allow create, update, delete: if isAdminActive(assemblyId);
       }
 
       // =========================
@@ -117,19 +133,17 @@ service cloud.firestore {
       // =========================
       match /votes/{voteId} {
 
-        allow read: if isMemberActive();
-        allow create: if isAdminActive();
+        allow get, list: if isMemberActive(assemblyId);
 
-        // 🔒 Vote immutable after locked
-        // + quorumPct modifiable uniquement en draft
-        allow update: if isAdminActive()
+        allow create: if isAdminActive(assemblyId);
+
+        allow update: if isAdminActive(assemblyId)
           && resource.data.state != "locked"
           && (
             resource.data.state == "draft"
             || request.resource.data.quorumPct == resource.data.quorumPct
           );
 
-        // jamais supprimable
         allow delete: if false;
 
         // =========================
@@ -137,24 +151,21 @@ service cloud.firestore {
         // =========================
         match /ballots/{uid} {
 
-          function votePath() {
+          function voteDocPath() {
             return /databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId);
           }
 
           function voteIsOpen() {
-            return exists(votePath()) && get(votePath()).data.state == "open";
+            return exists(voteDocPath()) && get(voteDocPath()).data.state == "open";
           }
 
-          // Self can read own ballot (even after close)
-          allow get: if isMemberActive() && isSelf(uid);
+          allow get: if isMemberActive(assemblyId) && isSelf(uid);
 
-          // Self can create/update own ballot ONLY while vote is open
-          allow create, update: if isMemberActive()
+          allow create, update: if isMemberActive(assemblyId)
             && isSelf(uid)
             && voteIsOpen();
 
-          // Admin can list ballots (audit)
-          allow list: if isAdminActive();
+          allow list: if isAdminActive(assemblyId);
 
           allow delete: if false;
         }
@@ -162,19 +173,13 @@ service cloud.firestore {
     }
 
     // =========================
-    // PROJECTS
+    // PROJECTS (root)
     // =========================
     match /projects/{projectId} {
+      allow get, list: if isMemberActiveRoot();
+      allow create: if isMemberActiveRoot();
 
-      // Only active members can read projects
-      allow read: if isMemberActive();
-
-      // Active members can create projects (si tu veux plus strict: isAdminActive())
-      allow create: if isMemberActive();
-
-      // Admin can update/delete any project
-      // Owner can update/delete only while "submitted"
-      allow update, delete: if isAdminActive()
+      allow update, delete: if isAdminActiveRoot()
         || (
           isSignedIn()
           && request.auth.uid == resource.data.ownerUid
