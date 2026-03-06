@@ -37,7 +37,18 @@ service cloud.firestore {
       return get(assemblyMemberPath(assemblyId, request.auth.uid)).data;
     }
 
-    // ✅ Actif si ROOT active OU MIRROR active
+    // ROOT
+    function isMemberActiveRoot() {
+      return rootExists() && rootData().status == "active";
+    }
+
+    function isAdminActiveRoot() {
+      return rootExists()
+        && rootData().status == "active"
+        && rootData().role == "admin";
+    }
+
+    // ASSEMBLY
     function isMemberActive(assemblyId) {
       return isSignedIn() && (
         (rootExists() && rootData().status == "active") ||
@@ -45,21 +56,15 @@ service cloud.firestore {
       );
     }
 
-    // ✅ Admin actif si (ROOT admin+active) OU (MIRROR admin+active)
     function isAdminActive(assemblyId) {
       return isSignedIn() && (
-        (rootExists() && rootData().status == "active" && rootData().role == "admin") ||
-        (mirrorExists(assemblyId) && mirrorData(assemblyId).status == "active" && mirrorData(assemblyId).role == "admin")
+        (rootExists()
+          && rootData().status == "active"
+          && rootData().role == "admin") ||
+        (mirrorExists(assemblyId)
+          && mirrorData(assemblyId).status == "active"
+          && mirrorData(assemblyId).role == "admin")
       );
-    }
-
-    // Pour les collections root hors assembly (projects, members list)
-    function isMemberActiveRoot() {
-      return rootExists() && rootData().status == "active";
-    }
-
-    function isAdminActiveRoot() {
-      return rootExists() && rootData().status == "active" && rootData().role == "admin";
     }
 
     // =========================
@@ -73,6 +78,7 @@ service cloud.firestore {
         && request.resource.data.role == "member"
         && request.resource.data.status == "pending";
 
+      // l'utilisateur peut compléter son doc sans changer rôle/status
       allow update: if isSelf(uid)
         && request.resource.data.role == resource.data.role
         && request.resource.data.status == resource.data.status;
@@ -84,8 +90,7 @@ service cloud.firestore {
     // ASSEMBLIES
     // =========================
     match /assemblies/{assemblyId} {
-
-      allow get, list: if isMemberActive(assemblyId);
+      allow get, list: if isSignedIn();
       allow create, update, delete: if isAdminActive(assemblyId);
 
       // -------------------------
@@ -132,7 +137,6 @@ service cloud.firestore {
       // VOTES
       // =========================
       match /votes/{voteId} {
-
         allow get, list: if isMemberActive(assemblyId);
 
         allow create: if isAdminActive(assemblyId);
@@ -140,8 +144,8 @@ service cloud.firestore {
         allow update: if isAdminActive(assemblyId)
           && resource.data.state != "locked"
           && (
-            resource.data.state == "draft"
-            || request.resource.data.quorumPct == resource.data.quorumPct
+            resource.data.state == "draft" ||
+            request.resource.data.quorumPct == resource.data.quorumPct
           );
 
         allow delete: if false;
@@ -150,7 +154,6 @@ service cloud.firestore {
         // BALLOTS
         // =========================
         match /ballots/{uid} {
-
           function voteDocPath() {
             return /databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId);
           }
