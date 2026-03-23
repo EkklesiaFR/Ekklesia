@@ -14,6 +14,7 @@ import type { Vote, Assembly } from '@/types';
 import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 import { ActiveVotePanel } from '@/components/assembly/ActiveVotePanel';
 import { LastVoteResultCard } from '@/components/voting/LastVoteResultCard';
+import { CommunityFundCard } from '@/components/assembly/CommunityFundCard';
 
 import { usePresenceHeartbeat } from '@/hooks/usePresenceHeartbeat';
 import { useOnlinePresence } from '@/hooks/useOnlinePresence';
@@ -23,11 +24,9 @@ function AssemblyDashboardContent() {
   const { isAdmin } = useAuthStatus();
   const db = useFirestore();
 
-  // --- assembly ---
   const assemblyRef = useMemoFirebase(() => doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), [db]);
   const { data: activeAssembly, isLoading: isAssemblyLoading } = useDoc<Assembly>(assemblyRef);
 
-  // --- active vote ---
   const voteRef = useMemoFirebase(() => {
     if (!activeAssembly?.activeVoteId || activeAssembly.state !== 'open') return null;
     return doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', activeAssembly.activeVoteId);
@@ -35,10 +34,8 @@ function AssemblyDashboardContent() {
 
   const { data: activeVote } = useDoc<Vote>(voteRef);
 
-  // heartbeat présence
   usePresenceHeartbeat(DEFAULT_ASSEMBLY_ID);
 
-  // présence en ligne
   const {
     users,
     onlineCount,
@@ -61,19 +58,15 @@ function AssemblyDashboardContent() {
     : null;
 
   return (
-    <div className="space-y-16 animate-in fade-in duration-700">
-      <header className="space-y-2">
-        <span className="block text-[10px] font-bold uppercase tracking-[0.3em] text-muted-foreground">
-          Espace Membre
-        </span>
-        <h1 className="text-4xl font-bold tracking-tight text-black md:text-5xl">
-          Une voix, une communauté.
-        </h1>
-      </header>
+    <div className="space-y-8 animate-in fade-in duration-700">
+      <CommunityFundCard
+        amount={12650}
+        monthlyDelta={2350}
+        distributionLabel="à répartir en fin de mois"
+      />
 
       <OnlinePresenceStrip
         onlineCount={onlineCount}
-        totalCount={totalCount}
         deltaLastMinute={deltaLastMinute}
         isLoading={isOnlineLoading}
         onlineMembers={users}
@@ -98,7 +91,7 @@ function AssemblyDashboardContent() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-6 border-t pt-16 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 border-t pt-10 md:grid-cols-3">
         <Link
           href="/projects"
           className="group space-y-6 border bg-white p-8 transition-all hover:border-black"
