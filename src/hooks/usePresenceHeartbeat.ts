@@ -37,7 +37,6 @@ export function usePresenceHeartbeat(assemblyId: string | null | undefined, inte
           uid: user.uid,
           status,
           sessionId,
-          // Optionnel (si tu veux les avatars plus tard)
           photoURL: user.photoURL ?? null,
           displayName: user.displayName ?? null,
           lastSeenAt: serverTimestamp(),
@@ -51,6 +50,8 @@ export function usePresenceHeartbeat(assemblyId: string | null | undefined, inte
         await updateDoc(presenceRef, {
           status: 'online',
           sessionId,
+          photoURL: user.photoURL ?? null,
+          displayName: user.displayName ?? null,
           lastSeenAt: serverTimestamp(),
         });
       } catch {
@@ -58,7 +59,7 @@ export function usePresenceHeartbeat(assemblyId: string | null | undefined, inte
       }
     };
 
-    // Evite double start en dev (React strict mode)
+    // Évite double start en dev (React strict mode)
     if (!startedRef.current) {
       startedRef.current = true;
       upsert('online').catch(() => {});

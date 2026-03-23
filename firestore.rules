@@ -70,31 +70,41 @@ service cloud.firestore {
     // =========================
     // MEMBERS (root)
     // =========================
-     match /members/{uid} {
+    match /members/{uid} {
      allow get: if isSelf(uid) || isAdminActiveRoot();
      allow list: if isAdminActiveRoot();
 
      allow create: if isSelf(uid)
-     && request.resource.data.role == "member"
-     && request.resource.data.status == "pending";
+      && request.resource.data.role == "member"
+      && request.resource.data.status == "pending";
 
-     /**
-     * L'utilisateur peut mettre à jour UNIQUEMENT certains champs de son profil
-     * sans pouvoir modifier son rôle ou son statut.
+    /**
+     * L'utilisateur peut mettre à jour uniquement certains champs
+     * de son propre profil, sans pouvoir modifier son rôle ni son statut.
      *
-     * Ici on autorise uniquement :
-     * - photoURL (avatar)
+     * Champs autorisés :
+     * - photoURL
+     * - displayName
+     * - email
+     * - lastLoginAt
+     * - updatedAt
+     * - bio
      */
      allow update: if isSelf(uid)
-     && request.resource.data.role == resource.data.role
-     && request.resource.data.status == resource.data.status
-     && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-      "photoURL"
-     ]);
+      && request.resource.data.role == resource.data.role
+      && request.resource.data.status == resource.data.status
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+      "photoURL",
+      "displayName",
+      "email",
+      "lastLoginAt",
+      "updatedAt",
+      "bio"
+    ]);
 
-     // Les admins peuvent tout modifier / supprimer
-     allow update, delete: if isAdminActiveRoot();
-     }
+  // Les admins peuvent tout modifier / supprimer
+  allow update, delete: if isAdminActiveRoot();
+}
 
     // =========================
     // ASSEMBLIES
