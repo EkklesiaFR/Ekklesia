@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { doc, collection } from 'firebase/firestore';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
@@ -45,7 +46,7 @@ function toDateMaybe(value: any): Date | null {
 
   if (typeof value === 'string') {
     const d = new Date(value);
-    return isNaN(d.getTime()) ? null : d;
+    return Number.isNaN(d.getTime()) ? null : d;
   }
 
   return null;
@@ -77,7 +78,7 @@ export function LastVoteResultCard() {
         <div className="space-y-4">
           <Skeleton className="h-5 w-28" />
           <Skeleton className="h-8 w-3/4" />
-          <Skeleton className="h-24 w-full" />
+          <Skeleton className="h-36 w-full rounded-2xl" />
           <Skeleton className="h-10 w-full" />
         </div>
       </GlassCard>
@@ -86,7 +87,10 @@ export function LastVoteResultCard() {
 
   if (!results) {
     return (
-      <GlassCard intensity="medium" className="flex h-full min-h-[260px] w-full items-center justify-center p-4 md:p-5">
+      <GlassCard
+        intensity="medium"
+        className="flex h-full min-h-[260px] w-full items-center justify-center p-4 md:p-5"
+      >
         <div className="space-y-3 text-center">
           <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted-foreground">
             Dernier résultat
@@ -98,10 +102,15 @@ export function LastVoteResultCard() {
   }
 
   const voteTitle = results.voteTitle || 'Scrutin';
+
+  const winnerProject = projects?.find((p) => p.id === results.winnerId);
+
   const winnerLabel =
     results.winnerLabel ||
-    projects?.find((p) => p.id === results.winnerId)?.title ||
+    winnerProject?.title ||
     'Projet retenu';
+
+  const winnerImageUrl = winnerProject?.imageUrl;
 
   const closedDate =
     toDateMaybe(results.closedAt) ||
@@ -126,7 +135,7 @@ export function LastVoteResultCard() {
   const participationRate = hasRate ? Math.round((100 * ballotCount) / eligibleCount) : null;
 
   return (
-    <GlassCard intensity="medium" className="flex h-full min-h-[320px] w-full flex-col p-4 md:p-5">
+    <GlassCard intensity="medium" className="flex h-full min-h-[340px] w-full flex-col p-4 md:p-5">
       <div className="flex h-full flex-col gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="inline-flex items-center gap-2 rounded-full border border-black/5 bg-white/50 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
@@ -148,11 +157,28 @@ export function LastVoteResultCard() {
           </p>
         </div>
 
-        <div className="rounded-2xl border border-white/60 bg-white/40 p-4 backdrop-blur-md">
+        {winnerImageUrl ? (
+          <div className="relative h-36 overflow-hidden rounded-2xl border border-white/60 bg-white/30">
+            <Image
+              src={winnerImageUrl}
+              alt={winnerLabel}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 50vw"
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-black/5 to-transparent" />
+          </div>
+        ) : (
+          <div className="flex h-36 items-end rounded-2xl border border-white/60 bg-gradient-to-br from-primary/10 via-white/40 to-white/20 p-4">
+            <p className="text-sm font-medium text-muted-foreground">Projet retenu</p>
+          </div>
+        )}
+
+        <div className="space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
             Projet retenu
           </p>
-          <p className="mt-2 text-xl font-bold leading-tight text-foreground md:text-2xl">
+          <p className="text-xl font-bold leading-tight text-foreground md:text-2xl">
             {winnerLabel}
           </p>
         </div>
