@@ -1,15 +1,22 @@
 'use client';
 
-import Link from 'next/link';
-import { Progress } from '@/components/ui/progress';
+import { Users } from 'lucide-react';
+import { GlassCard } from '@/components/ui/glass-card';
 import { cn } from '@/lib/utils';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+
+type OnlineMember = {
+  uid: string;
+  displayName?: string | null;
+  photoURL?: string | null;
+};
 
 type Props = {
   onlineCount: number;
   totalCount?: number | null;
   deltaLastMinute?: number;
   isLoading?: boolean;
-  href?: string;
+  onlineMembers?: OnlineMember[];
 };
 
 export function OnlinePresenceStrip({
@@ -17,66 +24,102 @@ export function OnlinePresenceStrip({
   totalCount = null,
   deltaLastMinute = 0,
   isLoading = false,
-  href = '/vote',
+  onlineMembers,
 }: Props) {
   const safeTotal = typeof totalCount === 'number' && totalCount > 0 ? totalCount : null;
-  const pct = safeTotal ? Math.round((onlineCount / safeTotal) * 100) : 0;
 
   const deltaLabel =
     deltaLastMinute > 0 ? `+${deltaLastMinute}` : deltaLastMinute < 0 ? `${deltaLastMinute}` : '0';
 
+  const deltaClasses =
+    deltaLastMinute > 0
+      ? 'border-success/30 bg-success/10 text-success'
+      : deltaLastMinute < 0
+        ? 'border-live/30 bg-live/10 text-live'
+        : 'border-border bg-background/60 text-muted-foreground';
+
+  const displayedMembers = onlineMembers?.slice(0, 4) || [];
+  const remainingMembersCount = onlineMembers && onlineMembers.length > 4 ? onlineMembers.length - 4 : 0;
+
+  const getInitials = (displayName?: string | null) => {
+    if (!displayName) return '';
+    const initials = displayName
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase();
+    return initials.length > 2 ? initials.substring(0, 2) : initials; // Ensure max 2 initials
+  };
+
   return (
-    <div className="w-full border border-border bg-black text-white px-6 py-5">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="space-y-1">
-          <p className="text-[10px] uppercase font-bold tracking-widest text-white/60">
-            Présence en direct
-          </p>
+    <GlassCard className="w-full rounded-card-md p-5 md:p-6">
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-primary/12 text-primary">
+            <Users className="h-5 w-5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Présence en direct
+            </p>
+          </div>
+        </div>
 
-          {isLoading ? (
-            <p className="text-sm text-white/70">Chargement…</p>
-          ) : (
-            <div className="flex items-baseline gap-3 flex-wrap">
-              <p className="text-xl font-black">
+        {isLoading ? (
+          <p className="text-sm text-text-soft">Chargement…</p>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-baseline gap-x-2">
+              <p className="text-3xl font-bold leading-none text-foreground">
                 {onlineCount}
-                <span className="text-white/70 font-bold"> en ligne</span>
-                {safeTotal ? <span className="text-white/50 font-bold"> / {safeTotal}</span> : null}
               </p>
+              <span className="text-base text-muted-foreground">en ligne</span>
+            </div>
 
+            <div className="flex items-center gap-x-3 gap-y-1 text-sm">
               <span
                 className={cn(
-                  'text-[11px] font-black px-2 py-1 border',
-                  deltaLastMinute > 0
-                    ? 'border-emerald-400/40 text-emerald-300'
-                    : deltaLastMinute < 0
-                      ? 'border-rose-400/40 text-rose-300'
-                      : 'border-white/20 text-white/60'
+                  'inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold',
+                  deltaClasses
                 )}
               >
                 {deltaLabel} / 1 min
               </span>
-
               {safeTotal ? (
-                <span className="text-[11px] font-black text-white/80">{pct}%</span>
-              ) : null}
+                <span className="text-muted-foreground">
+                  {onlineCount} sur {safeTotal} membres
+                </span>
+              ) : (
+                <span className="text-muted-foreground">Activité en temps réel</span>
+              )}
             </div>
-          )}
-        </div>
 
-        <div className="flex items-center gap-4">
-          <div className="w-full md:w-[260px]">
-            <Progress value={pct} className="h-2 rounded-none bg-white/10" />
+            {/* Avatars Row */}
+            {onlineMembers && onlineMembers.length > 0 ? (
+              <div className="flex -space-x-2 mt-3">
+                {displayedMembers.map((member) => (
+                  <Avatar key={member.uid} className="h-8 w-8 border-2 border-background">
+                    <AvatarImage src={member.photoURL || undefined} alt={member.displayName || 'User'} />
+                    <AvatarFallback className="text-xs bg-muted-foreground/10 text-muted-foreground">
+                      {getInitials(member.displayName)}
+                    </AvatarFallback>
+                  </Avatar>
+                ))}
+                {remainingMembersCount > 0 && (
+                  <Avatar className="h-8 w-8 border-2 border-background bg-muted-foreground/20 text-muted-foreground flex items-center justify-center text-xs font-semibold">
+                    <AvatarFallback>+{remainingMembersCount}</AvatarFallback>
+                  </Avatar>
+                )}
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-muted-foreground">
+                Aucun membre en ligne pour l'instant.
+              </div>
+            )}
           </div>
-
-          <Link
-            href={href}
-            className="text-xs uppercase font-bold tracking-widest text-white/90 hover:underline whitespace-nowrap"
-          >
-            Ouvrir →
-          </Link>
-        </div>
+        )}
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
