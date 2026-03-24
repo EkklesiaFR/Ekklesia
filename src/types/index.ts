@@ -149,3 +149,24 @@ export interface Ballot {
   castAt: any;
   updatedAt: any;
 }
+
+// ========================
+// Notifications
+// ========================
+
+export type NotificationType =
+  | "vote_created"
+  | "vote_locked"
+  | "member_activated";
+
+export type Notification = {
+  id: string;
+  type: NotificationType;
+  title: string;
+  body?: string;
+  link?: string;
+  read: boolean;
+  createdAt: any; // volontairement souple pour éviter conflit Timestamp / Date
+  assemblyId?: string;
+  voteId?: string;
+};
