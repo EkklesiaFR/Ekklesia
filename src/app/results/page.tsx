@@ -13,7 +13,8 @@ import type { Vote, Project } from '@/types';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, Trophy, Copy, ShieldCheck } from 'lucide-react';
+import { GlassCard } from '@/components/ui/glass-card';
+import { ChevronRight, Trophy, Copy, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
@@ -47,16 +48,18 @@ function CopyRow({ label, value }: { label: string; value?: string | null }) {
       toast({
         variant: 'destructive',
         title: 'Erreur',
-        description: "Impossible de copier.",
+        description: 'Impossible de copier.',
       });
     }
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 border bg-white px-4 py-3">
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
       <div className="min-w-0">
-        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{label}</p>
-        <p className="font-mono text-xs break-all">{v || '—'}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="break-all font-mono text-xs text-foreground">{v || '—'}</p>
       </div>
 
       <Button
@@ -64,10 +67,11 @@ function CopyRow({ label, value }: { label: string; value?: string | null }) {
         size="sm"
         disabled={!canCopy}
         onClick={onCopy}
-        className="rounded-none h-9 px-3 gap-2"
+        className="h-9 rounded-full border-white/60 bg-white/50 px-3 backdrop-blur-sm"
         title={canCopy ? `Copier ${label}` : 'Rien à copier'}
       >
-        <Copy className="h-4 w-4" /> Copier
+        <Copy className="mr-2 h-4 w-4" />
+        Copier
       </Button>
     </div>
   );
@@ -77,14 +81,12 @@ function ResultsContent() {
   const db = useFirestore();
   const [selectedVoteId, setSelectedVoteId] = useState<string | null>(null);
 
-  // ✅ Dernier résultat "public"
   const lastResultRef = useMemoFirebase(
     () => doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'public', 'lastResult'),
     [db]
   );
   const { data: lastResult } = useDoc<any>(lastResultRef);
 
-  // ✅ Requête robuste : pas de orderBy côté Firestore (évite index / champs manquants)
   const votesQuery = useMemoFirebase(
     () =>
       query(
@@ -99,9 +101,11 @@ function ResultsContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(200)), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  const projectsById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
+  const projectsById = useMemo(
+    () => new Map((projects ?? []).map((p) => [p.id, p])),
+    [projects]
+  );
 
-  // ✅ Tri côté client, stable et compatible anciens votes
   const sortedVotes = useMemo(() => {
     const list = votes ?? [];
     return [...list].sort((a, b) => {
@@ -123,89 +127,111 @@ function ResultsContent() {
 
   if (isVotesLoading) {
     return (
-      <div className="py-24 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        Chargement des archives...
+      <div className="py-24 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+        Chargement des archives…
       </div>
     );
   }
 
-  // Résumé dernier PV (si dispo)
-  const lastVoteId = lastResult?.voteId ? String(lastResult.voteId) : null;
-  const lastWinnerLabel = lastResult?.winnerLabel ?? null;
-  const lastVoteTitle = lastResult?.voteTitle ?? null;
-  const lastClosedAt = formatFr(lastResult?.closedAt);
-  const lastTotal = lastResult?.total ?? null;
+  const latestVote = sortedVotes[0] ?? null;
+  const lastVoteId = lastResult?.voteId ? String(lastResult.voteId) : latestVote?.id ?? null;
+  const lastWinnerLabel =
+    lastResult?.winnerLabel ??
+    (latestVote?.results?.winnerId
+      ? projectsById.get(String(latestVote.results.winnerId))?.title ??
+        String(latestVote.results.winnerId)
+      : null);
+  const lastVoteTitle = lastResult?.voteTitle ?? latestVote?.question ?? null;
+  const lastClosedAt =
+    formatFr(lastResult?.closedAt) !== '—'
+      ? formatFr(lastResult?.closedAt)
+      : formatFr((latestVote as any)?.lockedAt);
+  const lastTotal = lastResult?.total ?? ((latestVote?.results as any)?.total ?? '—');
 
   return (
-    <div className="space-y-16 animate-in fade-in duration-700">
-      <header className="space-y-8">
-        <div className="space-y-2">
-          <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground block">
-            Archives
-          </span>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-black">
-            Décisions de l&apos;Assemblée
-          </h1>
-        </div>
+    <div className="animate-in fade-in space-y-10 duration-700 md:space-y-12">
+      <header className="space-y-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          Archives
+        </p>
 
-        {/* ✅ Résumé "Dernière décision" */}
-        <div className="border bg-secondary/10 p-8 space-y-6">
-          <div className="flex items-center justify-between gap-6 flex-wrap">
-            <div className="space-y-2">
-              <Badge className="bg-black text-white rounded-none uppercase text-[9px]">
+        <h1 className="text-4xl font-bold tracking-tight text-foreground md:text-5xl">
+          Les décisions de l’assemblée
+        </h1>
+
+        <p className="max-w-2xl text-sm leading-relaxed text-muted-foreground md:text-base">
+          Retrouvez les scrutins clôturés, leurs résultats, et les procès-verbaux associés.
+        </p>
+      </header>
+
+      <GlassCard intensity="medium" className="p-6 md:p-8">
+        <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge className="rounded-full border border-white/60 bg-white/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground">
                 Dernière décision
               </Badge>
-              <p className="text-2xl font-bold leading-tight">
-                {lastVoteTitle ?? (sortedVotes[0]?.question ?? '—')}
-              </p>
-              <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground pt-1">
-                <span>Clôture : {lastClosedAt !== '—' ? lastClosedAt : formatFr((sortedVotes[0] as any)?.lockedAt)}</span>
-                <span>Bulletins : {lastTotal ?? ((sortedVotes[0]?.results as any)?.total ?? '—')}</span>
+
+              {lastVoteId ? (
+                <Badge className="rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                  PV disponible
+                </Badge>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              <h2 className="max-w-3xl text-2xl font-bold tracking-tight text-foreground md:text-3xl">
+                {lastVoteTitle ?? '—'}
+              </h2>
+
+              <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-medium text-muted-foreground">
+                <span>Clôture : {lastClosedAt}</span>
+                <span>Bulletins : {lastTotal}</span>
               </div>
             </div>
 
-            <div className="text-right">
-              <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Vainqueur</p>
-              <p className="text-sm font-black uppercase text-primary flex items-center justify-end gap-2">
-                <Trophy className="h-4 w-4" />
-                {lastWinnerLabel ??
-                  (sortedVotes[0]?.results?.winnerId
-                    ? projectsById.get(String(sortedVotes[0].results!.winnerId))?.title ?? String(sortedVotes[0].results!.winnerId)
-                    : '—')}
-              </p>
+            <div className="flex items-center gap-3">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-primary-foreground">
+                <Trophy className="h-5 w-5" />
+              </div>
+
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                  Vainqueur
+                </p>
+                <p className="text-base font-semibold text-foreground">
+                  {lastWinnerLabel ?? '—'}
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="flex justify-end">
+          <div className="md:self-center">
             {lastVoteId ? (
               <Link href={`/results/${lastVoteId}`}>
-                <Button className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6">
-                  Voir PV
-                </Button>
-              </Link>
-            ) : sortedVotes[0]?.id ? (
-              <Link href={`/results/${sortedVotes[0].id}`}>
-                <Button className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6">
-                  Voir PV
+                <Button className="h-11 rounded-full px-6 text-sm font-semibold">
+                  Voir le procès-verbal
                 </Button>
               </Link>
             ) : (
-              <Button disabled className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6">
-                Voir PV
+              <Button disabled className="h-11 rounded-full px-6 text-sm font-semibold">
+                Voir le procès-verbal
               </Button>
             )}
           </div>
         </div>
-      </header>
+      </GlassCard>
 
       {sortedVotes.length > 0 ? (
-        <div className="grid gap-8">
+        <div className="space-y-4">
           {sortedVotes.map((vote) => {
             const isSelected = selectedVoteId === vote.id;
 
-            const totalBallots = (vote.results as any)?.total ?? (vote.results as any)?.totalBallots ?? 0;
+            const totalBallots =
+              (vote.results as any)?.total ?? (vote.results as any)?.totalBallots ?? 0;
             const eligible = vote.eligibleCountAtOpen ?? null;
-            const participationPct = eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
+            const participationPct =
+              eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
             const winnerId = vote.results?.winnerId ?? null;
             const winner = winnerId ? projectsById.get(String(winnerId)) : null;
@@ -221,188 +247,233 @@ function ResultsContent() {
             const top5 = (vote.results?.fullRanking ?? []).slice(0, 5);
 
             return (
-              <div
+              <GlassCard
                 key={vote.id}
+                intensity="soft"
                 className={cn(
-                  'border border-border bg-white transition-all overflow-hidden',
-                  isSelected && 'border-black shadow-lg'
+                  'overflow-hidden transition-all duration-300',
+                  isSelected && 'ring-1 ring-primary/20'
                 )}
               >
-                <div
-                  className={cn(
-                    'p-8 cursor-pointer flex flex-col md:flex-row md:items-center md:justify-between gap-6',
-                    'bg-white'
-                  )}
+                <button
+                  type="button"
                   onClick={() => setSelectedVoteId(isSelected ? null : vote.id)}
+                  className="w-full p-6 text-left md:p-8"
                 >
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <Badge className="bg-black text-white rounded-none uppercase text-[9px]">
-                        Scrutin archivé
-                      </Badge>
-
-                      {isSealed && (
-                        <Badge className="rounded-none uppercase text-[9px] bg-primary/10 text-primary border border-primary/20 flex items-center gap-2">
-                          <ShieldCheck className="h-3.5 w-3.5" />
-                          Résultat scellé
-                        </Badge>
-                      )}
-
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                        PV : {computedAtFormatted}
-                      </span>
-
-                      <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                        Clôture : {lockedAtFormatted}
-                      </span>
-                    </div>
-
-                    <h3 className="text-2xl font-bold leading-tight">{vote.question}</h3>
-
-                    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground pt-1">
-                      <span>Bulletins : {totalBallots}</span>
-                      <span>Éligibles : {eligible ?? '—'}</span>
-                      <span>Participation : {participationPct !== null ? `${participationPct}%` : '—'}</span>
-                      <span>Méthode : {method}</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between md:justify-end gap-6 w-full md:w-auto">
-                    <div className="text-right">
-                      <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Vainqueur</p>
-                      <p className="text-sm font-black uppercase text-primary flex items-center justify-end gap-2">
-                        <Trophy className="h-4 w-4" />
-                        {winner?.title ?? (winnerId ? String(winnerId) : '—')}
-                      </p>
-                    </div>
-
-                    <ChevronRight
-                      className={cn('h-5 w-5 text-muted-foreground transition-transform', isSelected && 'rotate-90')}
-                    />
-                  </div>
-                </div>
-
-                {isSelected && vote.results && (
-                  <div className="px-8 pb-12 pt-6 border-t border-border animate-in slide-in-from-top-2 space-y-10">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                      <div className="p-6 border bg-secondary/10 space-y-1">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
-                        <p className="text-2xl font-black">{totalBallots}</p>
-                      </div>
-
-                      <div className="p-6 border bg-secondary/10 space-y-1">
-                        <p className="text-[10px] uppercase font-bold text-muted-foreground">Participation</p>
-                        <p className="text-2xl font-black">{participationPct !== null ? `${participationPct}%` : '—'}</p>
-                      </div>
-
-                      <div className="p-6 border bg-primary/10 ring-1 ring-primary/10 space-y-1">
-                        <p className="text-[10px] uppercase font-bold text-primary">Vainqueur</p>
-                        <p className="text-lg font-black uppercase text-primary leading-tight">
-                          {winner?.title ?? (winnerId ? String(winnerId) : '—')}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <h4 className="text-xs uppercase tracking-[0.2em] font-bold">Intégrité</h4>
-                        <Badge
-                          className={cn(
-                            'rounded-none uppercase text-[9px]',
-                            isSealed ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-secondary text-muted-foreground'
-                          )}
-                        >
-                          {isSealed ? 'Scellé (hash)' : 'Non scellé'}
-                        </Badge>
-                      </div>
-
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="border bg-white px-4 py-3">
-                          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-                            computedBy
-                          </p>
-                          <p className="font-mono text-xs break-all">{computedBy}</p>
-                        </div>
-
-                        <div className="border bg-white px-4 py-3">
-                          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">lockedAt</p>
-                          <p className="font-mono text-xs">{lockedAtFormatted}</p>
-                        </div>
-
-                        <div className="border bg-white px-4 py-3">
-                          <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">method</p>
-                          <p className="font-mono text-xs">{method}</p>
-                        </div>
-
-                        <CopyRow label="resultsHash" value={resultsHash} />
-                      </div>
-                    </div>
-
+                  <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
                     <div className="space-y-4">
-                      <div className="flex items-center justify-between gap-4">
-                        <h4 className="text-xs uppercase tracking-[0.2em] font-bold">Classement (top 5)</h4>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge className="rounded-full border border-white/60 bg-white/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground">
+                          Scrutin archivé
+                        </Badge>
 
-                        <Link href={`/results/${vote.id}`}>
-                          <Button
-                            variant="outline"
-                            className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6"
-                          >
-                            Voir PV
-                          </Button>
-                        </Link>
+                        {isSealed && (
+                          <Badge className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                            <ShieldCheck className="h-3.5 w-3.5" />
+                            Résultat scellé
+                          </Badge>
+                        )}
                       </div>
 
                       <div className="space-y-2">
-                        {top5.map((r: any, idx: number) => (
-                          <div
-                            key={r.id}
-                            className={cn(
-                              'p-4 border flex items-center justify-between gap-4',
-                              idx === 0 ? 'bg-primary/5 border-primary' : 'bg-white'
-                            )}
-                          >
-                            <div className="flex items-center gap-4 min-w-0">
-                              <div
-                                className={cn(
-                                  'w-10 h-10 flex items-center justify-center font-black',
-                                  idx === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
-                                )}
-                              >
-                                #{idx + 1}
-                              </div>
+                        <h3 className="text-2xl font-bold leading-tight tracking-tight text-foreground">
+                          {vote.question}
+                        </h3>
 
-                              <div className="min-w-0">
-                                <p className="font-bold uppercase truncate">{projectsById.get(r.id)?.title ?? r.id}</p>
-                                <p className="text-[10px] text-muted-foreground font-mono truncate">{r.id}</p>
-                              </div>
-                            </div>
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-medium text-muted-foreground">
+                          <span>PV : {computedAtFormatted}</span>
+                          <span>Clôture : {lockedAtFormatted}</span>
+                          <span>Bulletins : {totalBallots}</span>
+                          <span>
+                            Participation :{' '}
+                            {participationPct !== null ? `${participationPct}%` : '—'}
+                          </span>
+                          <span>Méthode : {method}</span>
+                        </div>
+                      </div>
+                    </div>
 
-                            <div className="text-right">
-                              <p className="text-[10px] uppercase font-bold text-muted-foreground">Score</p>
-                              <p className="font-mono text-xs">{r.score ?? r.rank ?? '—'}</p>
-                            </div>
-                          </div>
-                        ))}
+                    <div className="flex items-center justify-between gap-6 md:justify-end">
+                      <div className="text-right">
+                        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                          Vainqueur
+                        </p>
+                        <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
+                          <Trophy className="h-4 w-4" />
+                          {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                        </p>
                       </div>
 
-                      {((vote.results?.fullRanking ?? []).length ?? 0) > 5 && (
-                        <p className="text-[10px] text-muted-foreground italic">
-                          Voir le PV pour le classement complet.
-                        </p>
-                      )}
+                      <ChevronRight
+                        className={cn(
+                          'h-5 w-5 text-muted-foreground transition-transform duration-300',
+                          isSelected && 'rotate-90'
+                        )}
+                      />
+                    </div>
+                  </div>
+                </button>
+
+                {isSelected && vote.results && (
+                  <div className="border-t border-white/40 px-6 pb-8 pt-6 md:px-8">
+                    <div className="space-y-8">
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                        <div className="rounded-[24px] border border-white/60 bg-white/40 p-5 backdrop-blur-sm">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            Bulletins
+                          </p>
+                          <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+                            {totalBallots}
+                          </p>
+                        </div>
+
+                        <div className="rounded-[24px] border border-white/60 bg-white/40 p-5 backdrop-blur-sm">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            Participation
+                          </p>
+                          <p className="mt-2 text-2xl font-bold tracking-tight text-foreground">
+                            {participationPct !== null ? `${participationPct}%` : '—'}
+                          </p>
+                        </div>
+
+                        <div className="rounded-[24px] border border-primary/20 bg-primary/10 p-5 backdrop-blur-sm">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
+                            Résultat
+                          </p>
+                          <p className="mt-2 text-lg font-semibold leading-tight text-primary">
+                            {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <h4 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground">
+                            Intégrité
+                          </h4>
+
+                          <Badge
+                            className={cn(
+                              'rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
+                              isSealed
+                                ? 'border border-primary/20 bg-primary/10 text-primary'
+                                : 'border border-white/60 bg-white/60 text-muted-foreground'
+                            )}
+                          >
+                            {isSealed ? 'Scellé (hash)' : 'Non scellé'}
+                          </Badge>
+                        </div>
+
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                          <div className="rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                              computedBy
+                            </p>
+                            <p className="break-all font-mono text-xs text-foreground">
+                              {computedBy}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                              lockedAt
+                            </p>
+                            <p className="font-mono text-xs text-foreground">
+                              {lockedAtFormatted}
+                            </p>
+                          </div>
+
+                          <div className="rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
+                            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                              method
+                            </p>
+                            <p className="font-mono text-xs text-foreground">{method}</p>
+                          </div>
+
+                          <CopyRow label="resultsHash" value={resultsHash} />
+                        </div>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="flex flex-wrap items-center justify-between gap-4">
+                          <h4 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground">
+                            Classement (top 5)
+                          </h4>
+
+                          <Link href={`/results/${vote.id}`}>
+                            <Button
+                              variant="outline"
+                              className="h-10 rounded-full border-white/60 bg-white/50 px-5 text-sm font-semibold backdrop-blur-sm"
+                            >
+                              Voir le PV
+                            </Button>
+                          </Link>
+                        </div>
+
+                        <div className="space-y-3">
+                          {top5.map((r: any, idx: number) => (
+                            <div
+                              key={r.id}
+                              className={cn(
+                                'flex items-center justify-between gap-4 rounded-[24px] border p-4 backdrop-blur-sm',
+                                idx === 0
+                                  ? 'border-primary/20 bg-primary/5'
+                                  : 'border-white/60 bg-white/40'
+                              )}
+                            >
+                              <div className="flex min-w-0 items-center gap-4">
+                                <div
+                                  className={cn(
+                                    'flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold',
+                                    idx === 0
+                                      ? 'bg-primary text-primary-foreground'
+                                      : 'bg-secondary text-muted-foreground'
+                                  )}
+                                >
+                                  #{idx + 1}
+                                </div>
+
+                                <div className="min-w-0">
+                                  <p className="truncate text-sm font-semibold text-foreground">
+                                    {projectsById.get(r.id)?.title ?? r.id}
+                                  </p>
+                                  <p className="truncate font-mono text-[11px] text-muted-foreground">
+                                    {r.id}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 text-right">
+                                <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                  Score
+                                </p>
+                                <p className="font-mono text-xs text-foreground">
+                                  {r.score ?? r.rank ?? '—'}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {((vote.results?.fullRanking ?? []).length ?? 0) > 5 && (
+                          <p className="text-sm text-muted-foreground">
+                            Voir le procès-verbal pour le classement complet.
+                          </p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 )}
-              </div>
+              </GlassCard>
             );
           })}
         </div>
       ) : (
-        <div className="text-center py-32 border border-dashed border-border bg-secondary/5">
-          <p className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
+        <GlassCard intensity="soft" className="p-12 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
             Aucun résultat publié
           </p>
-        </div>
+        </GlassCard>
       )}
     </div>
   );

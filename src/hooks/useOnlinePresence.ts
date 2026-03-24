@@ -36,7 +36,7 @@ export type OnlinePresenceResult = {
  * Realtime online presence (robuste sans index composite)
  *
  * Stratégie:
- * - requête Firestore uniquement sur lastSeenAt (range + orderBy sur le même champ => OK sans index composite)
+ * - requête Firestore uniquement sur lastSeenAt
  * - filtrage "status === online" + cutoff côté client
  * - deltaLastMinute calculé côté client
  */
@@ -54,7 +54,6 @@ export function useOnlinePresence(
 
   const samplesRef = useRef<Sample[]>([]);
 
-  // cutoff recalculé quand staleMs change; la "fraîcheur" est surtout assurée par le heartbeat
   const cutoff = useMemo(
     () => Timestamp.fromMillis(Date.now() - staleMs),
     [staleMs]
@@ -75,8 +74,6 @@ export function useOnlinePresence(
 
     const colRef = collection(db, 'assemblies', assemblyId, 'presence');
 
-    // ✅ IMPORTANT: pas de where('status'=='online') => évite l’index composite
-    // On récupère les présences "récentes" et on filtre ensuite.
     const q = query(
       colRef,
       where('lastSeenAt', '>=', cutoff),
@@ -113,7 +110,6 @@ export function useOnlinePresence(
         setDeltaLastMinute(ref ? count - ref.count : 0);
       },
       (err) => {
-        // 🔎 Si un jour tu remets status==online, tu verras ici l’erreur d’index composite
         console.error('[presence] onSnapshot error:', err);
         setError(err);
         setUsers([]);

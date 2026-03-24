@@ -6,19 +6,17 @@ import type { Assembly, Vote } from '@/types';
 import { useVoteBallotCount } from '@/hooks/useVoteBallotCount';
 import { useCountdown } from '@/hooks/useCountdown';
 
+import { GlassCard } from '@/components/ui/glass-card';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { Clock, Users, CheckCircle2, XCircle, Layers } from 'lucide-react';
+import { Clock, Layers, CheckCircle2, XCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface ActiveVotePanelProps {
   assembly: Assembly;
   vote: Vote;
 }
 
-/**
- * Quorum target (en %) — on peut le rendre configurable plus tard.
- * (On avait parlé de 60% pour Ekklesia)
- */
 const QUORUM_TARGET_PERCENT = 60;
 
 function clamp(n: number, min: number, max: number) {
@@ -41,15 +39,12 @@ export function ActiveVotePanel({ assembly, vote }: ActiveVotePanelProps) {
 
   const timeLeft = useCountdown(closesAt);
 
-  // Assembly label safe
-  // On privilégie "name" (souvent le bon), puis title/label
-  const assemblyLabel =
-    (assembly as any)?.name ??
-    (assembly as any)?.title ??
-    (assembly as any)?.label ??
-    'Assemblée';
+  const projectCount =
+    (Array.isArray((vote as any)?.projectIds) ? (vote as any).projectIds.length : undefined) ??
+    (Array.isArray((vote as any)?.projects) ? (vote as any).projects.length : undefined) ??
+    (typeof (vote as any)?.projectCount === 'number' ? (vote as any).projectCount : undefined) ??
+    0;
 
-  // Eligible voters (quorum base)
   const eligibleCount = (vote as any)?.eligibleCountAtOpen as number | null | undefined;
 
   const hasEligible = typeof eligibleCount === 'number' && eligibleCount > 0;
@@ -60,132 +55,93 @@ export function ActiveVotePanel({ assembly, vote }: ActiveVotePanelProps) {
 
   const quorumReached = hasEligible ? participationPercent >= QUORUM_TARGET_PERCENT : false;
 
-  // Projects count (best effort)
-  const projectCount =
-    (Array.isArray((vote as any)?.projectIds) ? (vote as any).projectIds.length : undefined) ??
-    (Array.isArray((vote as any)?.projects) ? (vote as any).projects.length : undefined) ??
-    (typeof (vote as any)?.projectCount === 'number' ? (vote as any).projectCount : undefined) ??
-    0;
-
   const isManualClose = closesAt == null;
 
   return (
-    <div className="p-8 border bg-primary/15 ring-1 ring-primary/10 shadow-sm h-full flex flex-col">
-      <div className="flex-grow space-y-8">
-        <header className="space-y-3">
-          <div className="flex items-center gap-2">
-            <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
-            <p className="text-xs font-bold uppercase tracking-widest text-primary">
-              Vote en cours
-            </p>
-          </div>
+    <GlassCard intensity="medium" className="w-full p-4 md:p-5 flex flex-col h-full">
+      <div className="flex flex-col gap-5 flex-grow">
 
-          <h3 className="text-3xl font-bold tracking-tight text-black leading-tight">
-            {vote.question}
-          </h3>
-
-          <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2">
-            <Clock className="h-4 w-4" />
-            <span>
-              {isManualClose ? 'Clôture : manuelle' : `Temps restant : ${timeLeft}`}
+        {/* HEADER */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/70 bg-emerald-50/70 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
             </span>
+            Vote ouvert
           </div>
+
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-black/5 bg-white/50 px-2.5 py-0.5 text-[11px] text-muted-foreground">
+            <Layers className="h-3.5 w-3.5" />
+            {projectCount} projet{projectCount > 1 ? 's' : ''}
+          </div>
+        </div>
+
+        {/* TITLE */}
+        <div className="space-y-2">
+          <p className="text-2xl md:text-3xl font-bold leading-tight text-foreground line-clamp-2">
+            {vote.question}
+          </p>
 
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Layers className="h-4 w-4" />
-            <span>{projectCount} projet{projectCount > 1 ? 's' : ''}</span>
+            <Clock className="h-4 w-4" />
+            <span>
+              {isManualClose ? 'Clôture manuelle' : `${timeLeft} restants`}
+            </span>
           </div>
-        </header>
+        </div>
 
-        {/* PARTICIPATION */}
-        <div className="space-y-4 pt-4 border-t border-border/60">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              Participation
-            </h4>
-            {!isLoading && hasEligible && (
-              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                <Users className="h-4 w-4" />
-                <span>
-                  {ballotCount} / {eligibleCount} membres
-                </span>
-              </div>
+        {/* PARTICIPATION (MAIN METRIC) */}
+        <div className="space-y-3 pt-2">
+          <div className="flex items-end gap-3">
+            <p className="text-4xl md:text-5xl font-bold leading-none">
+              {participationPercent}%
+            </p>
+
+            {hasEligible && (
+              <span className="pb-1 text-sm text-muted-foreground">
+                {ballotCount} / {eligibleCount}
+              </span>
             )}
           </div>
 
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Chargement…</p>
-          ) : eligibleCount == null ? (
-            <p className="text-sm text-muted-foreground">
-              Quorum en calcul… ({ballotCount} bulletins)
-            </p>
-          ) : eligibleCount === 0 ? (
-            <p className="text-sm font-semibold text-amber-600">
-              Aucun membre éligible pour ce scrutin.
-            </p>
-          ) : (
-            <>
-              <div className="flex items-baseline gap-4">
-                <p className="text-4xl font-black">{participationPercent}%</p>
-                <p className="text-sm font-bold text-muted-foreground">
-                  {ballotCount} / {eligibleCount} membres
-                </p>
-              </div>
-              <Progress value={participationPercent} className="h-2 w-full" />
-            </>
-          )}
+          <Progress value={participationPercent} className="h-2 w-full" />
         </div>
 
-        {/* QUORUM */}
-        <div className="space-y-3 pt-4 border-t border-border/60">
-          <div className="flex items-center justify-between">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-              Quorum
-            </h4>
-
-            {!isLoading && hasEligible && (
-              <div
-                className={[
-                  'flex items-center gap-2 text-xs font-bold uppercase tracking-widest',
-                  quorumReached ? 'text-green-700' : 'text-amber-700',
-                ].join(' ')}
-              >
-                {quorumReached ? (
-                  <CheckCircle2 className="h-4 w-4" />
-                ) : (
-                  <XCircle className="h-4 w-4" />
-                )}
-                <span>{quorumReached ? 'validé' : 'non validé'}</span>
-              </div>
+        {/* QUORUM STATUS */}
+        {!isLoading && hasEligible && (
+          <div
+            className={cn(
+              'text-sm font-medium',
+              quorumReached ? 'text-emerald-700' : 'text-rose-600'
+            )}
+          >
+            {quorumReached ? (
+              <span className="flex items-center gap-2">
+                <CheckCircle2 className="h-4 w-4" />
+                Quorum atteint
+              </span>
+            ) : (
+              <span className="flex items-center gap-2">
+                <XCircle className="h-4 w-4" />
+                Quorum non atteint ({QUORUM_TARGET_PERCENT}% requis)
+              </span>
             )}
           </div>
+        )}
 
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">Chargement…</p>
-          ) : !hasEligible ? (
-            <p className="text-sm text-muted-foreground">
-              En attente du suffrage défini.
-            </p>
-          ) : (
-            <div className="flex items-baseline justify-between">
-              <p className="text-sm text-muted-foreground">
-                Seuil : <span className="font-bold">{QUORUM_TARGET_PERCENT}%</span>
-              </p>
-              <p className="text-sm font-bold text-muted-foreground">
-                Atteint : <span className="text-black">{participationPercent}%</span>
-              </p>
-            </div>
-          )}
-        </div>
       </div>
 
-      <div className="mt-10">
+      {/* CTA */}
+      <div className="mt-5">
         <Link href="/vote">
-          <Button className="w-full h-14 rounded-none uppercase font-bold text-xs tracking-widest">
+          <Button className="w-full h-11 rounded-full text-xs font-semibold uppercase tracking-[0.18em]">
             Je vote
           </Button>
         </Link>
       </div>
-    </div>
+    </GlassCard>
   );
 }
+
+export default ActiveVotePanel;

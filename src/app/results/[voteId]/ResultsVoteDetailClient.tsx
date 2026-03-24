@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
+import { GlassCard } from '@/components/ui/glass-card';
 
 function formatFr(ts: any): string {
   if (!ts) return '—';
@@ -53,15 +54,17 @@ function CopyRow({ label, value }: { label: string; value?: string | null }) {
       toast({ title: 'Copié', description: `${label} copié dans le presse-papier.` });
     } catch (e) {
       console.error(e);
-      toast({ variant: 'destructive', title: 'Erreur', description: "Impossible de copier." });
+      toast({ variant: 'destructive', title: 'Erreur', description: 'Impossible de copier.' });
     }
   };
 
   return (
-    <div className="flex items-center justify-between gap-3 border bg-white px-4 py-3">
+    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
       <div className="min-w-0">
-        <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{label}</p>
-        <p className="font-mono text-xs break-all">{v || '—'}</p>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+          {label}
+        </p>
+        <p className="break-all font-mono text-xs text-foreground">{v || '—'}</p>
       </div>
 
       <Button
@@ -69,10 +72,11 @@ function CopyRow({ label, value }: { label: string; value?: string | null }) {
         size="sm"
         disabled={!canCopy}
         onClick={onCopy}
-        className="rounded-none h-9 px-3 gap-2"
+        className="h-9 rounded-full border-white/60 bg-white/50 px-3 backdrop-blur-sm"
         title={canCopy ? `Copier ${label}` : 'Rien à copier'}
       >
-        <Copy className="h-4 w-4" /> Copier
+        <Copy className="mr-2 h-4 w-4" />
+        Copier
       </Button>
     </div>
   );
@@ -91,12 +95,12 @@ function StatCard({
 }) {
   const toneClass =
     tone === 'brand'
-      ? 'bg-primary/10 ring-1 ring-primary/10'
+      ? 'border-primary/20 bg-primary/10 ring-1 ring-primary/10'
       : tone === 'good'
-        ? 'bg-primary/5 ring-1 ring-primary/10'
+        ? 'border-primary/20 bg-primary/5 ring-1 ring-primary/10'
         : tone === 'bad'
-          ? 'bg-destructive/5 ring-1 ring-destructive/10'
-          : 'bg-secondary/10';
+          ? 'border-destructive/20 bg-destructive/5 ring-1 ring-destructive/10'
+          : 'border-white/60 bg-white/40';
 
   const labelClass =
     tone === 'brand'
@@ -106,11 +110,20 @@ function StatCard({
         : 'text-muted-foreground';
 
   return (
-    <div className={cn('p-6 border space-y-1', toneClass)}>
-      <p className={cn('text-[10px] uppercase font-bold', labelClass)}>{label}</p>
-      <div className="flex items-end justify-between gap-3">
-        <p className="text-2xl font-black">{value}</p>
-        {sub ? <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{sub}</p> : null}
+    <div className={cn('rounded-[28px] border p-5 backdrop-blur-sm md:p-6', toneClass)}>
+      <div className="space-y-2">
+        <p className={cn('text-[10px] font-semibold uppercase tracking-[0.18em]', labelClass)}>
+          {label}
+        </p>
+
+        <div className="flex items-end justify-between gap-3">
+          <p className="text-2xl font-bold tracking-tight text-foreground">{value}</p>
+          {sub ? (
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              {sub}
+            </p>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -128,12 +141,15 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(300)), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  const projectsById = useMemo(() => new Map((projects ?? []).map((p) => [p.id, p])), [projects]);
+  const projectsById = useMemo(
+    () => new Map((projects ?? []).map((p) => [p.id, p])),
+    [projects]
+  );
 
   if (isVoteLoading) {
     return (
-      <div className="py-24 text-center font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-        Chargement du PV...
+      <div className="py-24 text-center text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+        Chargement du procès-verbal…
       </div>
     );
   }
@@ -141,14 +157,18 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
   if (!vote) {
     return (
       <div className="py-24 text-center">
-        <p className="text-xs uppercase tracking-widest font-bold text-muted-foreground">PV introuvable</p>
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          PV introuvable
+        </p>
+
         <div className="pt-8">
           <Link href="/results">
             <Button
               variant="outline"
-              className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6 gap-2"
+              className="h-11 rounded-full border-white/60 bg-white/50 px-6 text-sm font-semibold backdrop-blur-sm"
             >
-              <ChevronLeft className="h-4 w-4" /> Retour archives
+              <ChevronLeft className="mr-2 h-4 w-4" />
+              Retour aux archives
             </Button>
           </Link>
         </div>
@@ -191,19 +211,25 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
   };
 
   return (
-    <div className="space-y-12 animate-in fade-in duration-700">
-      <div className="flex items-center justify-between gap-6">
+    <div className="animate-in fade-in space-y-8 duration-700 md:space-y-10">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <Link href="/results">
-          <Button variant="outline" className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-6 gap-2">
-            <ChevronLeft className="h-4 w-4" /> Archives
+          <Button
+            variant="outline"
+            className="h-11 rounded-full border-white/60 bg-white/50 px-6 text-sm font-semibold backdrop-blur-sm"
+          >
+            <ChevronLeft className="mr-2 h-4 w-4" />
+            Archives
           </Button>
         </Link>
 
-        <div className="flex items-center gap-2">
-          <Badge className="bg-black text-white rounded-none uppercase text-[9px]">PV</Badge>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="rounded-full border border-white/60 bg-white/70 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-foreground">
+            PV
+          </Badge>
 
           {isSealed && (
-            <Badge className="rounded-none uppercase text-[9px] bg-primary/10 text-primary border border-primary/20 flex items-center gap-2">
+            <Badge className="flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-primary">
               <ShieldCheck className="h-3.5 w-3.5" />
               Résultat scellé
             </Badge>
@@ -212,23 +238,25 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
           <Button
             onClick={onDownloadPdf}
             disabled={!canDownloadPdf}
-            className="rounded-none uppercase font-bold text-xs tracking-widest h-10 px-5 gap-2"
+            className="h-11 rounded-full px-5 text-sm font-semibold"
             title={canDownloadPdf ? 'Télécharger le PV (PDF)' : 'Résultats manquants : PDF indisponible'}
           >
-            <Download className="h-4 w-4" />
+            <Download className="mr-2 h-4 w-4" />
             PDF
           </Button>
         </div>
       </div>
 
       <header className="space-y-4">
-        <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground block">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
           Procès-verbal
-        </span>
+        </p>
 
-        <h1 className="text-3xl md:text-5xl font-bold tracking-tight text-black">{(vote as any).question}</h1>
+        <h1 className="max-w-5xl text-3xl font-bold tracking-tight text-foreground md:text-5xl">
+          {(vote as any).question}
+        </h1>
 
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground pt-2">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-medium text-muted-foreground">
           <span>VoteId : {voteId}</span>
           <span>État : {(vote as any).state}</span>
           <span>PV : {computedAtFormatted}</span>
@@ -236,15 +264,13 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
           <span>Méthode : {method}</span>
         </div>
 
-        {/* Ligne “règlement” courte */}
-        <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-medium text-muted-foreground">
           <span>Quorum : {quorumPct}%</span>
           <span>Validité : {validityLabel}</span>
         </div>
       </header>
 
-      {/* ✅ 4 cards stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <StatCard
           label="Bulletins"
           value={totalBallots}
@@ -254,89 +280,116 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
         <StatCard
           label="Participation"
           value={participationPct !== null ? `${participationPct}%` : '—'}
-          sub={eligible && eligible > 0 && abstentionPct !== null ? `abstention ${abstentionPct}%` : undefined}
+          sub={
+            eligible && eligible > 0 && abstentionPct !== null
+              ? `abstention ${abstentionPct}%`
+              : undefined
+          }
+          tone="brand"
         />
 
         <StatCard label="Quorum" value={`${quorumPct}%`} sub="seuil requis" />
 
         <StatCard
           label="Validité"
-          value={
-            <span className={cn(isValid ? 'text-primary' : 'text-destructive')}>
-              {validityLabel}
-            </span>
-          }
+          value={<span className={cn(isValid ? 'text-primary' : 'text-destructive')}>{validityLabel}</span>}
           sub={quorumPct > 0 ? `seuil ${quorumPct}%` : 'aucun seuil'}
           tone={isValid ? 'good' : 'bad'}
         />
       </div>
 
-      {/* ✅ Vainqueur en grand */}
-      <section className={cn('border p-8', isValid ? 'bg-primary/5 border-primary/20' : 'bg-secondary/10')}>
-        <div className="flex items-start justify-between gap-6">
-          <div className="space-y-3 min-w-0">
-            <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">Vainqueur</p>
+      <GlassCard
+        intensity="medium"
+        className={cn(
+          'p-6 md:p-8',
+          isValid ? 'border-primary/20 bg-primary/5' : 'border-white/60 bg-white/40'
+        )}
+      >
+        <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 space-y-4">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Vainqueur
+            </p>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <div
                 className={cn(
-                  'w-12 h-12 flex items-center justify-center',
-                  isValid ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                  'flex h-14 w-14 items-center justify-center rounded-2xl',
+                  isValid
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-secondary text-muted-foreground'
                 )}
               >
-                <Trophy className="h-6 w-6" />
+                <Trophy className="h-7 w-7" />
               </div>
 
               <div className="min-w-0">
-                <h2 className="text-2xl md:text-3xl font-black uppercase leading-tight text-black truncate">
+                <h2 className="truncate text-2xl font-bold tracking-tight text-foreground md:text-3xl">
                   {winner?.title ?? (winnerId ? String(winnerId) : '—')}
                 </h2>
-                <p className="text-[10px] text-muted-foreground font-mono break-all">{winnerId ?? '—'}</p>
+                <p className="break-all font-mono text-xs text-muted-foreground">
+                  {winnerId ?? '—'}
+                </p>
               </div>
             </div>
           </div>
 
           <Badge
             className={cn(
-              'rounded-none uppercase text-[9px] h-7 px-3 flex items-center gap-2',
+              'flex items-center gap-2 self-start rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
               isValid
-                ? 'bg-primary/10 text-primary border border-primary/20'
-                : 'bg-destructive/10 text-destructive border border-destructive/20'
+                ? 'border border-primary/20 bg-primary/10 text-primary'
+                : 'border border-destructive/20 bg-destructive/10 text-destructive'
             )}
           >
-            {isValid ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+            {isValid ? (
+              <CheckCircle2 className="h-3.5 w-3.5" />
+            ) : (
+              <XCircle className="h-3.5 w-3.5" />
+            )}
             {validityLabel}
           </Badge>
         </div>
-      </section>
+      </GlassCard>
 
-      <section className="space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs uppercase tracking-[0.2em] font-bold">Intégrité</h2>
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground">
+            Intégrité
+          </h2>
+
           <Badge
             className={cn(
-              'rounded-none uppercase text-[9px]',
-              isSealed ? 'bg-primary/10 text-primary border border-primary/20' : 'bg-secondary text-muted-foreground'
+              'rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.18em]',
+              isSealed
+                ? 'border border-primary/20 bg-primary/10 text-primary'
+                : 'border border-white/60 bg-white/60 text-muted-foreground'
             )}
           >
             {isSealed ? 'Scellé (hash)' : 'Non scellé'}
           </Badge>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="border bg-white px-4 py-3">
-            <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">computedBy</p>
-            <p className="font-mono text-xs break-all">{computedBy}</p>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div className="rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              computedBy
+            </p>
+            <p className="break-all font-mono text-xs text-foreground">{computedBy}</p>
           </div>
 
-          <div className="border bg-white px-4 py-3">
-            <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">lockedAt</p>
-            <p className="font-mono text-xs">{lockedAtFormatted}</p>
+          <div className="rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              lockedAt
+            </p>
+            <p className="font-mono text-xs text-foreground">{lockedAtFormatted}</p>
           </div>
 
-          <div className="border bg-white px-4 py-3">
-            <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">method</p>
-            <p className="font-mono text-xs">{method}</p>
+          <div className="rounded-2xl border border-white/60 bg-white/40 px-4 py-3 backdrop-blur-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              method
+            </p>
+            <p className="font-mono text-xs text-foreground">{method}</p>
           </div>
 
           <CopyRow label="resultsHash" value={resultsHash} />
@@ -344,55 +397,65 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
       </section>
 
       <section className="space-y-4">
-        <h2 className="text-xs uppercase tracking-[0.2em] font-bold">Classement complet</h2>
+        <h2 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-foreground">
+          Classement complet
+        </h2>
 
         {(vote as any).state !== 'locked' && (
-          <div className="border border-dashed border-border bg-secondary/5 p-6">
-            <p className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
-              Attention : ce vote n’est pas “locked”. Le PV est affiché à titre informatif.
+          <GlassCard intensity="soft" className="border-dashed p-5">
+            <p className="text-sm font-medium text-muted-foreground">
+              Attention : ce vote n’est pas verrouillé. Le PV est affiché à titre informatif.
             </p>
-          </div>
+          </GlassCard>
         )}
 
         {ranking.length > 0 ? (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {ranking.map((r: any, idx: number) => (
               <div
                 key={r.id}
                 className={cn(
-                  'p-4 border flex items-center justify-between gap-4',
-                  idx === 0 ? 'bg-primary/5 border-primary' : 'bg-white'
+                  'flex items-center justify-between gap-4 rounded-[24px] border p-4 backdrop-blur-sm md:p-5',
+                  idx === 0
+                    ? 'border-primary/20 bg-primary/5'
+                    : 'border-white/60 bg-white/40'
                 )}
               >
-                <div className="flex items-center gap-4 min-w-0">
+                <div className="flex min-w-0 items-center gap-4">
                   <div
                     className={cn(
-                      'w-10 h-10 flex items-center justify-center font-black',
-                      idx === 0 ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'
+                      'flex h-11 w-11 items-center justify-center rounded-2xl text-sm font-bold',
+                      idx === 0
+                        ? 'bg-primary text-primary-foreground'
+                        : 'bg-secondary text-muted-foreground'
                     )}
                   >
                     #{idx + 1}
                   </div>
 
                   <div className="min-w-0">
-                    <p className="font-bold uppercase truncate">{projectsById.get(r.id)?.title ?? r.id}</p>
-                    <p className="text-[10px] text-muted-foreground font-mono truncate">{r.id}</p>
+                    <p className="truncate text-sm font-semibold text-foreground md:text-base">
+                      {projectsById.get(r.id)?.title ?? r.id}
+                    </p>
+                    <p className="truncate font-mono text-[11px] text-muted-foreground">{r.id}</p>
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <p className="text-[10px] uppercase font-bold text-muted-foreground">Score</p>
-                  <p className="font-mono text-xs">{r.score ?? r.rank ?? '—'}</p>
+                <div className="shrink-0 text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                    Score
+                  </p>
+                  <p className="font-mono text-xs text-foreground">{r.score ?? r.rank ?? '—'}</p>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <div className="text-center py-24 border border-dashed border-border bg-secondary/5">
-            <p className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
+          <GlassCard intensity="soft" className="p-10 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
               Aucun classement disponible
             </p>
-          </div>
+          </GlassCard>
         )}
       </section>
     </div>
