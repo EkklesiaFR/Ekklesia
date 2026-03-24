@@ -1,67 +1,208 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
+    /* =========================
+       BASE (EXISTANT CONSERVÉ)
+    ========================= */
     --background: 0 0% 100%;
     --foreground: 0 0% 0%;
+
     --card: 0 0% 100%;
     --card-foreground: 0 0% 0%;
+
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 0%;
-    --primary: 140 35% 62%; /* Restrained green #7DC092 */
+
+    --primary: 140 35% 62%;
     --primary-foreground: 0 0% 100%;
+
     --secondary: 0 0% 96%;
     --secondary-foreground: 0 0% 0%;
-    --muted: 0 0% 89%; /* Subtle light grey #E3E3E3 */
+
+    --muted: 0 0% 89%;
     --muted-foreground: 0 0% 40%;
+
     --accent: 140 35% 62%;
     --accent-foreground: 0 0% 100%;
+
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 0 0% 98%;
-    --border: 0 0% 89%; /* #E3E3E3 */
+
+    --border: 0 0% 89%;
     --input: 0 0% 89%;
     --ring: 140 35% 62%;
-    --radius: 0rem; /* Institutional feel, sharp corners often preferred for solemn tone, or very small radius */
+
+    --radius: 0.75rem;
+
+    /* =========================
+       SIDEBAR (EXISTANT)
+    ========================= */
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 0 0% 0%;
+
     --sidebar-primary: 0 0% 0%;
     --sidebar-primary-foreground: 0 0% 100%;
+
     --sidebar-accent: 0 0% 96%;
     --sidebar-accent-foreground: 0 0% 0%;
+
     --sidebar-border: 0 0% 89%;
     --sidebar-ring: 140 35% 62%;
+
+    /* =========================
+       NOUVEAUX TOKENS (DASHBOARD / GLASS)
+    ========================= */
+
+    /* Surfaces */
+    --surface-elevated: 0 0% 100%;
+    --surface-muted: 0 0% 97%;
+
+    /* Textes */
+    --text-muted-2: 0 0% 45%;
+    --text-soft: 0 0% 60%;
+
+    /* Couleurs fonctionnelles */
+    --success: 140 35% 62%;
+    --success-foreground: 0 0% 100%;
+
+    --info: 217 91% 60%;
+    --info-foreground: 0 0% 100%;
+
+    --live: 0 78% 60%;
+    --live-foreground: 0 0% 100%;
+
+    /* Glass */
+    --glass-bg: 0 0% 100% / 0.62;
+    --glass-bg-strong: 0 0% 100% / 0.78;
+    --glass-border: 0 0% 100% / 0.58;
+    --glass-highlight: 0 0% 100% / 0.72;
+
+    /* Shadows */
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.04);
+    --shadow-medium: 0 8px 24px rgba(0, 0, 0, 0.08);
+    --shadow-glass: 0 10px 30px rgba(0, 0, 0, 0.08);
+
+    /* Radius modernes (sans casser l’existant) */
+    --radius-sm: 14px;
+    --radius-md: 20px;
+    --radius-lg: 28px;
+  }
+
+  .dark {
+    /* =========================
+       BASE DARK
+    ========================= */
+    --background: 222 20% 10%;
+    --foreground: 0 0% 100%;
+
+    --card: 222 18% 14%;
+    --card-foreground: 0 0% 100%;
+
+    --popover: 222 18% 14%;
+    --popover-foreground: 0 0% 100%;
+
+    --secondary: 222 16% 18%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 222 14% 20%;
+    --muted-foreground: 0 0% 70%;
+
+    --accent: 140 35% 62%;
+    --accent-foreground: 0 0% 100%;
+
+    --border: 0 0% 100% / 0.08;
+    --input: 0 0% 100% / 0.08;
+    --ring: 140 35% 62%;
+
+    /* Sidebar */
+    --sidebar-background: 222 20% 10%;
+    --sidebar-foreground: 0 0% 100%;
+
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 222 20% 10%;
+
+    --sidebar-accent: 222 16% 18%;
+    --sidebar-accent-foreground: 0 0% 100%;
+
+    --sidebar-border: 0 0% 100% / 0.08;
+    --sidebar-ring: 140 35% 62%;
+
+    /* =========================
+       TOKENS DASHBOARD DARK
+    ========================= */
+
+    --surface-elevated: 222 18% 14%;
+    --surface-muted: 222 16% 18%;
+
+    --text-muted-2: 0 0% 72%;
+    --text-soft: 0 0% 55%;
+
+    --success: 140 35% 62%;
+    --success-foreground: 0 0% 100%;
+
+    --info: 217 91% 68%;
+    --info-foreground: 0 0% 100%;
+
+    --live: 0 78% 64%;
+    --live-foreground: 0 0% 100%;
+
+    /* Glass dark */
+    --glass-bg: 0 0% 100% / 0.08;
+    --glass-bg-strong: 0 0% 100% / 0.12;
+    --glass-border: 0 0% 100% / 0.16;
+    --glass-highlight: 0 0% 100% / 0.2;
+
+    /* Shadows */
+    --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.18);
+    --shadow-medium: 0 10px 28px rgba(0, 0, 0, 0.28);
+    --shadow-glass: 0 12px 34px rgba(0, 0, 0, 0.3);
   }
 }
+
+/* =========================
+   BASE STYLES
+========================= */
 
 @layer base {
   * {
     @apply border-border;
   }
+
   body {
     @apply bg-background text-foreground font-body;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+
   h1, h2, h3, h4, h5, h6 {
     @apply font-headline tracking-tight;
   }
 }
 
+/* =========================
+   ANIMATIONS
+========================= */
+
 .fade-enter {
   opacity: 0;
 }
+
 .fade-enter-active {
   opacity: 1;
   transition: opacity 300ms ease-in;
 }
 
-/* Custom drag-and-drop styling for ranking */
+/* =========================
+   DRAG & DROP
+========================= */
+
 .drag-handle {
   cursor: grab;
 }
+
 .drag-handle:active {
   cursor: grabbing;
 }

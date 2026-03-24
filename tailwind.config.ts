@@ -1,5 +1,4 @@
-
-import type {Config} from 'tailwindcss';
+import type { Config } from 'tailwindcss';
 
 export default {
   darkMode: ['class'],
@@ -18,37 +17,72 @@ export default {
       colors: {
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
+
         card: {
           DEFAULT: 'hsl(var(--card))',
           foreground: 'hsl(var(--card-foreground))',
         },
+
         popover: {
           DEFAULT: 'hsl(var(--popover))',
           foreground: 'hsl(var(--popover-foreground))',
         },
+
         primary: {
           DEFAULT: 'hsl(var(--primary))',
           foreground: 'hsl(var(--primary-foreground))',
         },
+
         secondary: {
           DEFAULT: 'hsl(var(--secondary))',
           foreground: 'hsl(var(--secondary-foreground))',
         },
+
         muted: {
           DEFAULT: 'hsl(var(--muted))',
           foreground: 'hsl(var(--muted-foreground))',
         },
+
         accent: {
           DEFAULT: 'hsl(var(--accent))',
           foreground: 'hsl(var(--accent-foreground))',
         },
+
         destructive: {
           DEFAULT: 'hsl(var(--destructive))',
           foreground: 'hsl(var(--destructive-foreground))',
         },
+
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
         ring: 'hsl(var(--ring))',
+
+        /* New dashboard tokens */
+        surface: {
+          elevated: 'hsl(var(--surface-elevated))',
+          muted: 'hsl(var(--surface-muted))',
+        },
+
+        text: {
+          muted2: 'hsl(var(--text-muted-2))',
+          soft: 'hsl(var(--text-soft))',
+        },
+
+        success: {
+          DEFAULT: 'hsl(var(--success))',
+          foreground: 'hsl(var(--success-foreground))',
+        },
+
+        info: {
+          DEFAULT: 'hsl(var(--info))',
+          foreground: 'hsl(var(--info-foreground))',
+        },
+
+        live: {
+          DEFAULT: 'hsl(var(--live))',
+          foreground: 'hsl(var(--live-foreground))',
+        },
+
         chart: {
           '1': 'hsl(var(--chart-1))',
           '2': 'hsl(var(--chart-2))',
@@ -56,6 +90,7 @@ export default {
           '4': 'hsl(var(--chart-4))',
           '5': 'hsl(var(--chart-5))',
         },
+
         sidebar: {
           DEFAULT: 'hsl(var(--sidebar-background))',
           foreground: 'hsl(var(--sidebar-foreground))',
@@ -67,11 +102,28 @@ export default {
           ring: 'hsl(var(--sidebar-ring))',
         },
       },
+
       borderRadius: {
         lg: 'var(--radius)',
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
+
+        /* New modern radii for dashboard cards */
+        'card-sm': 'var(--radius-sm)',
+        'card-md': 'var(--radius-md)',
+        'card-lg': 'var(--radius-lg)',
       },
+
+      boxShadow: {
+        soft: 'var(--shadow-soft)',
+        medium: 'var(--shadow-medium)',
+        glass: 'var(--shadow-glass)',
+      },
+
+      backdropBlur: {
+        xs: '2px',
+      },
+
       keyframes: {
         'accordion-down': {
           from: {
@@ -90,6 +142,7 @@ export default {
           },
         },
       },
+
       animation: {
         'accordion-down': 'accordion-down 0.2s ease-out',
         'accordion-up': 'accordion-up 0.2s ease-out',

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { GlassCard } from '@/components/ui/glass-card';
 import { cn } from '@/lib/utils';
 import { toast } from '@/hooks/use-toast';
 
@@ -16,8 +17,6 @@ import {
   Lock,
   BarChart3,
   PieChart,
-  Clock,
-  Inbox,
 } from 'lucide-react';
 
 import type { Project, Vote, Ballot } from '@/types';
@@ -34,113 +33,63 @@ interface VoteModuleProps {
   assemblyId: string;
 }
 
-/**
- * Résumé inline (à droite du titre)
- * Conservé pour définition mais non utilisé dans VoteModule pour éviter la redondance.
- */
-function VoteHeaderSummary({
-  ballotCount,
-  isLoading,
-  closesAt,
-}: {
-  ballotCount: number;
-  isLoading: boolean;
-  closesAt: any; // Timestamp/Date/string/number ou null
-}) {
-  const timeLeft = useCountdown(closesAt ?? null);
-
-  return (
-    <div className="flex items-center justify-end gap-6 text-[11px] uppercase tracking-widest font-bold text-muted-foreground">
-      <div className="flex items-center gap-2">
-        <Inbox className="h-4 w-4" />
-        <span className="text-black">{isLoading ? '…' : ballotCount}</span>
-        <span>bulletins</span>
-      </div>
-
-      <div className="flex items-center gap-2">
-        <Clock className="h-4 w-4" />
-        <span className="text-black">{timeLeft}</span>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Capsule de résumé repositionnée dans l'aside
- */
-function MiniHeaderOverlay({
-  ballotCount,
-  isLoading,
-  closesAt,
-}: {
-  ballotCount: number;
-  isLoading: boolean;
-  closesAt: any;
-}) {
-  const timeLeft = useCountdown(closesAt ?? null);
-
-  return (
-    <div className="flex justify-end mb-8">
-      <div className="flex items-center gap-6 rounded-lg border bg-background/80 px-4 py-2 text-[11px] uppercase tracking-widest font-bold text-muted-foreground backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <Inbox className="h-4 w-4" />
-          <span className="text-black">{isLoading ? '…' : ballotCount}</span>
-          <span>bulletins</span>
-        </div>
-
-        <div className="h-4 w-px bg-border" />
-
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4" />
-          <span className="text-black">{timeLeft}</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function ParticipationPanel({
   ballotCount,
   eligibleCount,
+  closesAt,
   isLoading,
 }: {
   ballotCount: number;
   eligibleCount?: number;
+  closesAt?: any;
   isLoading?: boolean;
 }) {
+  const timeLeft = useCountdown(closesAt ?? null);
+  const isManualClose = closesAt == null;
+
   if (isLoading) {
     return (
-      <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
-        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-          Calcul du quorum…
-        </p>
-      </div>
+      <GlassCard intensity="soft" className="p-5">
+        <p className="text-sm text-muted-foreground">Calcul de la participation…</p>
+      </GlassCard>
     );
   }
 
   if (eligibleCount === undefined || eligibleCount === null) {
     return (
-      <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
-        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-          Quorum en calcul…
-        </p>
-        <p className="text-[9px] text-muted-foreground italic leading-tight">
-          Le quorum doit être calculé par un administrateur à l’ouverture.
-        </p>
-        <p className="text-[8px] text-muted-foreground/30 font-mono mt-2 uppercase">
-          Bulletins reçus : {ballotCount}
-        </p>
-      </div>
+      <GlassCard intensity="soft" className="p-5">
+        <div className="space-y-3">
+          <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            <PieChart className="h-3.5 w-3.5 text-primary" />
+            Participation
+          </p>
+
+          <p className="text-sm text-muted-foreground">Calcul du quorum…</p>
+
+          <p className="pt-1 text-[11px] font-medium text-muted-foreground/80">
+            {isManualClose ? 'Clôture manuelle' : `Clôture dans ${timeLeft}`}
+          </p>
+        </div>
+      </GlassCard>
     );
   }
 
   if (eligibleCount === 0) {
     return (
-      <div className="p-6 border border-dashed border-border bg-white/50 space-y-2 text-center">
-        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">
-          Aucun membre éligible
-        </p>
-      </div>
+      <GlassCard intensity="soft" className="p-5">
+        <div className="space-y-3">
+          <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+            <PieChart className="h-3.5 w-3.5 text-primary" />
+            Participation
+          </p>
+
+          <p className="text-sm text-muted-foreground">Aucun membre éligible.</p>
+
+          <p className="pt-1 text-[11px] font-medium text-muted-foreground/80">
+            {isManualClose ? 'Clôture manuelle' : `Clôture dans ${timeLeft}`}
+          </p>
+        </div>
+      </GlassCard>
     );
   }
 
@@ -149,46 +98,52 @@ function ParticipationPanel({
   const abstentionCount = Math.max(0, eligibleCount - voters);
 
   return (
-    <div className="space-y-12">
-      <header className="flex items-center justify-between border-b border-border pb-6">
-        <div className="space-y-1">
-          <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
-            <PieChart className="h-4 w-4 text-primary" /> Participation
-          </h2>
-          <p className="text-[8px] uppercase font-bold text-muted-foreground">
-            Suffrage défini : {eligibleCount}
+    <GlassCard intensity="soft" className="p-5 md:p-6">
+      <div className="space-y-5">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1.5">
+            <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              <PieChart className="h-3.5 w-3.5 text-primary" />
+              Participation
+            </p>
+
+            <p className="text-sm text-muted-foreground">
+              {voters} / {eligibleCount} membres
+            </p>
+          </div>
+
+          <p className="text-4xl font-bold leading-none tracking-tight text-foreground">
+            {participationRate}%
           </p>
         </div>
-        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-          {voters} bulletin(s)
-        </div>
-      </header>
 
-      <div className="space-y-8">
-        <div className="space-y-4">
-          <div className="flex justify-between items-end">
-            <span className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">
-              Taux
-            </span>
-            <span className="text-lg font-black">{participationRate}%</span>
-          </div>
-          <Progress value={participationRate} className="h-2 rounded-none" />
-        </div>
+        <Progress value={participationRate} className="h-2 w-full bg-black/5" />
 
-        <div className="grid grid-cols-2 gap-4">
-          <div className="p-4 bg-white border border-border space-y-1">
-            <p className="text-[9px] uppercase font-bold text-muted-foreground">Abstention</p>
-            <p className="text-sm font-black">{abstentionCount}</p>
+        <div className="grid grid-cols-2 gap-3">
+          <div className="rounded-2xl border border-white/60 bg-white/40 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Votants
+            </p>
+            <p className="mt-2 text-2xl font-semibold leading-none text-foreground">{voters}</p>
           </div>
-          <div className="p-4 bg-white border border-border flex items-center gap-2">
-            <BarChart3 className="h-3 w-3 text-primary" />
-            <p className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest">
-              Scrutin Secret
+
+          <div className="rounded-2xl border border-white/60 bg-white/40 p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+              Abstention
+            </p>
+            <p className="mt-2 text-2xl font-semibold leading-none text-foreground">
+              {abstentionCount}
             </p>
           </div>
         </div>
+
+        <div className="border-t border-white/40 pt-3">
+          <p className="text-[11px] font-medium text-muted-foreground/80">
+            {isManualClose ? 'Clôture manuelle' : `Clôture dans ${timeLeft}`}
+          </p>
+        </div>
       </div>
-    </div>
+    </GlassCard>
   );
 }
 
@@ -199,7 +154,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
   const [currentRanking, setCurrentRanking] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  // ✅ Compteur figé (votes clos) : fallback multi champs
   const frozenCount =
     (vote as any)?.results?.totalBallots ?? (vote as any)?.results?.total ?? undefined;
 
@@ -211,7 +165,6 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     mode: 'realtime',
   });
 
-  // ✅ Fallback multi-champs date
   const closesAt =
     (vote as any)?.closesAt ?? (vote as any)?.endsAt ?? (vote as any)?.closedAt ?? null;
 
@@ -224,18 +177,13 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userBallot, projects]);
 
-  /**
-   * ✅ IMPORTANT:
-   * On envoie le vote via l'API Route /api/assemblies/:assemblyId/votes/:voteId/ballots
-   * pour que le serveur (Admin SDK) incrémente vote.ballotCount atomiquement.
-   */
   const handleVoteSubmit = async () => {
     if (!user) return;
     setIsSaving(true);
-  
+
     try {
       const idToken = await user.getIdToken();
-  
+
       const res = await fetch(`/api/assemblies/${assemblyId}/votes/${vote.id}/ballots`, {
         method: 'POST',
         headers: {
@@ -244,20 +192,25 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
         },
         body: JSON.stringify({ ranking: currentRanking }),
       });
-  
+
       if (!res.ok) {
         const payload = await res.json().catch(() => null);
         const msg = payload?.error || `HTTP ${res.status}`;
         throw new Error(msg);
       }
-  
-      toast({ title: 'Vote enregistré', description: 'Votre classement a été pris en compte.' });
+
+      toast({
+        title: 'Vote enregistré',
+        description: 'Votre classement a été pris en compte.',
+      });
     } catch (e: any) {
       console.error('[VOTE] API submit error:', e?.message || e);
       toast({
         variant: 'destructive',
         title: 'Erreur',
-        description: e?.message ? `Impossible de sauvegarder votre vote: ${e.message}` : "Impossible de sauvegarder votre vote.",
+        description: e?.message
+          ? `Impossible de sauvegarder votre vote : ${e.message}`
+          : 'Impossible de sauvegarder votre vote.',
       });
     } finally {
       setIsSaving(false);
@@ -273,126 +226,149 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
   const canShowAdminTrends = !isMemberLoading && isAdmin === true && vote.state === 'open';
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="space-y-12">
-        <header className="space-y-6">
-          <div className="flex items-start justify-between gap-6">
+    <div className="grid animate-in grid-cols-1 gap-6 fade-in slide-in-from-bottom-4 duration-700 lg:grid-cols-[minmax(0,1.1fr)_minmax(320px,420px)]">
+      <div className="space-y-6">
+        <GlassCard intensity="medium" className="p-5 md:p-6">
+          <div className="space-y-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="inline-flex items-center gap-2 rounded-full border border-emerald-200/80 bg-emerald-50/80 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+                </span>
+                Scrutin direct
+              </div>
+            </div>
+
             <div className="space-y-2">
-              <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-primary block">
-                Scrutin Direct
-              </span>
-              <h1 className="text-4xl font-bold tracking-tight text-black">{vote.question}</h1>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+                {vote.question}
+              </h1>
+
+              <div className="flex items-start gap-2 rounded-2xl border border-white/60 bg-white/40 p-3 text-sm text-muted-foreground">
+                <Info className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>
+                  Classez les projets par ordre de préférence. Vous pouvez modifier votre vote
+                  jusqu&apos;à la clôture.
+                </p>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-start gap-3 p-4 bg-secondary/30 border border-border">
-            <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-            <p className="text-xs text-muted-foreground leading-relaxed italic">
-              Classez les projets par préférence (1 = favori). Glissez les cartes pour réorganiser.
-              Votre vote est secret et peut être modifié jusqu&apos;à la clôture.
-            </p>
-          </div>
-        </header>
-
-        <div className="space-y-6">
-          {vote.state === 'open' ? (
-            <RankedList projects={sortedProjects} onOrderChange={setCurrentRanking} />
-          ) : (
-            <div className="p-12 border border-dashed border-border bg-secondary/5 text-center space-y-4">
-              <Lock className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
-              <p className="text-xs uppercase font-bold tracking-widest text-muted-foreground">
-                Les votes ne sont pas ouverts
-              </p>
-            </div>
-          )}
-        </div>
-
-        {vote.state === 'open' && (
-          <div className="pt-8 space-y-6">
-            <Button
-              className="w-full h-16 text-xs uppercase tracking-[0.2em] font-bold rounded-none"
-              onClick={handleVoteSubmit}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin mr-2" />
-              ) : userBallot ? (
-                'Mettre à jour mon vote'
+            <div>
+              {vote.state === 'open' ? (
+                <RankedList projects={sortedProjects} onOrderChange={setCurrentRanking} />
               ) : (
-                'Valider mon classement'
+                <div className="rounded-2xl border border-dashed border-border bg-secondary/5 p-10 text-center">
+                  <Lock className="mx-auto h-8 w-8 text-muted-foreground/40" />
+                  <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                    Les votes ne sont pas ouverts
+                  </p>
+                </div>
               )}
-            </Button>
+            </div>
 
-            {userBallot && (
-              <div className="flex items-center gap-3 p-5 bg-green-50 text-green-700 text-sm font-bold border border-green-100">
-                <CheckCircle2 className="h-5 w-5" />
-                <span>Vote enregistré.</span>
+            {vote.state === 'open' && (
+              <div className="space-y-4 pt-2">
+                <Button
+                  className="h-12 w-full rounded-full text-xs font-semibold uppercase tracking-[0.18em]"
+                  onClick={handleVoteSubmit}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Enregistrement…
+                    </>
+                  ) : userBallot ? (
+                    'Mettre à jour mon vote'
+                  ) : (
+                    'Valider mon classement'
+                  )}
+                </Button>
+
+                {userBallot && (
+                  <div className="flex items-center gap-3 rounded-2xl border border-emerald-200/70 bg-emerald-50/70 p-4 text-sm font-medium text-emerald-700">
+                    <CheckCircle2 className="h-5 w-5" />
+                    <span>Votre vote est déjà enregistré.</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
-        )}
+        </GlassCard>
       </div>
 
-      <aside className="space-y-12 lg:bg-secondary/5 lg:p-12 border-l border-border">
-        <MiniHeaderOverlay ballotCount={ballotCount} isLoading={isBallotCountLoading} closesAt={closesAt} />
-
+      <aside className="space-y-4">
         {vote.state === 'draft' ? (
-          <div className="h-full flex flex-col items-center justify-center p-8 text-center space-y-4">
-            <Lock className="h-12 w-12 text-muted-foreground opacity-20" />
-            <h3 className="text-xs uppercase tracking-[0.2em] font-bold">Scrutin en attente</h3>
-          </div>
+          <GlassCard intensity="soft" className="p-6 text-center">
+            <Lock className="mx-auto h-8 w-8 text-muted-foreground/40" />
+            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+              Scrutin en attente
+            </p>
+          </GlassCard>
         ) : vote.state === 'open' ? (
-          <div className="space-y-12">
+          <div className="space-y-4">
             <ParticipationPanel
               ballotCount={ballotCount}
               eligibleCount={vote.eligibleCountAtOpen}
+              closesAt={closesAt}
               isLoading={isBallotCountLoading}
             />
 
-            {canShowAdminTrends && <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} />}
+            {canShowAdminTrends && (
+              <GlassCard intensity="soft" className="p-4">
+                <AdminTrendsPanel assemblyId={assemblyId} voteId={vote.id} />
+              </GlassCard>
+            )}
           </div>
         ) : (
-          <div className="space-y-12">
-            <header className="flex items-center justify-between border-b border-border pb-6">
-              <h2 className="text-xs uppercase tracking-[0.2em] font-bold flex items-center gap-3">
-                <BarChart3 className="h-4 w-4 text-primary" /> Résultat Final
-              </h2>
-            </header>
-
+          <GlassCard intensity="soft" className="p-5">
             <div className="space-y-4">
-              {vote.results?.fullRanking ? (
-                vote.results.fullRanking.map((rankInfo) => (
-                  <div
-                    key={rankInfo.id}
-                    className={cn(
-                      'p-5 flex items-center gap-5 border',
-                      rankInfo.rank === 1
-                        ? 'bg-white border-primary ring-1 ring-primary'
-                        : 'bg-white/50 border-border'
-                    )}
-                  >
+              <p className="inline-flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+                <BarChart3 className="h-3.5 w-3.5 text-primary" />
+                Résultat final
+              </p>
+
+              <div className="space-y-3">
+                {vote.results?.fullRanking ? (
+                  vote.results.fullRanking.map((rankInfo) => (
                     <div
+                      key={rankInfo.id}
                       className={cn(
-                        'w-10 h-10 flex items-center justify-center text-xs font-black',
-                        rankInfo.rank === 1 ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'
+                        'flex items-center gap-4 rounded-2xl border p-4',
+                        rankInfo.rank === 1
+                          ? 'border-primary/30 bg-primary/10'
+                          : 'border-white/60 bg-white/40'
                       )}
                     >
-                      #{rankInfo.rank}
+                      <div
+                        className={cn(
+                          'flex h-9 w-9 items-center justify-center rounded-full text-xs font-bold',
+                          rankInfo.rank === 1
+                            ? 'bg-primary text-white'
+                            : 'bg-muted text-muted-foreground'
+                        )}
+                      >
+                        #{rankInfo.rank}
+                      </div>
+
+                      <div className="text-sm font-semibold text-foreground">
+                        {projects.find((p) => p.id === rankInfo.id)?.title}
+                      </div>
                     </div>
-                    <div className="font-bold text-sm uppercase">
-                      {projects.find((p) => p.id === rankInfo.id)?.title}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm text-muted-foreground italic text-center py-12">
-                  Résultats en cours de publication...
-                </p>
-              )}
+                  ))
+                ) : (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    Résultats en cours de publication…
+                  </p>
+                )}
+              </div>
             </div>
-          </div>
+          </GlassCard>
         )}
       </aside>
     </div>
   );
 }
+
+export default VoteModule;
