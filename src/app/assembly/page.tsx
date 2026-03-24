@@ -1,12 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { doc } from 'firebase/firestore';
-import { Activity, LayoutGrid, Settings } from 'lucide-react';
+import { Activity } from 'lucide-react';
 
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
-import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 
 import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import type { Vote, Assembly } from '@/types';
@@ -21,7 +19,6 @@ import { useOnlinePresence } from '@/hooks/useOnlinePresence';
 import { OnlinePresenceStrip } from '@/components/assembly/OnlinePresenceStrip';
 
 function AssemblyDashboardContent() {
-  const { isAdmin } = useAuthStatus();
   const db = useFirestore();
 
   const assemblyRef = useMemoFirebase(() => doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), [db]);
@@ -52,10 +49,6 @@ function AssemblyDashboardContent() {
   }
 
   const isOpen = activeAssembly?.state === 'open' && !!activeVote;
-
-  const totalCount: number | null = isOpen
-    ? (((activeVote as any)?.eligibleCountAtOpen as number | undefined) ?? null)
-    : null;
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -90,26 +83,6 @@ function AssemblyDashboardContent() {
           <LastVoteResultCard />
         </div>
       )}
-
-      <div className="grid grid-cols-1 gap-6 border-t pt-10 md:grid-cols-3">
-        <Link
-          href="/projects"
-          className="group space-y-6 border bg-white p-8 transition-all hover:border-black"
-        >
-          <LayoutGrid className="h-6 w-6" />
-          <h3 className="text-xl font-bold">Les Projets</h3>
-        </Link>
-
-        {isAdmin && (
-          <Link
-            href="/admin"
-            className="group space-y-6 border border-dashed border-primary bg-primary/5 p-8 transition-all hover:bg-primary/10"
-          >
-            <Settings className="h-6 w-6" />
-            <h3 className="text-xl font-bold">Administration</h3>
-          </Link>
-        )}
-      </div>
     </div>
   );
 }

@@ -1,7 +1,24 @@
-"use client";
+'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { GripVertical } from 'lucide-react';
+import {
+  DndContext,
+  PointerSensor,
+  TouchSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
 import { Project } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -11,77 +28,136 @@ interface RankedListProps {
   disabled?: boolean;
 }
 
-export function RankedList({ projects, onOrderChange, disabled }: RankedListProps) {
-  const [items, setItems] = useState(projects);
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+interface SortableRowProps {
+  project: Project;
+  index: number;
+  disabled?: boolean;
+}
 
-  // Synchroniser l'état local si les projets changent (ex: initialisation tardive)
+function SortableRow({ project, index, disabled }: SortableRowProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: project.id,
+    disabled,
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'group flex items-center gap-4 rounded-2xl border border-white/60 bg-white/40 p-4 backdrop-blur-md transition-all duration-200 touch-manipulation',
+        isDragging
+          ? 'z-10 scale-[1.01] border-primary/30 bg-white/65 shadow-[0_14px_30px_rgba(15,23,42,0.10)] ring-1 ring-primary/20'
+          : 'hover:bg-white/55',
+        disabled ? 'cursor-default' : 'cursor-default'
+      )}
+    >
+      <div
+        className={cn(
+          'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-sm font-bold transition-all',
+          isDragging
+            ? 'border-primary/30 bg-primary/10 text-primary'
+            : 'border-white/70 bg-white/55 text-foreground'
+        )}
+      >
+        {index + 1}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <h4 className="line-clamp-2 text-lg font-semibold leading-tight text-foreground">
+          {project.title}
+        </h4>
+        <p className="mt-1 text-xs font-medium text-muted-foreground">{project.budget}</p>
+      </div>
+
+      {!disabled && (
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          aria-label={`Déplacer ${project.title}`}
+          className="shrink-0 touch-none rounded-full border border-white/60 bg-white/45 p-3 text-muted-foreground/70 transition-colors group-hover:text-foreground active:scale-95"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function RankedList({ projects, onOrderChange, disabled = false }: RankedListProps) {
+  const [items, setItems] = useState(projects);
+
   useEffect(() => {
     setItems(projects);
   }, [projects]);
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    if (disabled) return;
-    setDraggedIndex(index);
-    e.dataTransfer.effectAllowed = 'move';
-    
-    // Assurer la compatibilité mobile/touch via HTML5 si possible
-    // ou simplement styliser l'élément fantôme
-    const target = e.currentTarget as HTMLElement;
-    target.classList.add('opacity-30');
-  };
+  const itemIds = useMemo(() => items.map((project) => project.id), [items]);
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    if (disabled || draggedIndex === null || draggedIndex === index) return;
-    e.preventDefault();
-    
-    const newItems = [...items];
-    const draggedItem = newItems[draggedIndex];
-    newItems.splice(draggedIndex, 1);
-    newItems.splice(index, 0, draggedItem);
-    
-    setDraggedIndex(index);
-    setItems(newItems);
-  };
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: 150,
+        tolerance: 8,
+      },
+    })
+  );
 
-  const handleDragEnd = (e: React.DragEvent) => {
-    const target = e.currentTarget as HTMLElement;
-    target.classList.remove('opacity-30');
-    setDraggedIndex(null);
-    onOrderChange(items.map(p => p.id));
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (!over || active.id === over.id) return;
+
+    const oldIndex = items.findIndex((item) => item.id === active.id);
+    const newIndex = items.findIndex((item) => item.id === over.id);
+
+    if (oldIndex === -1 || newIndex === -1) return;
+
+    const reordered = arrayMove(items, oldIndex, newIndex);
+
+    setItems(reordered);
+    onOrderChange(reordered.map((project) => project.id));
   };
 
   return (
-    <div className="space-y-3">
-      {items.map((project, index) => (
-        <div
-          key={project.id}
-          draggable={!disabled}
-          onDragStart={(e) => handleDragStart(e, index)}
-          onDragOver={(e) => handleDragOver(e, index)}
-          onDragEnd={handleDragEnd}
-          className={cn(
-            "flex items-center gap-6 p-5 bg-white border border-border transition-all duration-300 group",
-            draggedIndex === index ? "border-primary shadow-xl ring-1 ring-primary scale-[1.02] z-10" : "hover:border-black",
-            disabled ? "cursor-default" : "cursor-grab active:cursor-grabbing"
-          )}
-        >
-          <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center border border-border text-sm font-black bg-secondary transition-colors group-hover:bg-black group-hover:text-white group-hover:border-black">
-            {index + 1}
-          </div>
-          
-          <div className="flex-grow space-y-1">
-            <h4 className="text-lg font-bold leading-tight">{project.title}</h4>
-            <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{project.budget}</p>
-          </div>
-
-          {!disabled && (
-            <div className="flex-shrink-0 text-muted-foreground/30 group-hover:text-black transition-colors">
-              <GripVertical className="h-5 w-5" />
-            </div>
-          )}
+    <DndContext
+      sensors={disabled ? undefined : sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={itemIds} strategy={verticalListSortingStrategy}>
+        <div className="space-y-3">
+          {items.map((project, index) => (
+            <SortableRow
+              key={project.id}
+              project={project}
+              index={index}
+              disabled={disabled}
+            />
+          ))}
         </div>
-      ))}
-    </div>
+      </SortableContext>
+    </DndContext>
   );
 }
+
+export default RankedList;
