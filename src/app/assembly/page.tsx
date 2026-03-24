@@ -6,7 +6,7 @@ import { Activity } from 'lucide-react';
 import { RequireActiveMember } from '@/components/auth/RequireActiveMember';
 import { MainLayout } from '@/components/layout/MainLayout';
 
-import { useFirestore, useDoc, useMemoFirebase } from '@/firebase';
+import { useFirestore, useDoc, useMemoFirebase, useUser } from '@/firebase';
 import type { Vote, Assembly } from '@/types';
 
 import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
@@ -20,6 +20,9 @@ import { OnlinePresenceStrip } from '@/components/assembly/OnlinePresenceStrip';
 
 function AssemblyDashboardContent() {
   const db = useFirestore();
+  const { user } = useUser();
+
+  const displayName = user?.displayName || user?.email?.split('@')[0] || 'membre';
 
   const assemblyRef = useMemoFirebase(() => doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID), [db]);
   const { data: activeAssembly, isLoading: isAssemblyLoading } = useDoc<Assembly>(assemblyRef);
@@ -51,7 +54,17 @@ function AssemblyDashboardContent() {
   const isOpen = activeAssembly?.state === 'open' && !!activeVote;
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-10 animate-in fade-in duration-700">
+      <div className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
+          Assemblée
+        </p>
+
+        <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">
+          Bienvenue dans l&apos;Ekklesia, <span className="text-primary">{displayName}</span>
+        </h1>
+      </div>
+
       <CommunityFundCard
         amount={12650}
         monthlyDelta={2350}
