@@ -436,33 +436,38 @@ function AdminContent() {
 
   const handleOpenVote = async (voteId: string) => {
     setIsProcessing(voteId);
+  
     try {
-      const membersRef = collection(db, 'members');
-      const eligibleQuery = query(membersRef, where('status', '==', 'active'));
-      const eligibleSnap = await getCountFromServer(eligibleQuery);
-      const eligibleCountAtOpen = eligibleSnap.data().count ?? 0;
-
-      const voteRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID, 'votes', voteId);
-      const assemblyRef = doc(db, 'assemblies', DEFAULT_ASSEMBLY_ID);
-
-      const batch = writeBatch(db);
-
-      batch.update(voteRef, {
-        state: 'open',
-        eligibleCountAtOpen,
-        openedAt: serverTimestamp(),
-        openedBy: (user as any)?.uid ?? null,
-        updatedAt: serverTimestamp(),
+      const idToken = await (user as any)?.getIdToken?.();
+      if (!idToken) {
+        toast({
+          variant: 'destructive',
+          title: 'Non authentifié',
+          description: "Impossible d'ouvrir le vote.",
+        });
+        return;
+      }
+  
+      const res = await fetch(
+        `/api/admin/assemblies/${DEFAULT_ASSEMBLY_ID}/votes/${voteId}/open`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
+        }
+      );
+  
+      const data = await res.json().catch(() => ({}));
+  
+      if (!res.ok) {
+        throw new Error(data?.error || 'Open vote failed');
+      }
+  
+      toast({
+        title: 'Scrutin ouvert',
+        description: 'Les membres peuvent maintenant voter.',
       });
-
-      batch.update(assemblyRef, {
-        state: 'open',
-        activeVoteId: voteId,
-        updatedAt: serverTimestamp(),
-      });
-
-      await batch.commit();
-      toast({ title: 'Scrutin ouvert', description: 'Les membres peuvent maintenant voter.' });
     } catch (e) {
       console.error(e);
       toast({
