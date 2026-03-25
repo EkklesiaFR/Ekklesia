@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import crypto from 'crypto';
 
 import { getAdminApp, getAdminDb } from '@/lib/firebase/admin';
+import { sendVoteLockedNotifications } from '@/lib/server/notifications';
 import { computeSchulzeResults } from '@/lib/tally';
 
 export const runtime = 'nodejs';
@@ -18,7 +19,9 @@ function getBearerToken(req: Request): string | null {
   return match?.[1] ?? null;
 }
 
-async function requireAdminActive(req: Request): Promise<{ ok: true; uid: string } | { ok: false; status: number }> {
+async function requireAdminActive(
+  req: Request
+): Promise<{ ok: true; uid: string } | { ok: false; status: number }> {
   const token = getBearerToken(req);
   if (!token) return { ok: false, status: 401 };
 
@@ -35,10 +38,15 @@ async function requireAdminActive(req: Request): Promise<{ ok: true; uid: string
   return { ok: true, uid: decoded.uid };
 }
 
-export async function POST(req: Request, { params }: { params: Promise<RouteParams> }) {
+export async function POST(
+  req: Request,
+  { params }: { params: Promise<RouteParams> }
+) {
   try {
     const auth = await requireAdminActive(req);
-    if (!auth.ok) return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
+    if (!auth.ok) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: auth.status });
+    }
 
     const { assemblyId, voteId } = await params;
     const db = getAdminDb();
@@ -63,7 +71,10 @@ export async function POST(req: Request, { params }: { params: Promise<RoutePara
 
     // Idempotence
     if (vote.state === 'locked') {
-      return NextResponse.json({ ok: true, alreadyLocked: true, results: vote.results ?? null }, { status: 200 });
+      return NextResponse.json(
+        { ok: true, alreadyLocked: true, results: vote.results ?? null },
+        { status: 200 }
+      );
     }
 
     if (vote.state !== 'open') {
@@ -81,7 +92,9 @@ export async function POST(req: Request, { params }: { params: Promise<RoutePara
 
     // Normalize ballots
     const ballots = rawBallots
-      .map((b) => ({ ranking: Array.isArray(b.ranking) ? (b.ranking as string[]) : [] }))
+      .map((b) => ({
+        ranking: Array.isArray(b.ranking) ? (b.ranking as string[]) : [],
+      }))
       .filter((b) => b.ranking.length > 0);
 
     if (ballots.length === 0) {
@@ -91,7 +104,7 @@ export async function POST(req: Request, { params }: { params: Promise<RoutePara
     // 3) Compute Schulze
     const results = computeSchulzeResults(projectIds, ballots);
 
-    // 4) Hash canonical payload (stable enough for now)
+    // 4) Hash canonical payload
     const canonicalForHash = {
       method: 'schulze',
       voteId,
@@ -119,8 +132,10 @@ export async function POST(req: Request, { params }: { params: Promise<RoutePara
     try {
       if (results.winnerId) {
         const projSnap = await db.collection('projects').doc(String(results.winnerId)).get();
-        const title = (projSnap.data() as any)?.title;
-        if (typeof title === 'string' && title.trim()) winnerLabel = title.trim();
+        const title = (projSnap.data() as { title?: unknown } | undefined)?.title;
+        if (typeof title === 'string' && title.trim()) {
+          winnerLabel = title.trim();
+        }
       }
     } catch {
       // ignore
@@ -158,7 +173,21 @@ export async function POST(req: Request, { params }: { params: Promise<RoutePara
 
     await batch.commit();
 
-    return NextResponse.json({ ok: true, alreadyLocked: false, results: resultsData }, { status: 200 });
+    // 7) Send notifications (non bloquant)
+    try {
+      await sendVoteLockedNotifications({
+        assemblyId,
+        voteId,
+        voteTitle: vote.title ?? vote.question,
+      });
+    } catch (err) {
+      console.error('[NOTIFICATIONS] vote_locked failed', err);
+    }
+
+    return NextResponse.json(
+      { ok: true, alreadyLocked: false, results: resultsData },
+      { status: 200 }
+    );
   } catch (e) {
     console.error('[PUBLISH] error', e);
     return NextResponse.json({ error: 'Publish failed' }, { status: 500 });

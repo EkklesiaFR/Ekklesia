@@ -71,40 +71,55 @@ service cloud.firestore {
     // MEMBERS (root)
     // =========================
     match /members/{uid} {
-     allow get: if isSelf(uid) || isAdminActiveRoot();
-     allow list: if isAdminActiveRoot();
+      allow get: if isSelf(uid) || isAdminActiveRoot();
+      allow list: if isAdminActiveRoot();
 
-     allow create: if isSelf(uid)
-      && request.resource.data.role == "member"
-      && request.resource.data.status == "pending";
+      allow create: if isSelf(uid)
+        && request.resource.data.role == "member"
+        && request.resource.data.status == "pending";
 
-    /**
-     * L'utilisateur peut mettre à jour uniquement certains champs
-     * de son propre profil, sans pouvoir modifier son rôle ni son statut.
-     *
-     * Champs autorisés :
-     * - photoURL
-     * - displayName
-     * - email
-     * - lastLoginAt
-     * - updatedAt
-     * - bio
-     */
-     allow update: if isSelf(uid)
-      && request.resource.data.role == resource.data.role
-      && request.resource.data.status == resource.data.status
-      && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-      "photoURL",
-      "displayName",
-      "email",
-      "lastLoginAt",
-      "updatedAt",
-      "bio"
-    ]);
+      /**
+       * L'utilisateur peut mettre à jour uniquement certains champs
+       * de son propre profil, sans pouvoir modifier son rôle ni son statut.
+       *
+       * Champs autorisés :
+       * - photoURL
+       * - displayName
+       * - email
+       * - lastLoginAt
+       * - updatedAt
+       * - bio
+       */
+      allow update: if isSelf(uid)
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "photoURL",
+          "displayName",
+          "email",
+          "lastLoginAt",
+          "updatedAt",
+          "bio"
+        ]);
 
-  // Les admins peuvent tout modifier / supprimer
-  allow update, delete: if isAdminActiveRoot();
-}
+      // Les admins peuvent tout modifier / supprimer
+      allow update, delete: if isAdminActiveRoot();
+
+      // -------------------------
+      // NOTIFICATIONS
+      // -------------------------
+      match /notifications/{notificationId} {
+        allow get, list: if isSelf(uid);
+
+        allow update: if isSelf(uid)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "read"
+          ])
+          && request.resource.data.read is bool;
+
+        allow create, delete: if false;
+      }
+    }
 
     // =========================
     // ASSEMBLIES

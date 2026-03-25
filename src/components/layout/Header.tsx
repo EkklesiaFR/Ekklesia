@@ -8,6 +8,7 @@ import { useUser, useAuth } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
 import { EkklesiaAssemblyLogo } from '@/components/icons/EkklesiaAssemblyLogo';
+import { NotificationBell } from '@/components/notifications/NotificationBell';
 
 export function Header({
   role,
@@ -50,7 +51,6 @@ export function Header({
               className={cn(
                 'inline-flex items-center justify-center',
                 'transition-transform duration-200 ease-out transform-gpu',
-                // premium micro motion (no rotation)
                 isAssemblyActive && 'scale-[1.06] -translate-y-[0.5px]'
               )}
             >
@@ -61,7 +61,7 @@ export function Header({
           </Link>
 
           {statusText && (
-            <div className="flex items-center gap-4 border-l pl-8 border-border h-6">
+            <div className="hidden md:flex items-center gap-4 border-l pl-8 border-border h-6">
               <span
                 className={cn(
                   'text-[13px] font-medium tracking-tight font-body',
@@ -74,47 +74,51 @@ export function Header({
           )}
         </div>
 
-        {/* Right: Account / Auth (desktop only) */}
-        <div className="hidden md:flex items-center gap-8">
-          {!isUserLoading && user ? (
-            <div className="flex items-center gap-8">
-              <div className="flex flex-col items-end">
-                <span className="text-[13px] font-medium text-black font-body">
-                  Compte : {getDisplayName()}
-                </span>
-                <span className="text-[9px] text-muted-foreground font-mono uppercase tracking-tighter">
-                  role={member?.role || 'none'} — status={member?.status || 'none'}
-                </span>
-              </div>
+        {/* Right: Notification always visible + account desktop only */}
+        <div className="flex items-center gap-4 md:gap-6">
+          <NotificationBell />
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className={cn(
-                  'h-auto p-0 text-[13px] font-medium hover:bg-transparent',
-                  'flex items-center gap-2 text-muted-foreground hover:text-black transition-colors font-body'
-                )}
-              >
-                <span>Déconnexion</span>
-                <LogOut className="h-3 w-3" />
-              </Button>
-            </div>
-          ) : !isUserLoading ? (
-            <Link href="/login">
-              <Button
-                variant="ghost"
-                size="sm"
-                className={cn(
-                  'h-auto p-0 text-[13px] font-medium hover:bg-transparent',
-                  'flex items-center gap-2 hover:text-[#7DC092] transition-colors font-body'
-                )}
-              >
-                <span>Connexion</span>
-                <LogIn className="h-3.5 w-3.5" />
-              </Button>
-            </Link>
-          ) : null}
+          <div className="hidden md:flex items-center gap-6">
+            {!isUserLoading && user ? (
+              <div className="flex items-center gap-6">
+                <div className="flex flex-col items-end">
+                  <span className="text-[13px] font-medium text-black font-body">
+                    Compte : {getDisplayName()}
+                  </span>
+                  <span className="text-[9px] text-muted-foreground font-mono uppercase tracking-tighter">
+                    role={member?.role || 'none'} — status={member?.status || 'none'}
+                  </span>
+                </div>
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleLogout}
+                  className={cn(
+                    'h-auto p-0 text-[13px] font-medium hover:bg-transparent',
+                    'flex items-center gap-2 text-muted-foreground hover:text-black transition-colors font-body'
+                  )}
+                >
+                  <span>Déconnexion</span>
+                  <LogOut className="h-3 w-3" />
+                </Button>
+              </div>
+            ) : !isUserLoading ? (
+              <Link href="/login">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={cn(
+                    'h-auto p-0 text-[13px] font-medium hover:bg-transparent',
+                    'flex items-center gap-2 hover:text-[#7DC092] transition-colors font-body'
+                  )}
+                >
+                  <span>Connexion</span>
+                  <LogIn className="h-3.5 w-3.5" />
+                </Button>
+              </Link>
+            ) : null}
+          </div>
         </div>
       </div>
     </header>
