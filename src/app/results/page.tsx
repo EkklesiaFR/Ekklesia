@@ -1,5 +1,6 @@
 'use client';
 
+import { decisionLabel } from '@/lib/vote-decision';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 
@@ -197,7 +198,7 @@ function ResultsContent() {
 
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Vainqueur
+                  Résultat du scrutin
                 </p>
                 <p className="text-base font-semibold text-foreground">
                   {lastWinnerLabel ?? '—'}
@@ -278,6 +279,7 @@ function ResultsContent() {
                       <div className="space-y-2">
                         <h3 className="text-2xl font-bold leading-tight tracking-tight text-foreground">
                           {vote.question}
+                          <span className="block text-sm">{decisionLabel(vote.results)} {vote.results?.tiedWinnerIds?.join(', ')}</span>
                         </h3>
 
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-medium text-muted-foreground">
@@ -296,11 +298,11 @@ function ResultsContent() {
                     <div className="flex items-center justify-between gap-6 md:justify-end">
                       <div className="text-right">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          Vainqueur
+                          Résultat du scrutin
                         </p>
                         <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
                           <Trophy className="h-4 w-4" />
-                          {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                          {winner?.title ?? (winnerId ? String(winnerId) : decisionLabel(vote.results))}
                         </p>
                       </div>
 
@@ -341,7 +343,7 @@ function ResultsContent() {
                             Résultat
                           </p>
                           <p className="mt-2 text-lg font-semibold leading-tight text-primary">
-                            {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                            {winner?.title ?? (winnerId ? String(winnerId) : decisionLabel(vote.results))}
                           </p>
                         </div>
                       </div>
@@ -430,7 +432,7 @@ function ResultsContent() {
                                       : 'bg-secondary text-muted-foreground'
                                   )}
                                 >
-                                  #{idx + 1}
+                                  #{r.rank ?? idx + 1}
                                 </div>
 
                                 <div className="min-w-0">

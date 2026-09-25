@@ -68,24 +68,7 @@ export function computeSchulzeResults(projectIds: string[], ballots: RankedBallo
   const d = buildPairwisePreferences(projectIds, ballots);
 
   // 2) Strongest paths p[i][j] (Floyd–Warshall)
-  const p: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
-
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      if (i === j) continue;
-      p[i][j] = d[i][j] > d[j][i] ? d[i][j] : 0;
-    }
-  }
-
-  for (let k = 0; k < n; k++) {
-    for (let i = 0; i < n; i++) {
-      if (i === k) continue;
-      for (let j = 0; j < n; j++) {
-        if (j === i || j === k) continue;
-        p[i][j] = Math.max(p[i][j], Math.min(p[i][k], p[k][j]));
-      }
-    }
-  }
+  const p = strongestPaths(d);
 
   // 3) Score = nb de duels gagnés (p[i][j] > p[j][i])
   const rows = projectIds.map((id, i) => {
@@ -126,24 +109,7 @@ export function computeSchulzeFromPairwise(projectIds: string[], d: number[][]) 
   const n = projectIds.length;
   if (n === 0) return { winnerId: null as string | null, ranking: [] as SchulzeRankingRow[], total: 0 };
 
-  const p: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
-
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      if (i === j) continue;
-      p[i][j] = d[i][j] > d[j][i] ? d[i][j] : 0;
-    }
-  }
-
-  for (let k = 0; k < n; k++) {
-    for (let i = 0; i < n; i++) {
-      if (i === k) continue;
-      for (let j = 0; j < n; j++) {
-        if (j === i || j === k) continue;
-        p[i][j] = Math.max(p[i][j], Math.min(p[i][k], p[k][j]));
-      }
-    }
-  }
+  const p = strongestPaths(d);
 
   const rows = projectIds.map((id, i) => {
     let wins = 0;
@@ -166,4 +132,47 @@ export function computeSchulzeFromPairwise(projectIds: string[], d: number[][]) 
     ranking,
     total: 0, // inconnu à partir de la matrice seule (à toi de le passer si tu veux)
   };
+}
+function strongestPaths(d: number[][]) {
+  const n = d.length;
+  const p: number[][] = Array.from({ length: n }, () => Array(n).fill(0));
+
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      if (i === j) continue;
+      p[i][j] = d[i][j] > d[j][i] ? d[i][j] : 0;
+    }
+  }
+
+  for (let k = 0; k < n; k++) {
+    for (let i = 0; i < n; i++) {
+      if (i === k) continue;
+      for (let j = 0; j < n; j++) {
+        if (j === i || j === k) continue;
+        p[i][j] = Math.max(p[i][j], Math.min(p[i][k], p[k][j]));
+      }
+    }
+  }
+
+  return p;
+}
+
+/** Same Schulze relation; new rules retain tied maxima instead of choosing an ID. */
+export function computeSchulzeOutcome(projectIds: string[], ballots: RankedBallot[]) {
+  if (!ballots.length) return { winnerIds: [] as string[], ranking: [] as SchulzeRankingRow[], total: 0 };
+  const p = strongestPaths(buildPairwisePreferences(projectIds, ballots));
+  let remaining = projectIds.map((_, i) => i);
+  const ranking: SchulzeRankingRow[] = [];
+  let winnerIds: string[] = [];
+  while (remaining.length) {
+    const top = remaining.filter(i => remaining.every(j => i === j || p[i][j] >= p[j][i]));
+    if (!top.length) throw new Error('Invalid Schulze relation');
+    top.sort((a, b) => projectIds[a].localeCompare(projectIds[b])); // presentation only
+    if (!ranking.length) winnerIds = top.map(i => projectIds[i]);
+    const rank = ranking.length + 1;
+    for (const i of top) ranking.push({ id: projectIds[i], rank,
+      score: projectIds.filter((_, j) => i !== j && p[i][j] > p[j][i]).length });
+    remaining = remaining.filter(i => !top.includes(i));
+  }
+  return { winnerIds, ranking, total: ballots.length };
 }

@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { computeFinalSeal } from './seal';
+import { decideVote } from '../vote-decision';
+import { createHmac } from 'node:crypto';
 
 describe('PV seal (HMAC): computeFinalSeal', () => {
   beforeAll(() => {
@@ -36,5 +38,17 @@ describe('PV seal (HMAC): computeFinalSeal', () => {
     const a = computeFinalSeal(base as any);
     const b = computeFinalSeal({ ...(base as any), ranking: [...base.ranking].reverse() } as any);
     expect(a).not.toBe(b);
+  });
+  it('preserves the exact historical v2 canonical format', () => {
+    const canonical = JSON.stringify({ v: 2, voteId: base.voteId, method: base.method,
+      lockedAt: base.lockedAtISO, ballotsCount: base.ballotsCount, participationPct: base.participationPct,
+      winnerId: base.winnerId, ranking: base.ranking });
+    expect(computeFinalSeal(base)).toBe(createHmac('sha256', process.env.PV_SALT!).update(canonical).digest('hex'));
+  });
+  it('binds new decisions and their quorum reference, even when no winner is adopted', () => {
+    const decision = decideVote(10, 200, 60, ['p1']);
+    const input = { ...base, winnerId: null, decision };
+    expect(computeFinalSeal(input)).not.toBe(computeFinalSeal({ ...input, decision: { ...decision, eligibleCount: 201 } }));
+    expect(computeFinalSeal(input)).not.toBe(computeFinalSeal({ ...input, decision: { ...decision, decisionStatus: 'tie' } }));
   });
 });

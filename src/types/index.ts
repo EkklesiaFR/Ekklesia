@@ -89,6 +89,10 @@ export interface Vote {
 
   opensAt?: any;
   closesAt?: any;
+  deadlineEnforced?: boolean;
+  eligibilityPolicy?: 'snapshot-active-v1';
+  rulesVersion?: 1;
+  counterVersion?: number;
 
   createdAt?: any;
   createdBy?: string;
@@ -112,7 +116,7 @@ export interface Vote {
   openedBy?: string;
 
   /**
-   * Quorum minimum en % (0-100) pour considérer le vote comme valide.
+   * Seuil de quorum affiché en % (0-100), sans blocage de la publication.
    * - Si absent => traité comme 0 (compat votes historiques)
    * - Calcul basé sur eligibleCountAtOpen (figé à l'ouverture)
    */
@@ -122,7 +126,14 @@ export interface Vote {
     /**
      * ID du projet gagnant
      */
-    winnerId: string;
+    winnerId: string | null;
+    outcome?: 'counted' | 'no-ballots';
+    rulesVersion?: 1;
+    decisionStatus?: 'adopted' | 'quorum-not-met' | 'no-ballots' | 'tie';
+    adopted?: boolean;
+    tiedWinnerIds?: string[];
+    eligibleCount?: number;
+    quorumPct?: number;
 
     /**
      * Classement complet des projets

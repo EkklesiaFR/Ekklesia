@@ -1,5 +1,6 @@
 'use client';
 
+import { decisionLabel } from '@/lib/vote-decision';
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
@@ -64,7 +65,7 @@ function ParticipationPanel({
             Participation
           </p>
 
-          <p className="text-sm text-muted-foreground">Calcul du quorum…</p>
+          <p className="text-sm text-muted-foreground">Effectif de référence indisponible pour ce scrutin.</p>
 
           <p className="pt-1 text-[11px] font-medium text-muted-foreground/80">
             {isManualClose ? 'Clôture manuelle' : `Clôture dans ${timeLeft}`}
@@ -157,7 +158,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
   const frozenCount =
     (vote as any)?.results?.totalBallots ?? (vote as any)?.results?.total ?? undefined;
 
-  const { count: ballotCount, isLoading: isBallotCountLoading } = useVoteBallotCount({
+  const { count: ballotCount, isLoading: isBallotCountLoading, isUnavailable } = useVoteBallotCount({
     assemblyId,
     voteId: vote.id,
     status: vote.state,
@@ -167,6 +168,9 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
 
   const closesAt =
     (vote as any)?.closesAt ?? (vote as any)?.endsAt ?? (vote as any)?.closedAt ?? null;
+
+  const deadlineText = useCountdown(vote.deadlineEnforced ? vote.closesAt : null);
+  const acceptsBallots = vote.state === 'open' && !(vote.deadlineEnforced && deadlineText === 'Terminé');
 
   useEffect(() => {
     if (userBallot?.ranking) {
@@ -178,7 +182,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
   }, [userBallot, projects]);
 
   const handleVoteSubmit = async () => {
-    if (!user) return;
+    if (!user || !acceptsBallots) return;
     setIsSaving(true);
 
     try {
@@ -249,13 +253,13 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <p>
                   Classez les projets par ordre de préférence. Vous pouvez modifier votre vote
-                  jusqu&apos;à la clôture.
+                  jusqu&apos;à la clôture. {vote.eligibilityPolicy === 'snapshot-active-v1' ? 'Seuls les membres actifs à l’ouverture peuvent voter ; une suspension bloque les prochains dépôts. Sans quorum ou sans bulletin, aucune décision n’est adoptée. Les ex æquo restent sans vainqueur unique.' : 'Scrutin historique : éligibilité vérifiée au dépôt.'}
                 </p>
               </div>
             </div>
 
             <div>
-              {vote.state === 'open' ? (
+              {acceptsBallots ? (
                 <RankedList projects={sortedProjects} onOrderChange={setCurrentRanking} />
               ) : (
                 <div className="rounded-2xl border border-dashed border-border bg-secondary/5 p-10 text-center">
@@ -267,7 +271,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
               )}
             </div>
 
-            {vote.state === 'open' && (
+            {acceptsBallots && (
               <div className="space-y-4 pt-2">
                 <Button
                   className="h-12 w-full rounded-full text-xs font-semibold uppercase tracking-[0.18em]"
@@ -308,12 +312,13 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
           </GlassCard>
         ) : vote.state === 'open' ? (
           <div className="space-y-4">
-            <ParticipationPanel
+            {isUnavailable ? <p>Participation historique indisponible avant rapprochement serveur.</p> : <ParticipationPanel
               ballotCount={ballotCount}
               eligibleCount={vote.eligibleCountAtOpen}
               closesAt={closesAt}
               isLoading={isBallotCountLoading}
-            />
+            />}
+            <p className="text-xs text-muted-foreground">{vote.deadlineEnforced ? "Date limite contraignante ; publication manuelle." : "Date éventuelle indicative ; clôture manuelle."}</p>
 
             {canShowAdminTrends && (
               <GlassCard intensity="soft" className="p-4">
@@ -330,6 +335,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
               </p>
 
               <div className="space-y-3">
+                {vote.results && <p>{decisionLabel(vote.results)} {vote.results.tiedWinnerIds?.join(', ')}</p>}
                 {vote.results?.fullRanking ? (
                   vote.results.fullRanking.map((rankInfo) => (
                     <div

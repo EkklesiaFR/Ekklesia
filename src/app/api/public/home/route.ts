@@ -1,3 +1,4 @@
+import { getAdminApp } from '@/lib/firebase/admin';
 import { NextResponse } from 'next/server';
 import { getApp, getApps, initializeApp, cert, applicationDefault } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
@@ -6,6 +7,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 function getFirebaseAdminApp() {
+  if (process.env.FIRESTORE_EMULATOR_HOST) return getAdminApp();
   if (getApps().length > 0) {
     return getApp();
   }

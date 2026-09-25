@@ -1,3 +1,4 @@
+import { decisionForSeal } from '@/lib/vote-decision';
 import { NextResponse } from 'next/server';
 import { getAdminDb } from '@/lib/firebase/admin';
 import { computeFinalSeal, type RankingRow } from '@/lib/pv/seal';
@@ -17,7 +18,7 @@ type VerifyOk = {
     lockedAtISO: string;
     ballotsCount: number;
     participationPct: number | null;
-    winnerId: string;
+    winnerId: string | null;
     rankingLen: number;
   };
 };
@@ -97,9 +98,11 @@ export async function GET(req: Request) {
     const voteData = snap.data();
     if (!voteData) return json({ ok: false, error: 'Vote data empty.' }, 404);
 
+    if (voteData.state !== 'locked') return json({ ok: false, error: 'Vote not finalized.' }, 409);
+
     const payload = buildSealPayload(voteId, voteData);
 
-    if (!payload.winnerId || payload.ranking.length === 0) {
+    if ((!payload.winnerId || payload.ranking.length === 0) && voteData.results?.rulesVersion !== 1) {
       return json({ ok: false, error: 'Vote not finalized.' }, 400);
     }
 
@@ -111,6 +114,7 @@ export async function GET(req: Request) {
       participationPct: payload.participationPct,
       winnerId: payload.winnerId,
       ranking: payload.ranking,
+      decision: voteData.results?.rulesVersion === 1 ? decisionForSeal(voteData.results) : undefined,
     });
 
     return json({

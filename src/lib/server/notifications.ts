@@ -4,6 +4,7 @@ type BaseNotificationParams = {
   assemblyId: string;
   voteId?: string;
   voteTitle?: string;
+  decisionSummary?: string;
 };
 
 const BATCH_LIMIT = 450;
@@ -63,15 +64,16 @@ export async function sendVoteLockedNotifications({
   assemblyId,
   voteId,
   voteTitle,
+  decisionSummary,
 }: BaseNotificationParams) {
   const now = new Date();
 
   await sendNotificationsToActiveMembers(() => ({
     type: 'vote_locked',
     title: 'Vote terminé',
-    body: voteTitle
+    body: decisionSummary ?? (voteTitle
       ? `Le vote "${voteTitle}" est terminé.`
-      : 'Un vote a été clôturé.',
+      : 'Un vote a été clôturé.'),
     read: false,
     createdAt: now,
     assemblyId,

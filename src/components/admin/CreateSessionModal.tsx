@@ -146,11 +146,14 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
         question: trimmedTitle,
         projectIds: selectedProjectIds,
         state: 'draft',
+        eligibilityPolicy: 'snapshot-active-v1',
+        rulesVersion: 1,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy: user.uid,
 
         closesAt: closeMode === 'scheduled' ? closesAt : null,
+        deadlineEnforced: closeMode === 'scheduled',
 
         quorumPct: qp,
       });
@@ -185,6 +188,8 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
               <DialogDescription className="text-xs uppercase tracking-widest font-bold text-muted-foreground">
                 Configurez un nouveau scrutin pour l&apos;assemblée.
               </DialogDescription>
+              <p className="text-sm text-muted-foreground">Les membres actifs à l’ouverture constituent la liste des électeurs. Une activation ultérieure vaut pour le scrutin suivant ; une suspension bloque les prochains dépôts.</p>
+              <p className="text-sm text-muted-foreground">Règles v1 : sans quorum ou sans bulletin, aucune décision adoptée. En cas d’égalité en tête, les candidats restent ex æquo, sans vainqueur unique. Ces règles sont figées à l’ouverture.</p>
             </DialogHeader>
           </div>
 
@@ -241,8 +246,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
                 </div>
 
                 <p className="text-[10px] text-muted-foreground">
-                  Suggestion Ekklesia : <span className="font-bold">60%</span> (au-delà de 40% d’abstention, scrutin
-                  invalide).
+                  Seuil requis pour adopter une décision. Sans quorum, le classement est publié sans vainqueur officiel.
                 </p>
               </div>
             </div>
@@ -282,7 +286,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
                     <p className="text-xs uppercase tracking-widest font-bold">Clôture programmée</p>
                   </div>
                   <p className="text-[10px] text-muted-foreground mt-2">
-                    Affiche un compte à rebours, sans automatiser la clôture.
+                    Arrête les dépôts à cette date. La publication reste manuelle.
                   </p>
                 </button>
               </div>
@@ -300,7 +304,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
                     required
                   />
                   <p className="text-[10px] text-muted-foreground">
-                    La clôture reste manuelle côté système (pour l’instant). Cette date sert à l’affichage.
+                    Après cette date, aucun bulletin ne peut être déposé ou modifié. Un administrateur publie les résultats.
                   </p>
                 </div>
               )}

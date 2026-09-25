@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useFirestore } from '@/firebase';
-import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
-import { collection, doc, getCountFromServer, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
 import type { Vote } from '@/types';
 
 interface UseVoteBallotCountProps {
@@ -14,67 +13,28 @@ interface UseVoteBallotCountProps {
   frozenCount?: number;
 }
 
-export function useVoteBallotCount({ assemblyId, voteId, status, mode, frozenCount }: UseVoteBallotCountProps) {
+export function useVoteBallotCount({ assemblyId, voteId, status, frozenCount }: UseVoteBallotCountProps) {
   const [count, setCount] = useState(frozenCount ?? 0);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUnavailable, setIsUnavailable] = useState(false);
   const db = useFirestore();
 
-  const { isAdmin, isMemberLoading } = useAuthStatus();
-
   useEffect(() => {
-    if (!assemblyId || !voteId || status !== 'open') {
+    setCount(frozenCount ?? 0);
+    setIsUnavailable(false);
+    if (!assemblyId || !voteId) { setIsLoading(false); return; }
+    setIsLoading(true);
+    return onSnapshot(doc(db, 'assemblies', assemblyId, 'votes', voteId), snap => {
+      const data = snap.data();
+      const value = status === 'locked' ? data?.results?.total ?? frozenCount : data?.ballotCount;
+      // Legacy counters are not trusted until reconciled by a server transaction.
+      const known = status === 'draft' || (typeof value === 'number' &&
+        (status === 'locked' || data?.counterVersion === 1));
+      setCount(known ? value ?? 0 : 0);
+      setIsUnavailable(!known);
       setIsLoading(false);
-      if (status === 'locked' && frozenCount != null) setCount(frozenCount);
-      return;
-    }
+    }, () => { setIsUnavailable(true); setIsLoading(false); });
+  }, [assemblyId, voteId, status, db, frozenCount]);
 
-    if (isMemberLoading) return;
-
-    // MEMBER: read vote.ballotCount (no ballots list)
-    if (!isAdmin) {
-      const voteDocRef = doc(db, 'assemblies', assemblyId, 'votes', voteId);
-      const unsubscribe = onSnapshot(
-        voteDocRef,
-        (docSnap) => {
-          if (docSnap.exists()) setCount((docSnap.data() as any).ballotCount ?? 0);
-          setIsLoading(false);
-        },
-        (error) => {
-          console.error('useVoteBallotCount (member) error:', error);
-          setIsLoading(false);
-        }
-      );
-      return () => unsubscribe();
-    }
-
-    // ADMIN: can count ballots
-    const ballotsColRef = collection(db, 'assemblies', assemblyId, 'votes', voteId, 'ballots');
-
-    if (mode === 'realtime') {
-      const unsubscribe = onSnapshot(
-        ballotsColRef,
-        (snapshot) => {
-          setCount(snapshot.size);
-          setIsLoading(false);
-        },
-        (error) => {
-          console.error('useVoteBallotCount (admin realtime) error:', error);
-          setIsLoading(false);
-        }
-      );
-      return () => unsubscribe();
-    }
-
-    getCountFromServer(ballotsColRef)
-      .then((snapshot) => {
-        setCount(snapshot.data().count);
-        setIsLoading(false);
-      })
-      .catch((error) => {
-        console.error('useVoteBallotCount (admin frozen) error:', error);
-        setIsLoading(false);
-      });
-  }, [assemblyId, voteId, status, mode, db, frozenCount, isAdmin, isMemberLoading]);
-
-  return { count, isLoading };
+  return { count, isLoading, isUnavailable };
 }
