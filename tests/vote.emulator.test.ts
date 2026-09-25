@@ -126,7 +126,21 @@ describe('server transactions on real Firestore', () => {
   it('serializes deposits with publication; locked ballots exactly match tally count', async () => {
     await submit();
     const outcomes = await Promise.allSettled([submit('n'), publish(), submit('m', ['B'])]);
-    expect(outcomes[1].status).toBe('fulfilled');
+    if (outcomes[1].status === 'rejected') {
+      // Firestore may exhaust its bounded automatic retries under contention.
+      // Only ABORTED is acceptable here; inspect the rollback, then retry explicitly.
+      expect(outcomes[1].reason).toMatchObject({ code: 10 });
+      const aborted = (await voteRef().get()).data()!;
+      expect(aborted.state).toBe('open');
+      expect(aborted.results).toBeUndefined();
+      expect((await db.doc('assemblies/a/public/lastResult').get()).exists).toBe(false);
+      await publish();
+    }
+    for (const outcome of [outcomes[0], outcomes[2]]) {
+      if (outcome.status === 'rejected') {
+        expect(outcome.reason.status === 409 || outcome.reason.code === 10).toBe(true);
+      }
+    }
     const snapshot = (await voteRef().get()).data()!;
     expect(snapshot.state).toBe('locked');
     expect(snapshot.results.total).toBe((await voteRef().collection('ballots').get()).size);
