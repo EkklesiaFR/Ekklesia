@@ -1,6 +1,8 @@
 'use client';
 
 import { decisionLabel } from '@/lib/vote-decision';
+import { HISTORICAL_PROPOSALS_NOTICE } from '@/lib/vote-projects';
+import { ProposalDetails } from '@/components/voting/ProposalDetails';
 import { useEffect, useMemo, useState } from 'react';
 import { useUser } from '@/firebase';
 import { useAuthStatus } from '@/components/auth/AuthStatusProvider';
@@ -170,16 +172,15 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
     (vote as any)?.closesAt ?? (vote as any)?.endsAt ?? (vote as any)?.closedAt ?? null;
 
   const deadlineText = useCountdown(vote.deadlineEnforced ? vote.closesAt : null);
-  const acceptsBallots = vote.state === 'open' && !(vote.deadlineEnforced && deadlineText === 'Terminé');
+  const contentAvailable = vote.proposalSnapshotVersion == null || projects.length === vote.projectIds.length;
+  const acceptsBallots = contentAvailable && vote.state === 'open' && !(vote.deadlineEnforced && deadlineText === 'Terminé');
 
+  const savedRanking = userBallot?.ranking;
+  const projectOrder = JSON.stringify(projects.map(p => p.id));
   useEffect(() => {
-    if (userBallot?.ranking) {
-      setCurrentRanking(userBallot.ranking);
-    } else if (projects.length > 0 && currentRanking.length === 0) {
-      setCurrentRanking(projects.map((p) => p.id));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userBallot, projects]);
+    // Other voters update the vote document/counter, not this person's unsaved ordering.
+    setCurrentRanking(savedRanking ?? JSON.parse(projectOrder));
+  }, [vote.id, savedRanking, projectOrder]);
 
   const handleVoteSubmit = async () => {
     if (!user || !acceptsBallots) return;
@@ -259,6 +260,8 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
             </div>
 
             <div>
+              <p className="mb-3 text-sm text-muted-foreground">{vote.proposalSnapshotVersion === 1 ? 'Propositions et pièces figées à l’ouverture.' : HISTORICAL_PROPOSALS_NOTICE}</p>
+              {!contentAvailable && <p role="alert">Contenu figé indisponible : dépôt désactivé.</p>}
               {acceptsBallots ? (
                 <RankedList projects={sortedProjects} onOrderChange={setCurrentRanking} />
               ) : (
@@ -270,6 +273,7 @@ export function VoteModule({ vote, projects, userBallot, assemblyId }: VoteModul
                 </div>
               )}
             </div>
+            <ProposalDetails projects={projects} />
 
             {acceptsBallots && (
               <div className="space-y-4 pt-2">

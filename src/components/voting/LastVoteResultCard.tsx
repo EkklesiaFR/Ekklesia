@@ -1,6 +1,7 @@
 'use client';
 
 import { decisionLabel } from '@/lib/vote-decision';
+import { projectsForVote, type ProposalSource } from '@/lib/vote-projects';
 import Link from 'next/link';
 import Image from 'next/image';
 import { doc, collection } from 'firebase/firestore';
@@ -27,7 +28,7 @@ type PublicLastResult = {
   totalBallots?: number | null;
 };
 
-type VoteDoc = {
+type VoteDoc = ProposalSource & {
   ballotCount?: number | null;
   eligibleCountAtOpen?: number | null;
   results?: { totalBallots?: number | null; total?: number | null } | null;
@@ -106,7 +107,7 @@ export function LastVoteResultCard() {
 
   const voteTitle = results.voteTitle || 'Scrutin';
 
-  const winnerProject = projects?.find((p) => p.id === results.winnerId);
+  const winnerProject = projectsForVote(voteDoc, projects ?? []).find((p) => p.id === results.winnerId);
 
   const winnerLabel =
     results.winnerLabel ||

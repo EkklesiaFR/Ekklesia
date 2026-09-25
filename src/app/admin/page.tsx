@@ -1,6 +1,7 @@
 'use client';
 
 import { decisionLabel } from '@/lib/vote-decision';
+import { projectsForVote } from '@/lib/vote-projects';
 import { quorumReached } from '@/lib/quorum';
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
@@ -205,7 +206,7 @@ function VoteRow({
     : (vote as any).openedBy || '—';
 
   const winnerId = vote.state === 'locked' ? (vote as any).results?.winnerId : null;
-  const winnerProject = winnerId ? projectsById.get(String(winnerId)) : null;
+  const winnerProject = winnerId ? projectsForVote(vote, Array.from(projectsById.values())).find(p => p.id === winnerId) : null;
   const winnerDisplay = winnerProject
     ? (winnerProject.title ??
         (winnerProject as any).name ??
@@ -370,7 +371,7 @@ function AdminContent() {
         if (filterState !== 'all' && vote.state !== filterState) return false;
         if (!q) return true;
 
-        const winnerProject = (vote as any).results?.winnerId ? projectsById.get((vote as any).results.winnerId) : null;
+        const winnerProject = projectsForVote(vote, Array.from(projectsById.values())).find(p => p.id === vote.results?.winnerId);
         const winnerTitle = winnerProject?.title ?? '';
 
         const searchCorpus = [
@@ -437,7 +438,7 @@ function AdminContent() {
       toast({
         variant: 'destructive',
         title: 'Erreur',
-        description: "Impossible d'ouvrir le vote.",
+        description: e instanceof Error ? e.message : "Impossible d'ouvrir le vote.",
       });
     } finally {
       setIsProcessing(null);
@@ -604,6 +605,7 @@ function AdminContent() {
               return dbb - da;
             })
             .map((v) => {
+              const archiveProjects = new Map(projectsForVote(v, projects ?? []).map(p => [p.id, p]));
               const totalBallots = ((v as any).results as any)?.total ?? ((v as any).results as any)?.totalBallots ?? 0;
               const eligible = (v as any).eligibleCountAtOpen ?? null;
               const participationPct =
@@ -613,7 +615,7 @@ function AdminContent() {
               const isValid = quorumReached(totalBallots, eligible, quorumPct);
 
               const winnerTitle =
-                projectsById.get((v as any).results?.winnerId ?? '')?.title ||
+                archiveProjects.get((v as any).results?.winnerId ?? '')?.title ||
                 ((v as any).results?.winnerId ? String((v as any).results?.winnerId) : '—');
 
               const computedAtFormatted =
@@ -685,9 +687,9 @@ function AdminContent() {
                           >
                             <span className="font-bold flex items-center gap-3">
                               <span className="w-6 h-6 flex items-center justify-center bg-secondary text-[10px] font-black">
-                                {idx + 1}
+                                {r.rank ?? idx + 1}
                               </span>
-                              {projectsById.get(r.id)?.title ?? r.id}
+                              {archiveProjects.get(r.id)?.title ?? r.id}
                             </span>
                             <span className="text-muted-foreground font-mono text-xs">{r.score ?? r.rank ?? '—'}</span>
                           </div>

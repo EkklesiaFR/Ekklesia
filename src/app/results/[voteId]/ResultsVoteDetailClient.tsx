@@ -1,6 +1,8 @@
 'use client';
 
 import { decisionLabel } from '@/lib/vote-decision';
+import { projectsForVote, HISTORICAL_PROPOSALS_NOTICE } from '@/lib/vote-projects';
+import { ProposalDetails } from '@/components/voting/ProposalDetails';
 import { quorumReached } from '@/lib/quorum';
 import { useMemo } from 'react';
 import Link from 'next/link';
@@ -140,12 +142,12 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
   );
   const { data: vote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
-  const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(300)), [db]);
+  const projectsQuery = useMemoFirebase(() => vote?.proposalSnapshotVersion ? null : query(collection(db, 'projects'), limit(300)), [db, vote?.proposalSnapshotVersion]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
   const projectsById = useMemo(
-    () => new Map((projects ?? []).map((p) => [p.id, p])),
-    [projects]
+    () => new Map(projectsForVote(vote, projects ?? []).map((p) => [p.id, p])),
+    [vote, projects]
   );
 
   if (isVoteLoading) {
@@ -273,6 +275,8 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
       </header>
 
       <p role="status">{decisionLabel(vote.results)} {vote.results?.tiedWinnerIds?.map(id => projectsById.get(id)?.title ?? id).join(', ')}</p>
+      <p className="text-sm text-muted-foreground">{vote.proposalSnapshotVersion === 1 ? 'Contenu des propositions figé à l’ouverture.' : HISTORICAL_PROPOSALS_NOTICE}</p>
+      <ProposalDetails projects={Array.from(projectsById.values())} />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <StatCard
           label="Bulletins"

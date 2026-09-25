@@ -190,6 +190,7 @@ export function CreateSessionModal({ isOpen, onClose, availableProjects }: Creat
               </DialogDescription>
               <p className="text-sm text-muted-foreground">Les membres actifs à l’ouverture constituent la liste des électeurs. Une activation ultérieure vaut pour le scrutin suivant ; une suspension bloque les prochains dépôts.</p>
               <p className="text-sm text-muted-foreground">Règles v1 : sans quorum ou sans bulletin, aucune décision adoptée. En cas d’égalité en tête, les candidats restent ex æquo, sans vainqueur unique. Ces règles sont figées à l’ouverture.</p>
+              <p className="text-sm text-muted-foreground">À l’ouverture, les textes et les octets des illustrations et pièces jointes sont copiés dans le scrutin. Formats : PNG, JPEG, WebP et PDF pour les pièces. Maximum : 20 médias, 512 Kio chacun et 800 Kio au total après copie. Une page web ou un média indisponible bloque l’ouverture ; préparer les projets en conséquence.</p>
             </DialogHeader>
           </div>
 

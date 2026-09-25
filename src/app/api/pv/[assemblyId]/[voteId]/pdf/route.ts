@@ -309,6 +309,7 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
       winnerId: sealPayload.winnerId,
       ranking: sealPayload.ranking,
       decision: voteData.results?.rulesVersion === 1 ? decisionForSeal(voteData.results) : undefined,
+      proposalContentHash: voteData.results?.proposalContentHash,
     });
 
     const [{ default: PDFDocument }, qrcodeMod] = await Promise.all([import('pdfkit'), import('qrcode')]);
@@ -432,6 +433,14 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
     doc.moveDown(0.6);
 
     drawSectionTitle(doc, 'Intégrité & vérification');
+    if (voteData.results?.proposalContentHash) {
+      doc.font('Figtree').fontSize(9).fillColor('#111827').text('Propositions et médias figés à l’ouverture — empreinte du contenu :');
+      doc.text(voteData.results.proposalContentHash);
+      doc.moveDown(0.4);
+    } else {
+      doc.font('Figtree').fontSize(9).fillColor('#6B7280').text('Archive historique : aucune version du contenu des propositions à l’ouverture n’est disponible.');
+      doc.moveDown(0.4);
+    }
     doc.font('Figtree').fontSize(9).fillColor('#6B7280').text(
       'Le scellé authentifie les données de résultat retenues par le serveur, pas le PDF entier ni l’exhaustivité des bulletins. Le quorum est un constat séparé du classement.'
     );

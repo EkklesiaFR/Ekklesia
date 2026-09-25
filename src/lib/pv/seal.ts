@@ -25,9 +25,10 @@ export function computeFinalSeal(input: {
   winnerId: string | null;
   ranking: RankingRow[];
   decision?: Decision;
+  proposalContentHash?: string;
 }) {
   const canonical = JSON.stringify({
-    v: input.decision ? 3 : 2, // Preserve historical v2 seals byte-for-byte.
+    v: input.proposalContentHash ? 4 : input.decision ? 3 : 2, // Preserve historical v2/v3 seals.
     voteId: input.voteId,
     method: input.method,
     lockedAt: input.lockedAtISO,
@@ -40,6 +41,7 @@ export function computeFinalSeal(input: {
       score: r.score,
     })),
     ...(input.decision ? { decision: input.decision } : {}),
+    ...(input.proposalContentHash ? { proposalContentHash: input.proposalContentHash } : {}),
   });
 
   const key = requirePvSalt();

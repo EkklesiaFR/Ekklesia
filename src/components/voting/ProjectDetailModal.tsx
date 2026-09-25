@@ -43,6 +43,7 @@ export function ProjectDetailModal({ project, isOpen, onClose }: ProjectDetailMo
               <DialogPrimitive.Description className="text-lg font-medium text-muted-foreground">
                 Budget : {project.budget}
               </DialogPrimitive.Description>
+              {project.contentFrozen && <p className="text-sm">Version figée à l’ouverture ; pièces jointes copiées dans le scrutin.</p>}
             </header>
 
             {project.imageUrl && (
@@ -92,6 +93,7 @@ export function ProjectDetailModal({ project, isOpen, onClose }: ProjectDetailMo
                         <li key={i}>
                           <a 
                             href={link.url} 
+                            download={project.contentFrozen ? link.download : undefined}
                             target="_blank" 
                             rel="noopener noreferrer"
                             className="text-sm font-medium text-primary hover:underline transition-all"

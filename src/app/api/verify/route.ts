@@ -115,6 +115,7 @@ export async function GET(req: Request) {
       winnerId: payload.winnerId,
       ranking: payload.ranking,
       decision: voteData.results?.rulesVersion === 1 ? decisionForSeal(voteData.results) : undefined,
+      proposalContentHash: voteData.results?.proposalContentHash,
     });
 
     return json({

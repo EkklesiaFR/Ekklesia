@@ -13,6 +13,10 @@ Le [dossier de changement](VOTE_INTEGRITY.md) décrit les risques, les tests et 
    membres actifs avec rôle `member` ou `admin` constituent la liste privée
    `votes/{voteId}/electorate/snapshot.uids` et `eligibleCountAtOpen`. Liste et nombre sont figés.
    Aucun électeur : ouverture refusée. L'administrateur actif est lui-même électeur dans ce modèle.
+   Toute nouvelle ouverture copie aussi les champs présentés des projets et les octets des médias
+   dans `proposalSnapshots`, avec `proposalSnapshotVersion: 1` et `proposalContentHash`. La copie
+   réseau précède la transaction ; celle-ci relit les versions des projets/brouillon et refuse une
+   édition concurrente. Aucun snapshot n'est ajouté aux scrutins déjà ouverts ou verrouillés.
 3. Le membre classe les projets puis dépose/remplace via `POST .../ballots`. Les classements
    partiels non vides sont acceptés ; les candidats omis sont également derniers. Doublons,
    identifiants étrangers et données malformées sont rejetés avant stockage.
@@ -85,8 +89,10 @@ Les résultats verrouillés fournissent leur total historique sans réécriture.
 
 **Intégrité :** autorisation/validation transactionnelles, unicité, paramètres du document figés,
 publication atomique et idempotente. Le SDK Admin contourne les règles : les credentials serveur et
-les accès console/IAM demeurent une frontière de confiance. Le catalogue éditorial `projects` et les
-médias externes ne sont pas archivés à l'ouverture dans cette version.
+les accès console/IAM demeurent une frontière de confiance. Le catalogue `projects` reste éditable,
+mais les nouvelles ouvertures disposent d'une copie autonome des propositions et médias. Les
+archives sans copie restent explicitement historiques ; aucune version ancienne n'est inventée.
+Voir [formats, bornes et garanties de la copie](PROPOSAL_SNAPSHOTS.md).
 
 **Confidentialité et secret :** les UID relient identité et bulletin côté serveur. Ce n'est pas un vote
 anonyme. La route de tendances administrateur subsiste et peut révéler des préférences agrégées avant
@@ -96,7 +102,8 @@ L'annexe optionnelle `PV_INCLUDE_PSEUDOLIST` pseudonymise les UID sans anonymise
 **Vérifiabilité indépendante :** `resultsHash` est un SHA-256 du résultat canonique. Le HMAC du PV
 (`PV_SALT`) ne signe qu'un sous-ensemble des données, pas le PDF entier ni l'exhaustivité des votes.
 Les anciens scellés v2 sont conservés à l'identique. Le format v3 ajoute le constat d'adoption, les
-ex æquo et la référence du quorum. Aucune preuve indépendante d'admission/inclusion des bulletins
+ex æquo et la référence du quorum. Le format v4 ajoute l'empreinte du contenu et des médias figés,
+sans changer les scellés v2/v3 existants. Aucune preuve indépendante d'admission/inclusion des bulletins
 ni de résistance à un opérateur détenant le secret HMAC n'est fournie.
 
 ## Développement

@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
 import { getAdminApp, getAdminDb } from '@/lib/firebase/admin';
-import { computeSchulzeResults } from '@/lib/tally';
-import type { Ballot, Project } from '@/types';
+import { computeSchulzeResults, computeSchulzeOutcome } from '@/lib/tally';
+import { projectsForVote } from '@/lib/vote-projects';
+import type { Ballot, Project, Vote } from '@/types';
 
 export const runtime = 'nodejs';
 
@@ -106,18 +107,19 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
 
     // Charger les projets (Firestore "in" limité à 10)
     const projectsById = new Map<string, Project>();
-    for (const group of chunk(projectIds, 10)) {
+    for (const group of chunk(voteData.proposalSnapshotVersion == null ? projectIds : [], 10)) {
       const snap = await db.collection('projects').where('__name__', 'in', group).get();
       snap.docs.forEach((docSnap: FirebaseFirestore.QueryDocumentSnapshot) => {
         const p = { id: docSnap.id, ...(docSnap.data() as Omit<Project, 'id'>) } as Project;
         projectsById.set(p.id, p);
       });
     }
+    for (const p of projectsForVote(voteData as unknown as Vote)) projectsById.set(p.id, p);
 
     // Calcul Schulze (robuste aux bulletins partiels)
     const results = computeSchulzeResults(projectIds, ballots as Array<{ ranking: string[] }>);
-
-    const winnerId = results.winnerId ? String(results.winnerId) : null;
+    const outcome = voteData.rulesVersion === 1 ? computeSchulzeOutcome(projectIds, ballots as Array<{ ranking: string[] }>) : null;
+    const winnerId = outcome ? (outcome.winnerIds.length === 1 ? outcome.winnerIds[0] : null) : results.winnerId;
     const winner = winnerId ? projectsById.get(winnerId) : undefined;
 
     const winnerImageUrl =
@@ -140,7 +142,7 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
           }
         : undefined,
       // utile si tu veux top 5 côté UI (sinon tu peux retirer)
-      fullRanking: results.ranking,
+      fullRanking: outcome?.ranking ?? results.ranking,
     };
 
     cache.set(cacheKey, { data: dto, ts: Date.now() });

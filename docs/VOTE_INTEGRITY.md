@@ -71,7 +71,8 @@ formulaire puis l'écran de vote. Leur version ne peut être retirée ni changé
   une action distincte. Les plus forts chemins Schulze eux-mêmes restent inchangés.
 - **Données :** `state` pour la clôture, `fullRanking` pour le calcul, `decisionStatus/adopted` pour
   l'adoption ; vainqueur nullable et liste des ex æquo. Résultats publics, admin, notifications et PV
-  reprennent ces distinctions. Scellé v3 pour l'adoption/référence de quorum ; v2 inchangé pour l'ancien.
+  reprennent ces distinctions. Scellé v3 pour l'adoption/référence de quorum, v4 avec empreinte des
+  propositions figées ; formats v2/v3 historiques inchangés.
 - **Historique :** les brouillons existants et scrutins déjà ouverts sans version conservent les
   anciennes règles : membres actifs au dépôt, dates indicatives, pas de veto du quorum, départage par
   identifiant et publication vide refusée. Ni liste passée reconstituée ni résultat publié modifié.
@@ -101,8 +102,10 @@ Aucun déploiement, fusion ou changement de données de production n'a été eff
 
 L'intégrité transactionnelle n'est pas le secret du vote. Les bulletins restent liés aux UID et lisibles
 par le serveur/IAM ; la route de tendances administrateur subsiste (son authentification par cookie
-est distincte du Bearer utilisé par les mutations). Le catalogue éditorial des projets et les médias
-externes ne sont pas archivés à l'ouverture. Les notifications post-commit peuvent être perdues.
+est distincte du Bearer utilisé par les mutations). Les nouvelles ouvertures copient désormais textes
+et octets des médias, indépendamment du catalogue éditorial ; les anciens scrutins sans copie restent
+non figés. Voir [propositions figées, limites d'import et tests](PROPOSAL_SNAPSHOTS.md).
+Les notifications post-commit peuvent être perdues.
 
 Le hash de résultat et le HMAC du PV ne constituent pas une preuve indépendante de l'admission et
 du comptage de tous les bulletins. Ils ne protègent pas contre un opérateur disposant des credentials
@@ -110,7 +113,8 @@ Admin ou du secret HMAC. Aucun protocole de vote anonyme ou vérifiable de bout 
 
 ## Validation
 
-Sous Node 22.16.0, avec installation verrouillée `npm ci` : lint réussi (cinq avertissements
+Validation de la première version (CI #87 verte), sous Node 22.16.0 et installation verrouillée
+`npm ci` : lint réussi (cinq avertissements
 préexistants), TypeScript réussi, 35 tests unitaires réussis, 44 tests réussis sur les véritables
 émulateurs Firestore/Auth. Une recette Playwright complète réussit avec deux sessions distinctes :
 administrateur et membre, ouverture, dépôt, modification, compteur, publication, résultats et PDF ;
@@ -123,15 +127,17 @@ les ignore déjà.
 Dans Studio, Chromium ne disposait d'aucune police système et son moteur de rendu plantait.
 La recette a réussi avec Chromium 138 et une configuration Fontconfig temporaire pointant vers
 les polices Figtree du dépôt ; aucun changement produit n'a été nécessaire pour ce problème local.
-Playwright utilise son navigateur installé normalement en CI. La CI distante reste à observer
-après création de la PR. Aucune recette sur données réelles ou infrastructure de production.
+Playwright utilise son navigateur installé normalement en CI. Le résultat de la CI distante figure
+dans la description de PR, qui contient également les résultats du complément de copie figée et
+de la revue complète. Aucune recette sur données réelles ou infrastructure de production.
 Les tests sont versionnés dans `tests/vote.emulator.test.ts`, `tests/browser/vote.spec.ts`,
 `src/lib/tally.reference.test.ts` et `src/lib/quorum.test.ts`.
 
 ## Trois priorités suivantes
 
-1. Archiver les informations des projets et médias présentés au vote, puis outiller la revue des
-   anomalies historiques et la reprise opérationnelle ; ces pièces restent actuellement éditables.
+1. Outiller les anomalies historiques et la reprise opérationnelle ; les scrutins sans copie passée
+   restent non reconstructibles. Faire évoluer le stockage des archives au-delà du budget actuel
+   si les projets réels le nécessitent, sans affaiblir leur immutabilité.
 2. Définir le modèle de secret du vote : réduire les accès IAM et les tendances avant clôture, puis
    choisir un protocole séparant identité et bulletin si le secret face au serveur est requis.
 3. Concevoir la vérifiabilité indépendante et ses preuves : admission, inclusion et dépouillement

@@ -7,6 +7,9 @@ import { initializeTestEnvironment, assertFails, assertSucceeds, type RulesTestE
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, getDocs, collection } from 'firebase/firestore';
 import { openVote, submitBallot, publishVote } from '../src/lib/server/vote-service';
 import { computeSchulzeResults } from '../src/lib/tally';
+import { projectsForVote } from '../src/lib/vote-projects';
+import { contentHash } from '../src/lib/server/proposal-snapshot';
+import type { Vote } from '../src/types';
 
 const projectId = 'demo-ekklesia-test';
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
@@ -31,6 +34,10 @@ const ballotRef = (u = 'm', v = 'v') => voteRef(v).collection('ballots').doc(u);
 const member = (u: string, status = 'active', role = 'member') => db.doc(`members/${u}`).set({ status, role });
 const submit = (u = 'm', ranking: unknown = ['A'], v = 'v') => submitBallot(db, u, 'a', v, ranking);
 const publish = (v = 'v') => publishVote(db, 'admin', 'a', v);
+// The real emulator can report a closed transaction as INVALID_ARGUMENT after lock timeout.
+// Accept only that precise diagnostic (or ABORTED), never arbitrary validation errors.
+const transactionAborted = (error: { code?: number; details?: string }) => error.code === 10 ||
+  (error.code === 3 && error.details === 'Transaction is invalid or closed.');
 
 beforeAll(async () => {
   process.env.PV_SALT = 'emulator-only-seal-secret';
@@ -42,7 +49,7 @@ beforeEach(async () => {
   await Promise.all([member('admin', 'active', 'admin'), member('m'), member('n'),
     db.doc('assemblies/a').set({ state: 'open', activeVoteId: 'v' }),
     voteRef().set({ state: 'open', projectIds: ['A', 'B', 'C'], question: 'Question', quorumPct: 60 }),
-    db.doc('projects/A').set({ title: 'Project A' })]);
+    ...['A', 'B', 'C'].map(id => db.doc(`projects/${id}`).set({ title: `Project ${id}`, summary: `Summary ${id}`, budget: '100 €' }))]);
 });
 afterAll(async () => { await env.cleanup(); await deleteApp(app); });
 
@@ -128,8 +135,8 @@ describe('server transactions on real Firestore', () => {
     const outcomes = await Promise.allSettled([submit('n'), publish(), submit('m', ['B'])]);
     if (outcomes[1].status === 'rejected') {
       // Firestore may exhaust its bounded automatic retries under contention.
-      // Only ABORTED is acceptable here; inspect the rollback, then retry explicitly.
-      expect(outcomes[1].reason).toMatchObject({ code: 10 });
+      // Inspect the rollback before an explicit retry, including the emulator's closed-tx error.
+      expect(transactionAborted(outcomes[1].reason), String(outcomes[1].reason)).toBe(true);
       const aborted = (await voteRef().get()).data()!;
       expect(aborted.state).toBe('open');
       expect(aborted.results).toBeUndefined();
@@ -138,7 +145,7 @@ describe('server transactions on real Firestore', () => {
     }
     for (const outcome of [outcomes[0], outcomes[2]]) {
       if (outcome.status === 'rejected') {
-        expect(outcome.reason.status === 409 || outcome.reason.code === 10).toBe(true);
+        expect(outcome.reason.status === 409 || transactionAborted(outcome.reason), String(outcome.reason)).toBe(true);
       }
     }
     const snapshot = (await voteRef().get()).data()!;
@@ -153,6 +160,7 @@ describe('server transactions on real Firestore', () => {
     await submit();
     const outcomes = await Promise.all([publish(), publish()]);
     expect(outcomes.filter(r => !r.alreadyLocked)).toHaveLength(1);
+    expect(JSON.parse(JSON.stringify(outcomes[0].results))).toEqual(JSON.parse(JSON.stringify(outcomes[1].results)));
     const initial = (await voteRef().get()).data();
     const publicInitial = (await db.doc('assemblies/a/public/lastResult').get()).data();
     expect((await publish()).alreadyLocked).toBe(true);
@@ -324,6 +332,101 @@ describe('Firestore authorization cannot bypass the server', () => {
       await assertFails(setDoc(ref, { uids: ['m', 'n'] }));
       await assertFails(deleteDoc(ref));
     }
+  });
+});
+
+describe('proposal snapshots at opening on real Firestore', () => {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6xC0AAAAASUVORK5CYII=', 'base64');
+  async function draft() {
+    await voteRef().update({ state: 'draft', rulesVersion: 1, eligibilityPolicy: 'snapshot-active-v1', quorumPct: 0 });
+    await db.doc('assemblies/a').update({ state: 'draft', activeVoteId: null });
+  }
+  it('rejects an archive that fits alone but would exceed the document limit at publication', async () => {
+    await draft();
+    await db.doc('projects/A').update({ title: 'x'.repeat(600000) });
+    await expect(openVote(db, 'admin', 'a', 'v')).rejects.toMatchObject({ status: 409 });
+    const data = (await voteRef().get()).data()!;
+    expect(data.state).toBe('draft');
+    expect(data.proposalSnapshots).toBeUndefined();
+    expect((await db.doc('assemblies/a').get()).data()!.activeVoteId).toBeNull();
+  });
+  it('keeps texts, image and attachment bytes after source replacement/deletion, through publication and PV', async () => {
+    await draft();
+    await db.doc('projects/A').update({ longDescription: 'Original description', ownerName: 'Original author', ownerBio: 'Original bio',
+      imageUrl: 'https://images.unsplash.com/original', links: [{ label: 'Budget original', url: 'https://storage.googleapis.com/budget.pdf' }] });
+    const fetchMedia = vi.fn(async (input: string | URL | Request) => new Response(String(input).endsWith('.pdf') ? '%PDF-1.7 original' : png));
+    await openVote(db, 'admin', 'a', 'v', fetchMedia);
+    const opened = (await voteRef().get()).data()!;
+    const frozen = projectsForVote(opened as Vote);
+    expect(frozen[0]).toMatchObject({ title: 'Project A', longDescription: 'Original description', ownerName: 'Original author', budget: '100 €' });
+    expect(frozen[0].imageUrl).toBe(`data:image/png;base64,${png.toString('base64')}`);
+    expect(frozen[0].links![0].url).toBe(`data:application/pdf;base64,${Buffer.from('%PDF-1.7 original').toString('base64')}`);
+    expect(opened.proposalContentHash).toBe(contentHash(opened.proposalSnapshots));
+    await db.doc('projects/A').set({ title: 'Replaced', summary: 'Changed', budget: '999 €', imageUrl: 'https://images.unsplash.com/replaced' });
+    for (const p of ['A', 'B', 'C']) await db.doc(`projects/${p}`).delete();
+    fetchMedia.mockImplementation(async () => new Response(null, { status: 404 }));
+    expect((await openVote(db, 'admin', 'a', 'v', fetchMedia)).alreadyOpen).toBe(true);
+    await submit();
+    expect((await publish()).results).toMatchObject({ winnerId: 'A', proposalContentHash: opened.proposalContentHash });
+    const data = (await voteRef().get()).data()!;
+    expect(projectsForVote(data as Vote)).toEqual(frozen);
+    expect(data.results.fullRanking[0].title).toBe('Project A');
+    expect((await db.doc('assemblies/a/public/lastResult').get()).data()?.winnerLabel).toBe('Project A');
+    expect(fetchMedia).toHaveBeenCalledTimes(2);
+    const result = data.results;
+    const seal = computeFinalSeal({ voteId: 'v', method: 'schulze', lockedAtISO: data.lockedAt.toDate().toISOString(),
+      ballotsCount: 1, participationPct: 33, winnerId: 'A', proposalContentHash: opened.proposalContentHash,
+      ranking: result.fullRanking.map((r: { id: string; title: string; score: number }) => ({ projectId: r.id, title: r.title, score: r.score })), decision: decisionForSeal(result) });
+    const verify = await verifyGET(new Request(`http://localhost/verify?assemblyId=a&voteId=v&seal=${seal}`));
+    expect(await verify.json()).toMatchObject({ ok: true, match: true });
+    expect((await pdfGET(new Request('http://localhost/pdf'), { params: Promise.resolve({ assemblyId: 'a', voteId: 'v' }) })).status).toBe(200);
+  });
+  it.each(['edit', 'delete', 'draft-edit', 'suspend-admin'])('aborts atomic opening when %s occurs during media preparation', async action => {
+    await draft();
+    await db.doc('projects/A').update({ imageUrl: 'https://images.unsplash.com/original' });
+    const fetchMedia = vi.fn(async () => {
+      if (action === 'delete') await db.doc('projects/A').delete();
+      if (action === 'edit') await db.doc('projects/A').update({ title: 'Concurrent edit' });
+      if (action === 'draft-edit') await voteRef().update({ question: 'Concurrent question' });
+      if (action === 'suspend-admin') await member('admin', 'blocked', 'admin');
+      return new Response(png);
+    });
+    await expect(openVote(db, 'admin', 'a', 'v', fetchMedia)).rejects.toMatchObject({ status: action === 'suspend-admin' ? 403 : 409 });
+    expect((await voteRef().get()).data()).toMatchObject({ state: 'draft' });
+    expect((await voteRef().get()).data()).not.toHaveProperty('proposalSnapshots');
+    expect((await voteRef().collection('electorate').doc('snapshot').get()).exists).toBe(false);
+    expect((await db.doc('assemblies/a').get()).data()?.activeVoteId).toBeNull();
+  });
+  it('refuses absent sources or unavailable media without opening, then allows retry', async () => {
+    await draft();
+    await db.doc('projects/C').delete();
+    await expect(openVote(db, 'admin', 'a', 'v')).rejects.toMatchObject({ status: 409 });
+    await db.doc('projects/C').set({ title: 'C', summary: 'S', budget: '100', imageUrl: 'https://images.unsplash.com/original' });
+    await expect(openVote(db, 'admin', 'a', 'v', async () => new Response(null, { status: 404 }))).rejects.toMatchObject({ status: 409 });
+    expect((await voteRef().get()).data()?.state).toBe('draft');
+    await openVote(db, 'admin', 'a', 'v', async () => new Response(png));
+    expect((await voteRef().get()).data()?.state).toBe('open');
+  });
+  it('denies forged/deleted snapshot fields and fails closed on corrupted versioned content', async () => {
+    await draft();
+    const client = env.authenticatedContext('admin').firestore();
+    await assertFails(updateDoc(doc(client, 'assemblies/a/votes/v'), { proposalSnapshotVersion: 1, proposalSnapshots: [] }));
+    await openVote(db, 'admin', 'a', 'v');
+    await assertSucceeds(getDoc(doc(env.authenticatedContext('m').firestore(), 'assemblies/a/votes/v')));
+    for (const patch of [{ proposalSnapshotVersion: null }, { proposalSnapshots: [] }, { proposalContentHash: 'forged' }]) {
+      await assertFails(updateDoc(doc(client, 'assemblies/a/votes/v'), patch));
+    }
+    await voteRef().update({ proposalSnapshots: [] }); // Simulated privileged data corruption, never a client write.
+    await expect(submit()).rejects.toMatchObject({ status: 409 });
+    await expect(publish()).rejects.toMatchObject({ status: 409 });
+  });
+  it('does not backfill content of historical open/locked votes', async () => {
+    await openVote(db, 'admin', 'a', 'v');
+    expect((await voteRef().get()).data()).not.toHaveProperty('proposalSnapshots');
+    await submit(); await publish();
+    const old = (await voteRef().get()).data();
+    await db.doc('projects/A').delete(); await publish();
+    expect((await voteRef().get()).data()).toEqual(old);
   });
 });
 

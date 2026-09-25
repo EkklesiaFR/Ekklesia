@@ -1,3 +1,4 @@
+import type { ProposalSnapshot } from '@/lib/vote-projects';
 export type MemberStatus = 'active' | 'pending' | 'blocked' | 'revoked';
 export type Role = 'admin' | 'member';
 
@@ -36,7 +37,8 @@ export interface Project {
   imageUrl?: string;
   ownerName?: string;
   ownerBio?: string;
-  links?: { label: string; url: string }[];
+  links?: { label: string; url: string; download?: string }[];
+  contentFrozen?: boolean;
 
   status: 'draft' | 'submitted' | 'approved' | 'elected' | 'rejected' | 'candidate';
 
@@ -93,6 +95,9 @@ export interface Vote {
   eligibilityPolicy?: 'snapshot-active-v1';
   rulesVersion?: 1;
   counterVersion?: number;
+  proposalSnapshotVersion?: 1;
+  proposalSnapshots?: ProposalSnapshot[];
+  proposalContentHash?: string;
 
   createdAt?: any;
   createdBy?: string;
@@ -116,7 +121,7 @@ export interface Vote {
   openedBy?: string;
 
   /**
-   * Seuil de quorum affiché en % (0-100), sans blocage de la publication.
+   * Seuil en % (0-100) : en v1, condition d'adoption, sans blocage de la clôture.
    * - Si absent => traité comme 0 (compat votes historiques)
    * - Calcul basé sur eligibleCountAtOpen (figé à l'ouverture)
    */
@@ -134,6 +139,7 @@ export interface Vote {
     tiedWinnerIds?: string[];
     eligibleCount?: number;
     quorumPct?: number;
+    proposalContentHash?: string;
 
     /**
      * Classement complet des projets
@@ -142,6 +148,7 @@ export interface Vote {
       id: string;
       rank: number;
       score?: number;
+      title?: string;
     }[];
 
     computedAt: any;

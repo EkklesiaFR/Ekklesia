@@ -1,8 +1,9 @@
+import { readFile } from 'node:fs/promises';
 import { test, expect, type Page } from '@playwright/test';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
-import { publishVote } from '../../src/lib/server/vote-service';
+import { publishVote, submitBallot } from '../../src/lib/server/vote-service';
 
 if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
   throw new Error('Browser checks require local emulators');
@@ -11,6 +12,7 @@ const app = initializeApp({ projectId: 'demo-ekklesia-test' }, 'browser');
 const db = getFirestore(app);
 const assembly = db.doc('assemblies/default-assembly');
 const vote = assembly.collection('votes').doc('browser-vote');
+const archivedImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl6xC0AAAAASUVORK5CYII=';
 
 async function login(page: Page, email: string) {
   await page.goto('/login');
@@ -29,7 +31,8 @@ test('admin opens, member deposits and revises, admin publishes, member sees the
   }
   await assembly.set({ state: 'draft', title: 'Browser assembly', activeVoteId: null });
   await vote.set({ state: 'draft', rulesVersion: 1, eligibilityPolicy: 'snapshot-active-v1', question: 'Choix du projet test', projectIds: ['browser-A', 'browser-B'], quorumPct: 0 });
-  for (const id of ['browser-A', 'browser-B']) await db.doc(`projects/${id}`).set({ title: id, summary: 'Test', budget: '100', status: 'candidate', createdAt: new Date() });
+  for (const id of ['browser-A', 'browser-B']) await db.doc(`projects/${id}`).set({ title: `Projet original ${id}`, summary: 'Résumé original', longDescription: 'Description soumise au scrutin', budget: '100', imageUrl: archivedImage,
+    links: [{ label: 'Pièce originale', url: 'data:application/pdf;base64,JVBERi0xLjcKZXhhbXBsZQ==' }], status: 'candidate', createdAt: new Date() });
 
   const adminContext = await browser.newContext();
   const memberContext = await browser.newContext();
@@ -44,18 +47,51 @@ test('admin opens, member deposits and revises, admin publishes, member sees the
   await admin.goto('/admin');
   await admin.getByRole('button', { name: /Ouvrir/i }).click();
   await expect.poll(async () => (await vote.get()).data()?.state).toBe('open');
+  const originalHash = (await vote.get()).data()?.proposalContentHash;
+  await db.doc('projects/browser-A').update({ title: 'Projet modifié', longDescription: 'Description modifiée', imageUrl: 'https://images.unsplash.com/replaced' });
+  await db.doc('projects/browser-A').delete();
+  await db.doc('projects/browser-B').delete();
   await login(member, 'browser-member@example.test');
   await member.goto('/vote');
+  await member.getByRole('button', { name: 'Consulter Projet original browser-A', exact: true }).click();
+  await expect(member.getByRole('dialog').getByText('Description soumise au scrutin')).toBeVisible();
+  await expect(member.getByRole('dialog').getByRole('img', { name: 'Projet original browser-A', exact: true })).toHaveAttribute('src', archivedImage);
+  const downloadPromise = member.waitForEvent('download');
+  await member.getByRole('dialog').getByRole('link', { name: 'Pièce originale' }).click();
+  const downloaded = await downloadPromise;
+  expect(downloaded.suggestedFilename()).toBe('piece-1.pdf');
+  expect(await readFile((await downloaded.path())!, 'utf8')).toBe('%PDF-1.7\nexample');
+  await member.getByRole('button', { name: 'Close', exact: true }).click();
   await member.getByRole('button', { name: 'Valider mon classement' }).click();
   await expect(member.getByText('Votre vote est déjà enregistré.')).toBeVisible();
+  const aHandle = member.getByRole('button', { name: 'Déplacer Projet original browser-A', exact: true });
+  const bHandle = member.getByRole('button', { name: 'Déplacer Projet original browser-B', exact: true });
+  await aHandle.scrollIntoViewIfNeeded(); await bHandle.scrollIntoViewIfNeeded();
+  const a = (await aHandle.boundingBox())!; const b = (await bHandle.boundingBox())!;
+  await member.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await member.mouse.down();
+  await member.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 10 });
+  await member.mouse.up();
+  await expect(member.getByRole('button', { name: /^Déplacer / }).first()).toHaveAttribute('aria-label', 'Déplacer Projet original browser-B');
+  // A different voter changes participation while this member has an unsaved revision.
+  await submitBallot(db, 'browser-admin', 'default-assembly', 'browser-vote', ['browser-B', 'browser-A']);
+  await expect(member.getByText('2 / 2 membres')).toBeVisible();
+  await expect(member.getByRole('button', { name: /^Déplacer / }).first()).toHaveAttribute('aria-label', 'Déplacer Projet original browser-B');
   await member.getByRole('button', { name: 'Mettre à jour mon vote' }).click();
-  await expect.poll(async () => (await vote.get()).data()?.ballotCount).toBe(1);
-  await expect(admin.getByText('1 / 2').first()).toBeVisible();
+  await expect.poll(async () => (await vote.collection('ballots').doc('browser-member').get()).data()?.ranking).toEqual(['browser-B', 'browser-A']);
+  await expect.poll(async () => (await vote.get()).data()?.ballotCount).toBe(2);
+  await expect(admin.getByText('2 / 2').first()).toBeVisible();
   await admin.getByRole('button', { name: /Publier/i }).click();
   await expect.poll(async () => (await vote.get()).data()?.state).toBe('locked');
   await member.goto('/results/browser-vote');
   await expect(member.getByText('Choix du projet test').first()).toBeVisible();
-  expect((await vote.get()).data()?.results.total).toBe(1);
+  await member.getByRole('button', { name: 'Consulter Projet original browser-A', exact: true }).click();
+  await expect(member.getByRole('dialog').getByText('Description soumise au scrutin')).toBeVisible();
+  await expect(member.getByRole('dialog').getByRole('img', { name: 'Projet original browser-A', exact: true })).toHaveAttribute('src', archivedImage);
+  await member.getByRole('button', { name: 'Close', exact: true }).click();
+  expect((await vote.get()).data()?.results.proposalContentHash).toBe(originalHash);
+  await expect(admin.getByText('Projet original browser-B', { exact: true }).first()).toBeVisible();
+  expect((await vote.get()).data()?.results.total).toBe(2);
   const pdf = await member.request.get('/api/pv/default-assembly/browser-vote/pdf');
   expect(pdf.status()).toBe(200);
   expect((await pdf.body()).subarray(0, 4).toString()).toBe('%PDF');

@@ -1,7 +1,9 @@
 import { createHash } from 'node:crypto';
-import { FieldValue, type Firestore, type Transaction } from 'firebase-admin/firestore';
+import { FieldValue, Timestamp, type Firestore, type Transaction } from 'firebase-admin/firestore';
 import { computeSchulzeResults, computeSchulzeOutcome } from '../tally';
 import { decideVote, decisionLabel } from '../vote-decision';
+import { projectsForVote, type ProposalSnapshot } from '../vote-projects';
+import { snapshotProject, checkPublishableSize, checkSnapshotSize, contentHash, ProposalError, newSnapshotBudget } from './proposal-snapshot';
 
 export class VoteError extends Error {
   constructor(public status: number, message: string) { super(message); }
@@ -29,7 +31,7 @@ async function requireMember(tx: Transaction, db: Firestore, uid: string, admin 
 
 function projects(value: unknown): string[] {
   if (!Array.isArray(value) || value.length === 0 ||
-      value.some(p => typeof p !== 'string' || !p || p.includes('/')) ||
+      value.some(p => typeof p !== 'string' || !p || p.includes('/') || p === '.' || p === '..') ||
       new Set(value).size !== value.length) throw new VoteError(409, 'Invalid vote projects');
   return value;
 }
@@ -48,6 +50,15 @@ function deadline(vote: FirebaseFirestore.DocumentData) {
   return ms as number;
 }
 
+function checkProposalSnapshot(data: FirebaseFirestore.DocumentData) {
+  if (data.proposalSnapshotVersion == null) return; // Historical: never reconstruct.
+  if (data.proposalSnapshotVersion !== 1 || !Array.isArray(data.proposalSnapshots) ||
+      projectsForVote(data as Parameters<typeof projectsForVote>[0]).length !== projects(data.projectIds).length ||
+      contentHash(data.proposalSnapshots) !== data.proposalContentHash) {
+    throw new VoteError(409, 'Contenu figé du scrutin manquant ou invalide.');
+  }
+}
+
 export async function submitBallot(db: Firestore, uid: string, assemblyId: string, voteId: string, ranking: unknown) {
   const { assembly, vote } = refs(db, assemblyId, voteId);
   return db.runTransaction(async tx => {
@@ -57,6 +68,7 @@ export async function submitBallot(db: Firestore, uid: string, assemblyId: strin
     if (!assemblySnap.exists || !snap.exists) throw new VoteError(404, 'Vote not found');
     const data = snap.data()!;
     if (data.state !== 'open') throw new VoteError(409, 'Vote is not open');
+    checkProposalSnapshot(data);
     if (data.rulesVersion === 1 && data.eligibilityPolicy !== 'snapshot-active-v1') {
       throw new VoteError(409, 'Missing electorate policy');
     }
@@ -87,8 +99,35 @@ export async function submitBallot(db: Firestore, uid: string, assemblyId: strin
   });
 }
 
-export async function openVote(db: Firestore, uid: string, assemblyId: string, voteId: string) {
+export async function openVote(db: Firestore, uid: string, assemblyId: string, voteId: string, mediaRequest: typeof fetch = fetch) {
   const { assembly, vote } = refs(db, assemblyId, voteId);
+  // Authorize before network access. Prepare bytes outside transactions; recheck all versions
+  // at commit so edits during a download cannot mix old media with new text/project IDs.
+  const prepared = await db.runTransaction(async tx => {
+    await requireMember(tx, db, uid, true);
+    const assemblySnap = await tx.get(assembly);
+    const snap = await tx.get(vote);
+    if (!assemblySnap.exists || !snap.exists) throw new VoteError(404, 'Vote not found');
+    if (snap.data()!.state === 'open') return null;
+    if (snap.data()!.state !== 'draft' || snap.data()!.results) throw new VoteError(409, 'Only clean draft votes can be opened');
+    const ids = projects(snap.data()!.projectIds);
+    const source = await tx.getAll(...ids.map(p => db.collection('projects').doc(p)));
+    if (source.some(p => !p.exists)) throw new VoteError(409, 'Projet manquant : ouverture annulée.');
+    return { voteVersion: snap.updateTime!, draft: snap.data()!, source };
+  });
+  if (!prepared) return { ok: true, alreadyOpen: true };
+  const proposalSnapshots: ProposalSnapshot[] = [];
+  const budget = newSnapshotBudget();
+  try {
+    for (const source of prepared.source) {
+      proposalSnapshots.push(await snapshotProject(source.id, source.data()!, mediaRequest, budget));
+      checkSnapshotSize(proposalSnapshots);
+    }
+    checkPublishableSize(prepared.draft, proposalSnapshots);
+  } catch (error) {
+    if (error instanceof ProposalError) throw new VoteError(409, error.message);
+    throw error;
+  }
   return db.runTransaction(async tx => {
     await requireMember(tx, db, uid, true);
     const assemblySnap = await tx.get(assembly);
@@ -97,6 +136,11 @@ export async function openVote(db: Firestore, uid: string, assemblyId: string, v
     const data = snap.data()!;
     if (data.state === 'open') return { ok: true, alreadyOpen: true };
     if (data.state !== 'draft' || data.results) throw new VoteError(409, 'Only clean draft votes can be opened');
+    const currentProjects = await tx.getAll(...prepared.source.map(p => p.ref));
+    if (!snap.updateTime!.isEqual(prepared.voteVersion) || currentProjects.some((p, i) =>
+      !p.exists || !p.updateTime!.isEqual(prepared.source[i].updateTime!))) {
+      throw new VoteError(409, 'Le scrutin ou un projet a changé pendant la copie. Relancer l’ouverture.');
+    }
     if (data.eligibilityPolicy != null && data.eligibilityPolicy !== 'snapshot-active-v1') {
       throw new VoteError(409, 'Unknown eligibility policy');
     }
@@ -125,6 +169,7 @@ export async function openVote(db: Firestore, uid: string, assemblyId: string, v
       tx.set(vote.collection('electorate').doc('snapshot'), { uids: eligibleUids, createdAt: now });
     }
     tx.update(vote, { state: 'open', eligibleCountAtOpen, ballotCount: 0, counterVersion: 1,
+      proposalSnapshotVersion: 1, proposalSnapshots, proposalContentHash: contentHash(proposalSnapshots),
       openedAt: now, openedBy: uid, updatedAt: now });
     tx.update(assembly, { state: 'open', activeVoteId: voteId, updatedAt: now });
     return { ok: true, alreadyOpen: false, eligibleCountAtOpen };
@@ -142,6 +187,7 @@ export async function publishVote(db: Firestore, uid: string, assemblyId: string
     // Never recalculate or mutate historical locked results, even if incomplete.
     if (data.state === 'locked') return { ok: true, alreadyLocked: true, results: data.results ?? null };
     if (data.state !== 'open') throw new VoteError(409, 'Vote is not open');
+    checkProposalSnapshot(data);
     const projectIds = projects(data.projectIds);
     const ballotsSnap = await tx.get(vote.collection('ballots'));
     const ballots = ballotsSnap.docs.map(d => d.data());
@@ -158,26 +204,30 @@ export async function publishVote(db: Firestore, uid: string, assemblyId: string
     }
     const decision = outcome ? decideVote(ballots.length, data.eligibleCountAtOpen, data.quorumPct, outcome.winnerIds) : null;
     const winnerId = decision ? decision.winnerId : tally.winnerId;
-    const ranking = outcome ? outcome.ranking : tally.ranking;
-    const winner = winnerId ? await tx.get(db.collection('projects').doc(winnerId)) : null;
+    const frozen = projectsForVote(data as Parameters<typeof projectsForVote>[0]);
+    const ranking = (outcome ? outcome.ranking : tally.ranking).map(row => data.proposalSnapshotVersion === 1
+      ? { ...row, title: frozen.find(p => p.id === row.id)!.title } : row);
+    const winner = winnerId && data.proposalSnapshotVersion == null ? await tx.get(db.collection('projects').doc(winnerId)) : null;
+    const proposalSeal = data.proposalSnapshotVersion === 1 ? { proposalContentHash: data.proposalContentHash } : {};
     // Also supports old assemblies with several open votes, without clearing another vote.
     const open = await tx.get(assembly.collection('votes').where('state', '==', 'open'));
     const remaining = open.docs.map(d => d.id).filter(v => v !== voteId).sort();
     const current = assemblySnap.data()?.activeVoteId;
     const activeVoteId = remaining.includes(current) ? current : remaining[0] ?? null;
     const canonical = { method: 'schulze', voteId, projectIds, total: ballots.length,
-      winnerId, fullRanking: ranking, ...(decision ? { decision } : {}) };
-    const now = new Date();
+      winnerId, fullRanking: ranking, ...proposalSeal, ...(decision ? { decision } : {}) };
+    // Same JSON representation on the initial response and an idempotent retry from Firestore.
+    const now = Timestamp.now();
     const results = { method: 'schulze', computedBy: uid,
       resultsHash: createHash('sha256').update(JSON.stringify(canonical)).digest('hex'),
       winnerId, fullRanking: ranking, computedAt: now, total: ballots.length,
-      outcome: ballots.length ? 'counted' : 'no-ballots', ...(decision ?? {}) };
+      outcome: ballots.length ? 'counted' : 'no-ballots', ...proposalSeal, ...(decision ?? {}) };
     tx.update(vote, { state: 'locked', results, ballotCount: ballots.length, counterVersion: 1,
       lockedAt: now, lockedBy: uid, updatedAt: now });
     tx.update(assembly, { state: activeVoteId ? 'open' : 'locked', activeVoteId, updatedAt: now });
     tx.set(assembly.collection('public').doc('lastResult'), {
       ...results, voteId, voteTitle: data.title ?? data.question ?? '', closedAt: now, lockedAt: now,
-      winnerLabel: winnerId ? winner?.data()?.title || winnerId : decisionLabel(results),
+      winnerLabel: winnerId ? frozen.find(p => p.id === winnerId)?.title || winner?.data()?.title || winnerId : decisionLabel(results),
     });
     return { ok: true, alreadyLocked: false, results };
   });

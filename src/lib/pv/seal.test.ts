@@ -51,4 +51,12 @@ describe('PV seal (HMAC): computeFinalSeal', () => {
     expect(computeFinalSeal(input)).not.toBe(computeFinalSeal({ ...input, decision: { ...decision, eligibleCount: 201 } }));
     expect(computeFinalSeal(input)).not.toBe(computeFinalSeal({ ...input, decision: { ...decision, decisionStatus: 'tie' } }));
   });
+  it('preserves v3 and binds proposal contents only in v4', () => {
+    const decision = decideVote(10, 200, 60, ['p1']);
+    const canonical = JSON.stringify({ v: 3, voteId: base.voteId, method: base.method,
+      lockedAt: base.lockedAtISO, ballotsCount: base.ballotsCount, participationPct: base.participationPct,
+      winnerId: base.winnerId, ranking: base.ranking, decision });
+    expect(computeFinalSeal({ ...base, decision })).toBe(createHmac('sha256', process.env.PV_SALT!).update(canonical).digest('hex'));
+    expect(computeFinalSeal({ ...base, decision, proposalContentHash: 'a' })).not.toBe(computeFinalSeal({ ...base, decision, proposalContentHash: 'b' }));
+  });
 });
