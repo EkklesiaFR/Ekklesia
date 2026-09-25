@@ -128,3 +128,8 @@ Firestore : estimation conservatrice de 900 Kio, avec marge par ligne et pour le
 Un titre de 600 000 caractères tient dans la copie seule mais ferait dépasser 1 Mio à la publication :
 les tests unitaire et émulateur vérifient son refus avant ouverture, sans changement d'état.
 Le plafond de 800 Kio de copie est donc nécessaire mais pas toujours suffisant.
+
+La CI #88 a également reproduit ce diagnostic lors du double dépôt. Les tests de dépôts simultanés
+inspectent maintenant la correspondance compteur/bulletins avant toute reprise des seules requêtes
+rejetées pour contention, puis vérifient le compteur final et l'unicité. Aucun retry applicatif
+ou assouplissement d'autorisation n'est ajouté pour faire passer ces tests.

@@ -116,8 +116,26 @@ describe('server transactions on real Firestore', () => {
     await expect(submit('m', ranking)).rejects.toMatchObject({ status: 400 });
     expect((await ballotRef().get()).exists).toBe(false);
   });
+  async function concurrentDeposits(uids: string[]) {
+    const before = (await voteRef().get()).data()!;
+    const previous = (await voteRef().collection('ballots').get()).docs.map(d => ({ id: d.id, ...d.data() }));
+    const outcomes = await Promise.allSettled(uids.map(u => submit(u)));
+    // A lock expiry may reject a request; it must not leave a partial counter/ballot.
+    const stored = await voteRef().collection('ballots').get();
+    const vote = (await voteRef().get()).data()!;
+    if (outcomes.some(r => r.status === 'fulfilled')) expect(vote.ballotCount).toBe(stored.size);
+    else {
+      expect(vote).toEqual(before);
+      expect(stored.docs.map(d => ({ id: d.id, ...d.data() }))).toEqual(previous);
+    }
+    for (const [index, outcome] of outcomes.entries()) {
+      if (outcome.status !== 'rejected') continue;
+      expect(transactionAborted(outcome.reason), String(outcome.reason)).toBe(true);
+      await submit(uids[index]); // Explicit client retry, after inspecting committed state.
+    }
+  }
   it('accepts partial ballots, replaces one ballot, preserves castAt and counts double submissions once', async () => {
-    await Promise.all([submit(), submit()]);
+    await concurrentDeposits(['m', 'm']);
     const castAt = (await ballotRef().get()).data()?.castAt;
     await submit('m', ['B', 'A']);
     expect((await ballotRef().get()).data()).toMatchObject({ ranking: ['B', 'A'], castAt });
@@ -126,7 +144,7 @@ describe('server transactions on real Firestore', () => {
   it('repairs missing or stale historical counts transactionally during simultaneous deposits', async () => {
     await voteRef().update({ ballotCount: 99 });
     await ballotRef('old').set({ ranking: ['A'] });
-    await Promise.all(['m', 'n', 'admin', 'm', 'n'].map(u => submit(u)));
+    await concurrentDeposits(['m', 'n', 'admin', 'm', 'n']);
     expect((await voteRef().get()).data()).toMatchObject({ ballotCount: 4, counterVersion: 1 });
     expect((await voteRef().collection('ballots').get()).size).toBe(4);
   });
