@@ -17,25 +17,16 @@ service cloud.firestore {
       return /databases/$(database)/documents/members/$(uid);
     }
 
-    function assemblyMemberPath(assemblyId, uid) {
-      return /databases/$(database)/documents/assemblies/$(assemblyId)/members/$(uid);
-    }
 
     function rootExists() {
       return isSignedIn() && exists(rootMemberPath(request.auth.uid));
     }
 
-    function mirrorExists(assemblyId) {
-      return isSignedIn() && exists(assemblyMemberPath(assemblyId, request.auth.uid));
-    }
 
     function rootData() {
       return get(rootMemberPath(request.auth.uid)).data;
     }
 
-    function mirrorData(assemblyId) {
-      return get(assemblyMemberPath(assemblyId, request.auth.uid)).data;
-    }
 
     // ROOT
     function isMemberActiveRoot() {
@@ -50,21 +41,11 @@ service cloud.firestore {
 
     // ASSEMBLY
     function isMemberActive(assemblyId) {
-      return isSignedIn() && (
-        (rootExists() && rootData().status == "active") ||
-        (mirrorExists(assemblyId) && mirrorData(assemblyId).status == "active")
-      );
+      return isMemberActiveRoot();
     }
 
     function isAdminActive(assemblyId) {
-      return isSignedIn() && (
-        (rootExists()
-          && rootData().status == "active"
-          && rootData().role == "admin") ||
-        (mirrorExists(assemblyId)
-          && mirrorData(assemblyId).status == "active"
-          && mirrorData(assemblyId).role == "admin")
-      );
+      return isAdminActiveRoot();
     }
 
     // =========================
@@ -126,7 +107,13 @@ service cloud.firestore {
     // =========================
     match /assemblies/{assemblyId} {
       allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdminActive(assemblyId);
+      allow create: if isAdminActiveRoot()
+        && request.resource.data.state == 'draft'
+        && request.resource.data.get('activeVoteId', null) == null
+        && request.resource.data.keys().hasOnly(['title', 'state', 'createdAt', 'createdBy', 'updatedAt', 'startsAt', 'endsAt', 'activeVoteId']);
+      allow update: if isAdminActiveRoot()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'updatedAt', 'startsAt', 'endsAt']);
+      allow delete: if false;
 
       // -------------------------
       // PRESENCE
@@ -165,7 +152,7 @@ service cloud.firestore {
       // -------------------------
       match /public/{docId} {
         allow get, list: if true;
-        allow create, update, delete: if isAdminActive(assemblyId);
+        allow write: if false;
       }
 
       // =========================
@@ -174,14 +161,22 @@ service cloud.firestore {
       match /votes/{voteId} {
         allow get, list: if isMemberActive(assemblyId);
 
-        allow create: if isAdminActive(assemblyId);
-
-        allow update: if isAdminActive(assemblyId)
-          && resource.data.state != "locked"
-          && (
-            resource.data.state == "draft" ||
-            request.resource.data.quorumPct == resource.data.quorumPct
-          );
+        // Client prepares drafts only; lifecycle, counts and results belong to the server.
+        function draftFields() {
+          return ['assemblyId', 'question', 'title', 'projectIds', 'state', 'createdAt',
+            'updatedAt', 'createdBy', 'opensAt', 'closesAt', 'quorumPct', 'deadlineEnforced', 'eligibilityPolicy', 'rulesVersion'];
+        }
+        allow create: if isAdminActiveRoot()
+          && request.resource.data.state == 'draft'
+          && request.resource.data.eligibilityPolicy == 'snapshot-active-v1'
+          && request.resource.data.rulesVersion == 1
+          && request.resource.data.keys().hasOnly(draftFields());
+        allow update: if isAdminActiveRoot()
+          && resource.data.state == 'draft'
+          && request.resource.data.state == 'draft'
+          && request.resource.data.get('eligibilityPolicy', null) == resource.data.get('eligibilityPolicy', null)
+          && request.resource.data.get('rulesVersion', null) == resource.data.get('rulesVersion', null)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(draftFields());
 
         allow delete: if false;
 
@@ -189,21 +184,11 @@ service cloud.firestore {
         // BALLOTS
         // =========================
         match /ballots/{uid} {
-          function voteDocPath() {
-            return /databases/$(database)/documents/assemblies/$(assemblyId)/votes/$(voteId);
-          }
-
-          function voteIsOpen() {
-            return exists(voteDocPath()) && get(voteDocPath()).data.state == "open";
-          }
 
           allow get: if isMemberActive(assemblyId) && isSelf(uid);
 
-          allow create, update: if isMemberActive(assemblyId)
-            && isSelf(uid)
-            && voteIsOpen();
-
-          allow list: if isAdminActive(assemblyId);
+          allow create, update: if false;
+          allow list: if false;
 
           allow delete: if false;
         }

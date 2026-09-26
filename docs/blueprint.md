@@ -1,3 +1,5 @@
+> Document de conception historique, non contractuel : plusieurs fonctions décrites ci-dessous ne sont pas implémentées (Cloud Functions, clôture automatique, allowlist). Pour le comportement actuel, voir [ARCHITECTURE.md](ARCHITECTURE.md).
+
 # **App Name**: Ekklesia Vote
 
 ## Core Features:

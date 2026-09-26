@@ -2,18 +2,26 @@
 
 import { firebaseConfig } from '@/firebase/config';
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 /**
  * Singleton déterministe pour Firebase.
  * Garantit qu'une seule instance d'App, Auth, Firestore et Storage existe.
  */
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+const useEmulators = process.env.NEXT_PUBLIC_USE_FIREBASE_EMULATORS === 'true';
+const alreadyInitialized = getApps().length > 0;
+const app = alreadyInitialized ? getApp() : initializeApp(useEmulators
+  ? { projectId: 'demo-ekklesia-test', apiKey: 'fake', authDomain: 'localhost', appId: 'demo' }
+  : firebaseConfig);
 const auth = getAuth(app);
 const firestore = getFirestore(app);
 const storage = getStorage(app);
+if (useEmulators && !alreadyInitialized) {
+  connectAuthEmulator(auth, 'http://127.0.0.1:9099', { disableWarnings: true });
+  connectFirestoreEmulator(firestore, '127.0.0.1', 8080);
+}
 
 // Logs de diagnostic pour confirmer le singleton
 console.log('[FIREBASE] apps count:', getApps().length);

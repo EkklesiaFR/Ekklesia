@@ -1,5 +1,6 @@
 import 'server-only';
 import { createHmac } from 'crypto';
+import type { Decision } from '../vote-decision';
 
 export type RankingRow = {
   projectId: string;
@@ -21,11 +22,13 @@ export function computeFinalSeal(input: {
   lockedAtISO: string;
   ballotsCount: number;
   participationPct?: number | null;
-  winnerId: string;
+  winnerId: string | null;
   ranking: RankingRow[];
+  decision?: Decision;
+  proposalContentHash?: string;
 }) {
   const canonical = JSON.stringify({
-    v: 2, // version du seal (important)
+    v: input.proposalContentHash ? 4 : input.decision ? 3 : 2, // Preserve historical v2/v3 seals.
     voteId: input.voteId,
     method: input.method,
     lockedAt: input.lockedAtISO,
@@ -37,6 +40,8 @@ export function computeFinalSeal(input: {
       title: r.title,
       score: r.score,
     })),
+    ...(input.decision ? { decision: input.decision } : {}),
+    ...(input.proposalContentHash ? { proposalContentHash: input.proposalContentHash } : {}),
   });
 
   const key = requirePvSalt();

@@ -19,6 +19,7 @@ import {
 } from '@/firebase';
 
 import type { Project, Vote, Assembly, Ballot } from '@/types';
+import { projectsForVote } from '@/lib/vote-projects';
 
 function VoteGate() {
   const { user } = useUser();
@@ -32,36 +33,39 @@ function VoteGate() {
     useCollection<Assembly>(activeAssemblyQuery);
 
   const activeAssembly = assemblies?.[0];
+  const assemblyId = activeAssembly?.id;
+  const assemblyVoteId = activeAssembly?.activeVoteId;
 
   const voteRef = useMemoFirebase(() => {
-    if (!activeAssembly?.activeVoteId) return null;
-    return doc(db, 'assemblies', activeAssembly.id, 'votes', activeAssembly.activeVoteId);
-  }, [db, activeAssembly]);
+    if (!assemblyId || !assemblyVoteId) return null;
+    return doc(db, 'assemblies', assemblyId, 'votes', assemblyVoteId);
+  }, [db, assemblyId, assemblyVoteId]);
 
   const { data: activeVote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
   const projectsQuery = useMemoFirebase(() => {
-    return collection(db, 'projects');
-  }, [db]);
+    return activeVote?.proposalSnapshotVersion ? null : collection(db, 'projects');
+  }, [db, activeVote?.proposalSnapshotVersion]);
 
   const { data: allProjects, isLoading: isProjectsLoading } =
     useCollection<Project>(projectsQuery);
 
-  const voteProjects =
-    allProjects?.filter((project) => activeVote?.projectIds?.includes(project.id)) || [];
+  const voteProjects = projectsForVote(activeVote, allProjects ?? []);
+  const voteId = activeVote?.id;
+  const uid = user?.uid;
 
   const userBallotRef = useMemoFirebase(() => {
-    if (!activeAssembly || !activeVote || !user) return null;
+    if (!assemblyId || !voteId || !uid) return null;
     return doc(
       db,
       'assemblies',
-      activeAssembly.id,
+      assemblyId,
       'votes',
-      activeVote.id,
+      voteId,
       'ballots',
-      user.uid
+      uid
     );
-  }, [db, activeAssembly, activeVote, user]);
+  }, [db, assemblyId, voteId, uid]);
 
   const { data: userBallot, isLoading: isBallotLoading } = useDoc<Ballot>(userBallotRef);
 

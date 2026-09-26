@@ -1,5 +1,8 @@
 'use client';
 
+import { decisionLabel } from '@/lib/vote-decision';
+import { projectsForVote } from '@/lib/vote-projects';
+import { quorumReached } from '@/lib/quorum';
 import { useMemo, useState, useEffect } from 'react';
 import Link from 'next/link';
 
@@ -16,19 +19,16 @@ import { CreateSessionModal } from '@/components/admin/CreateSessionModal';
 import { toast } from '@/hooks/use-toast';
 
 import { useUser, useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useVoteBallotCount } from '@/hooks/useVoteBallotCount';
 import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 
 import {
   collection,
   doc,
-  getCountFromServer,
   orderBy,
   query,
-  serverTimestamp,
   updateDoc,
   where,
-  writeBatch,
-  onSnapshot,
 } from 'firebase/firestore';
 
 import { Plus, BarChart3, Settings, Users, Activity, Lock, Play, Search } from 'lucide-react';
@@ -47,48 +47,10 @@ function memberKey(member: MemberProfile): string | undefined {
  * - One-time count when draft/locked
  */
 function useVoteMetrics(assemblyId: string, vote: Vote | undefined) {
-  const db = useFirestore();
-  const [ballotCount, setBallotCount] = useState(0);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    if (!db || !assemblyId || !vote) {
-      setBallotCount(0);
-      setIsLoading(false);
-      return;
-    }
-
-    const ballotsRef = collection(db, 'assemblies', assemblyId, 'votes', vote.id, 'ballots');
-
-    if (vote.state === 'open') {
-      setIsLoading(true);
-      const unsubscribe = onSnapshot(
-        ballotsRef,
-        (snapshot) => {
-          setBallotCount(snapshot.size);
-          setIsLoading(false);
-        },
-        (error) => {
-          console.error('[VOTE_METRICS] onSnapshot error:', error);
-          setIsLoading(false);
-        }
-      );
-      return () => unsubscribe();
-    }
-
-    setIsLoading(true);
-    getCountFromServer(ballotsRef)
-      .then((snapshot) => {
-        setBallotCount(snapshot.data().count);
-        setIsLoading(false);
-      })
-      .catch((error) => {
-        console.error('[VOTE_METRICS] getCountFromServer error:', error);
-        setIsLoading(false);
-      });
-  }, [db, assemblyId, vote?.id, vote?.state]);
-
-  return { ballotCount, isLoading };
+  const { count, isLoading, isUnavailable } = useVoteBallotCount({ assemblyId,
+    voteId: vote?.id ?? '', status: vote?.state ?? 'draft', mode: 'realtime',
+    frozenCount: vote?.results?.total });
+  return { ballotCount: count, isLoading, isUnavailable };
 }
 
 function ActiveVoteCockpit({
@@ -100,7 +62,9 @@ function ActiveVoteCockpit({
   activeVote: Vote | undefined;
   members: MemberProfile[];
 }) {
-  const { ballotCount, isLoading } = useVoteMetrics(assemblyId, activeVote);
+  const { ballotCount, isLoading, isUnavailable } = useVoteMetrics(assemblyId, activeVote);
+
+  if (isUnavailable) return <p>Participation historique indisponible avant rapprochement serveur.</p>;
 
   if (!activeVote) {
     return (
@@ -112,11 +76,11 @@ function ActiveVoteCockpit({
 
   const eligibleCount = activeVote.eligibleCountAtOpen;
   const participation =
-    eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
+    !isUnavailable && eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
   const abstention = participation !== null ? 100 - participation : null;
 
   const quorumPct = (activeVote as any).quorumPct ?? 0;
-  const isValid = participation !== null ? participation >= quorumPct : null;
+  const isValid = isUnavailable ? null : quorumReached(ballotCount, eligibleCount, quorumPct);
 
   const openedAtFormatted = (activeVote as any).openedAt?.toDate
     ? (activeVote as any).openedAt.toDate().toLocaleString('fr-FR', {
@@ -146,7 +110,7 @@ function ActiveVoteCockpit({
         <div className="space-y-1">
           <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
           <p className="font-bold text-base">
-            {isLoading ? '...' : eligibleCount ? `${ballotCount} / ${eligibleCount}` : ballotCount}
+            {isUnavailable ? 'Indisponible' : isLoading ? '...' : eligibleCount ? `${ballotCount} / ${eligibleCount}` : ballotCount}
           </p>
         </div>
 
@@ -166,12 +130,12 @@ function ActiveVoteCockpit({
         </div>
 
         <div className="space-y-1">
-          <p className="text-[10px] uppercase font-bold text-muted-foreground">Validité</p>
+          <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum</p>
           <p className="font-bold text-base">
             {isValid === null ? '—' : isValid ? (
-              <span className="text-green-700">Valide</span>
+              <span className="text-green-700">Atteint</span>
             ) : (
-              <span className="text-red-700">Invalide</span>
+              <span className="text-red-700">Non atteint</span>
             )}
           </p>
         </div>
@@ -209,15 +173,15 @@ function VoteRow({
   projectsById: Map<string, Project>;
   members: MemberProfile[];
 }) {
-  const { ballotCount, isLoading } = useVoteMetrics(assemblyId, vote);
+  const { ballotCount, isLoading, isUnavailable } = useVoteMetrics(assemblyId, vote);
 
   const eligibleCount = vote.eligibleCountAtOpen;
   const participation =
-    eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
+    !isUnavailable && eligibleCount && eligibleCount > 0 ? Math.round((100 * ballotCount) / eligibleCount) : null;
   const abstention = participation !== null ? 100 - participation : null;
 
   const quorumPct = (vote as any).quorumPct ?? 0;
-  const isValid = participation !== null ? participation >= quorumPct : null;
+  const isValid = isUnavailable ? null : quorumReached(ballotCount, eligibleCount, quorumPct);
 
   const stateBadgeClass =
     {
@@ -242,7 +206,7 @@ function VoteRow({
     : (vote as any).openedBy || '—';
 
   const winnerId = vote.state === 'locked' ? (vote as any).results?.winnerId : null;
-  const winnerProject = winnerId ? projectsById.get(String(winnerId)) : null;
+  const winnerProject = winnerId ? projectsForVote(vote, Array.from(projectsById.values())).find(p => p.id === winnerId) : null;
   const winnerDisplay = winnerProject
     ? (winnerProject.title ??
         (winnerProject as any).name ??
@@ -256,6 +220,7 @@ function VoteRow({
         <div className="flex items-center gap-3">
           <Badge className={stateBadgeClass}>{vote.state}</Badge>
           <h3 className="text-xl font-bold">{(vote as any).question}</h3>
+          {vote.state === 'locked' && <p>{decisionLabel(vote.results)} {vote.results?.tiedWinnerIds?.join(', ')}</p>}
         </div>
 
         <div className="grid grid-cols-2 md:grid-cols-6 gap-x-6 gap-y-3 text-sm pr-8">
@@ -267,7 +232,7 @@ function VoteRow({
           <div className="space-y-1">
             <p className="text-[10px] uppercase font-bold text-muted-foreground">Bulletins</p>
             <p className="font-bold text-lg">
-              {isLoading ? '...' : eligibleCount ? `${ballotCount} / ${eligibleCount}` : ballotCount}
+              {isUnavailable ? 'Indisponible' : isLoading ? '...' : eligibleCount ? `${ballotCount} / ${eligibleCount}` : ballotCount}
             </p>
           </div>
 
@@ -287,12 +252,12 @@ function VoteRow({
           </div>
 
           <div className="space-y-1">
-            <p className="text-[10px] uppercase font-bold text-muted-foreground">Validité</p>
+            <p className="text-[10px] uppercase font-bold text-muted-foreground">Quorum</p>
             <p className="font-bold text-lg">
               {isValid === null ? '—' : isValid ? (
-                <span className="text-green-700">Valide</span>
+                <span className="text-green-700">Atteint</span>
               ) : (
-                <span className="text-red-700">Invalide</span>
+                <span className="text-red-700">Non atteint</span>
               )}
             </p>
           </div>
@@ -406,7 +371,7 @@ function AdminContent() {
         if (filterState !== 'all' && vote.state !== filterState) return false;
         if (!q) return true;
 
-        const winnerProject = (vote as any).results?.winnerId ? projectsById.get((vote as any).results.winnerId) : null;
+        const winnerProject = projectsForVote(vote, Array.from(projectsById.values())).find(p => p.id === vote.results?.winnerId);
         const winnerTitle = winnerProject?.title ?? '';
 
         const searchCorpus = [
@@ -473,7 +438,7 @@ function AdminContent() {
       toast({
         variant: 'destructive',
         title: 'Erreur',
-        description: "Impossible d'ouvrir le vote.",
+        description: e instanceof Error ? e.message : "Impossible d'ouvrir le vote.",
       });
     } finally {
       setIsProcessing(null);
@@ -527,7 +492,7 @@ function AdminContent() {
         return;
       }
 
-      toast({ title: 'Résultats publiés', description: 'Le vainqueur a été déterminé.' });
+      toast({ title: 'Résultats publiés', description: decisionLabel(data.results) });
     } catch (e) {
       console.error(e);
       toast({ variant: 'destructive', title: 'Erreur', description: 'Échec du dépouillement.' });
@@ -538,6 +503,7 @@ function AdminContent() {
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700">
+      <p className="text-sm text-muted-foreground">La publication clôture le scrutin. Règles v1 : aucune décision sans quorum ou sans bulletin, aucun vainqueur unique en cas d’égalité. Les scrutins historiques conservent leurs règles antérieures.</p>
       <div className="flex justify-between items-end">
         <div className="space-y-2">
           <span className="text-[10px] uppercase tracking-[0.3em] font-bold text-muted-foreground block">
@@ -639,16 +605,17 @@ function AdminContent() {
               return dbb - da;
             })
             .map((v) => {
+              const archiveProjects = new Map(projectsForVote(v, projects ?? []).map(p => [p.id, p]));
               const totalBallots = ((v as any).results as any)?.total ?? ((v as any).results as any)?.totalBallots ?? 0;
               const eligible = (v as any).eligibleCountAtOpen ?? null;
               const participationPct =
                 eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
               const quorumPct = (v as any).quorumPct ?? 0;
-              const isValid = participationPct !== null ? participationPct >= quorumPct : null;
+              const isValid = quorumReached(totalBallots, eligible, quorumPct);
 
               const winnerTitle =
-                projectsById.get((v as any).results?.winnerId ?? '')?.title ||
+                archiveProjects.get((v as any).results?.winnerId ?? '')?.title ||
                 ((v as any).results?.winnerId ? String((v as any).results?.winnerId) : '—');
 
               const computedAtFormatted =
@@ -668,6 +635,7 @@ function AdminContent() {
                     <div className="space-y-2">
                       <Badge className="bg-black text-white rounded-none uppercase text-[9px]">Scrutin clôturé</Badge>
                       <h3 className="text-2xl font-bold leading-tight">{(v as any).question}</h3>
+                      <p>{decisionLabel(v.results)} {v.results?.tiedWinnerIds?.join(', ')}</p>
 
                       <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[10px] uppercase font-bold tracking-widest text-muted-foreground pt-2">
                         <span>PV : {computedAtFormatted}</span>
@@ -676,13 +644,13 @@ function AdminContent() {
                         <span>Participation : {participationPct !== null ? `${participationPct}%` : '—'}</span>
                         <span>Quorum : {quorumPct}%</span>
                         <span>
-                          Validité :{' '}
+                          Quorum :{' '}
                           {isValid === null ? (
                             '—'
                           ) : isValid ? (
-                            <span className="text-green-700">Valide</span>
+                            <span className="text-green-700">Atteint</span>
                           ) : (
-                            <span className="text-red-700">Invalide</span>
+                            <span className="text-red-700">Non atteint</span>
                           )}
                         </span>
                       </div>
@@ -719,9 +687,9 @@ function AdminContent() {
                           >
                             <span className="font-bold flex items-center gap-3">
                               <span className="w-6 h-6 flex items-center justify-center bg-secondary text-[10px] font-black">
-                                {idx + 1}
+                                {r.rank ?? idx + 1}
                               </span>
-                              {projectsById.get(r.id)?.title ?? r.id}
+                              {archiveProjects.get(r.id)?.title ?? r.id}
                             </span>
                             <span className="text-muted-foreground font-mono text-xs">{r.score ?? r.rank ?? '—'}</span>
                           </div>

@@ -1,3 +1,4 @@
+import type { ProposalSnapshot } from '@/lib/vote-projects';
 export type MemberStatus = 'active' | 'pending' | 'blocked' | 'revoked';
 export type Role = 'admin' | 'member';
 
@@ -36,7 +37,8 @@ export interface Project {
   imageUrl?: string;
   ownerName?: string;
   ownerBio?: string;
-  links?: { label: string; url: string }[];
+  links?: { label: string; url: string; download?: string }[];
+  contentFrozen?: boolean;
 
   status: 'draft' | 'submitted' | 'approved' | 'elected' | 'rejected' | 'candidate';
 
@@ -89,6 +91,13 @@ export interface Vote {
 
   opensAt?: any;
   closesAt?: any;
+  deadlineEnforced?: boolean;
+  eligibilityPolicy?: 'snapshot-active-v1';
+  rulesVersion?: 1;
+  counterVersion?: number;
+  proposalSnapshotVersion?: 1;
+  proposalSnapshots?: ProposalSnapshot[];
+  proposalContentHash?: string;
 
   createdAt?: any;
   createdBy?: string;
@@ -112,7 +121,7 @@ export interface Vote {
   openedBy?: string;
 
   /**
-   * Quorum minimum en % (0-100) pour considérer le vote comme valide.
+   * Seuil en % (0-100) : en v1, condition d'adoption, sans blocage de la clôture.
    * - Si absent => traité comme 0 (compat votes historiques)
    * - Calcul basé sur eligibleCountAtOpen (figé à l'ouverture)
    */
@@ -122,7 +131,15 @@ export interface Vote {
     /**
      * ID du projet gagnant
      */
-    winnerId: string;
+    winnerId: string | null;
+    outcome?: 'counted' | 'no-ballots';
+    rulesVersion?: 1;
+    decisionStatus?: 'adopted' | 'quorum-not-met' | 'no-ballots' | 'tie';
+    adopted?: boolean;
+    tiedWinnerIds?: string[];
+    eligibleCount?: number;
+    quorumPct?: number;
+    proposalContentHash?: string;
 
     /**
      * Classement complet des projets
@@ -131,6 +148,7 @@ export interface Vote {
       id: string;
       rank: number;
       score?: number;
+      title?: string;
     }[];
 
     computedAt: any;

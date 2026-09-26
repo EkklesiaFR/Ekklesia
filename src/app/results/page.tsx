@@ -1,5 +1,7 @@
 'use client';
 
+import { decisionLabel } from '@/lib/vote-decision';
+import { projectsForVote, HISTORICAL_PROPOSALS_NOTICE } from '@/lib/vote-projects';
 import { useState, useMemo } from 'react';
 import Link from 'next/link';
 
@@ -101,11 +103,6 @@ function ResultsContent() {
   const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(200)), [db]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
-  const projectsById = useMemo(
-    () => new Map((projects ?? []).map((p) => [p.id, p])),
-    [projects]
-  );
-
   const sortedVotes = useMemo(() => {
     const list = votes ?? [];
     return [...list].sort((a, b) => {
@@ -138,7 +135,7 @@ function ResultsContent() {
   const lastWinnerLabel =
     lastResult?.winnerLabel ??
     (latestVote?.results?.winnerId
-      ? projectsById.get(String(latestVote.results.winnerId))?.title ??
+      ? projectsForVote(latestVote, projects ?? []).find(p => p.id === latestVote.results?.winnerId)?.title ??
         String(latestVote.results.winnerId)
       : null);
   const lastVoteTitle = lastResult?.voteTitle ?? latestVote?.question ?? null;
@@ -197,7 +194,7 @@ function ResultsContent() {
 
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                  Vainqueur
+                  Résultat du scrutin
                 </p>
                 <p className="text-base font-semibold text-foreground">
                   {lastWinnerLabel ?? '—'}
@@ -225,6 +222,7 @@ function ResultsContent() {
       {sortedVotes.length > 0 ? (
         <div className="space-y-4">
           {sortedVotes.map((vote) => {
+            const voteProjects = new Map(projectsForVote(vote, projects ?? []).map(p => [p.id, p]));
             const isSelected = selectedVoteId === vote.id;
 
             const totalBallots =
@@ -234,7 +232,7 @@ function ResultsContent() {
               eligible && eligible > 0 ? Math.round((100 * totalBallots) / eligible) : null;
 
             const winnerId = vote.results?.winnerId ?? null;
-            const winner = winnerId ? projectsById.get(String(winnerId)) : null;
+            const winner = winnerId ? voteProjects.get(String(winnerId)) : null;
 
             const computedAtFormatted = formatFr((vote.results as any)?.computedAt);
             const lockedAtFormatted = formatFr((vote as any)?.lockedAt);
@@ -278,6 +276,7 @@ function ResultsContent() {
                       <div className="space-y-2">
                         <h3 className="text-2xl font-bold leading-tight tracking-tight text-foreground">
                           {vote.question}
+                          <span className="block text-sm">{decisionLabel(vote.results)} {vote.results?.tiedWinnerIds?.join(', ')}</span>
                         </h3>
 
                         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-medium text-muted-foreground">
@@ -296,11 +295,11 @@ function ResultsContent() {
                     <div className="flex items-center justify-between gap-6 md:justify-end">
                       <div className="text-right">
                         <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                          Vainqueur
+                          Résultat du scrutin
                         </p>
                         <p className="inline-flex items-center gap-2 text-sm font-semibold text-primary">
                           <Trophy className="h-4 w-4" />
-                          {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                          {winner?.title ?? (winnerId ? String(winnerId) : decisionLabel(vote.results))}
                         </p>
                       </div>
 
@@ -316,6 +315,7 @@ function ResultsContent() {
 
                 {isSelected && vote.results && (
                   <div className="border-t border-white/40 px-6 pb-8 pt-6 md:px-8">
+                    {!vote.proposalSnapshotVersion && <p className="text-sm">{HISTORICAL_PROPOSALS_NOTICE}</p>}
                     <div className="space-y-8">
                       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                         <div className="rounded-[24px] border border-white/60 bg-white/40 p-5 backdrop-blur-sm">
@@ -341,7 +341,7 @@ function ResultsContent() {
                             Résultat
                           </p>
                           <p className="mt-2 text-lg font-semibold leading-tight text-primary">
-                            {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                            {winner?.title ?? (winnerId ? String(winnerId) : decisionLabel(vote.results))}
                           </p>
                         </div>
                       </div>
@@ -430,12 +430,12 @@ function ResultsContent() {
                                       : 'bg-secondary text-muted-foreground'
                                   )}
                                 >
-                                  #{idx + 1}
+                                  #{r.rank ?? idx + 1}
                                 </div>
 
                                 <div className="min-w-0">
                                   <p className="truncate text-sm font-semibold text-foreground">
-                                    {projectsById.get(r.id)?.title ?? r.id}
+                                    {voteProjects.get(r.id)?.title ?? r.id}
                                   </p>
                                   <p className="truncate font-mono text-[11px] text-muted-foreground">
                                     {r.id}

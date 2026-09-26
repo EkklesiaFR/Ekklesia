@@ -42,6 +42,13 @@ function runningOnGoogleInfra() {
 export function getAdminApp() {
   if (admin.apps.length) return admin.app();
 
+  if (process.env.FIRESTORE_EMULATOR_HOST) {
+    if (process.env.FIREBASE_PROJECT_ID !== 'demo-ekklesia-test' || !process.env.FIREBASE_AUTH_EMULATOR_HOST) {
+      throw new Error('Local tests require the demo project and both emulators');
+    }
+    return admin.initializeApp({ projectId: 'demo-ekklesia-test' });
+  }
+
   // Option A: JSON complet (si tu veux le mettre dans un Secret)
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (serviceAccountJson) {

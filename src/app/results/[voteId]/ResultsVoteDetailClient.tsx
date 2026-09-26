@@ -1,5 +1,9 @@
 'use client';
 
+import { decisionLabel } from '@/lib/vote-decision';
+import { projectsForVote, HISTORICAL_PROPOSALS_NOTICE } from '@/lib/vote-projects';
+import { ProposalDetails } from '@/components/voting/ProposalDetails';
+import { quorumReached } from '@/lib/quorum';
 import { useMemo } from 'react';
 import Link from 'next/link';
 
@@ -138,12 +142,12 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
   );
   const { data: vote, isLoading: isVoteLoading } = useDoc<Vote>(voteRef);
 
-  const projectsQuery = useMemoFirebase(() => query(collection(db, 'projects'), limit(300)), [db]);
+  const projectsQuery = useMemoFirebase(() => vote?.proposalSnapshotVersion ? null : query(collection(db, 'projects'), limit(300)), [db, vote?.proposalSnapshotVersion]);
   const { data: projects } = useCollection<Project>(projectsQuery);
 
   const projectsById = useMemo(
-    () => new Map((projects ?? []).map((p) => [p.id, p])),
-    [projects]
+    () => new Map(projectsForVote(vote, projects ?? []).map((p) => [p.id, p])),
+    [vote, projects]
   );
 
   if (isVoteLoading) {
@@ -188,9 +192,9 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
   const quorumPct = Number((vote as any).quorumPct ?? 0) || 0;
 
   const isValid =
-    quorumPct <= 0 ? true : participationPct !== null ? participationPct >= quorumPct : false;
+    quorumReached(totalBallots, eligible, quorumPct);
 
-  const validityLabel = isValid ? 'Valide' : 'Invalide';
+  const validityLabel = isValid === null ? 'Indéterminé' : isValid ? 'Quorum atteint' : 'Quorum non atteint';
 
   const computedAtFormatted = formatFr((vote.results as any)?.computedAt);
   const lockedAtFormatted = formatFr((vote as any)?.lockedAt);
@@ -204,7 +208,7 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
   const isSealed = !!resultsHash;
 
   const ranking = (vote.results as any)?.fullRanking ?? [];
-  const canDownloadPdf = !!winnerId && Array.isArray(ranking) && ranking.length > 0;
+  const canDownloadPdf = vote.state === 'locked' && (!!winnerId || vote.results?.rulesVersion === 1);
 
   const onDownloadPdf = () => {
     window.open(`/api/pv/${DEFAULT_ASSEMBLY_ID}/${voteId}/pdf`, '_blank');
@@ -266,10 +270,13 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
 
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-medium text-muted-foreground">
           <span>Quorum : {quorumPct}%</span>
-          <span>Validité : {validityLabel}</span>
+          <span>Quorum : {validityLabel}</span>
         </div>
       </header>
 
+      <p role="status">{decisionLabel(vote.results)} {vote.results?.tiedWinnerIds?.map(id => projectsById.get(id)?.title ?? id).join(', ')}</p>
+      <p className="text-sm text-muted-foreground">{vote.proposalSnapshotVersion === 1 ? 'Contenu des propositions figé à l’ouverture.' : HISTORICAL_PROPOSALS_NOTICE}</p>
+      <ProposalDetails projects={Array.from(projectsById.values())} />
       <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <StatCard
           label="Bulletins"
@@ -291,7 +298,7 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
         <StatCard label="Quorum" value={`${quorumPct}%`} sub="seuil requis" />
 
         <StatCard
-          label="Validité"
+          label="Quorum atteint"
           value={<span className={cn(isValid ? 'text-primary' : 'text-destructive')}>{validityLabel}</span>}
           sub={quorumPct > 0 ? `seuil ${quorumPct}%` : 'aucun seuil'}
           tone={isValid ? 'good' : 'bad'}
@@ -308,7 +315,7 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="min-w-0 space-y-4">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Vainqueur
+              Résultat du scrutin
             </p>
 
             <div className="flex items-center gap-4">
@@ -325,7 +332,7 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
 
               <div className="min-w-0">
                 <h2 className="truncate text-2xl font-bold tracking-tight text-foreground md:text-3xl">
-                  {winner?.title ?? (winnerId ? String(winnerId) : '—')}
+                  {winner?.title ?? (winnerId ? String(winnerId) : decisionLabel(vote.results))}
                 </h2>
                 <p className="break-all font-mono text-xs text-muted-foreground">
                   {winnerId ?? '—'}
@@ -430,7 +437,7 @@ function ResultsDetailContent({ voteId }: { voteId: string }) {
                         : 'bg-secondary text-muted-foreground'
                     )}
                   >
-                    #{idx + 1}
+                    #{r.rank ?? idx + 1}
                   </div>
 
                   <div className="min-w-0">

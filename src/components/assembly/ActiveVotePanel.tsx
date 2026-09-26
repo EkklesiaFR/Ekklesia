@@ -17,14 +17,14 @@ interface ActiveVotePanelProps {
   vote: Vote;
 }
 
-const QUORUM_TARGET_PERCENT = 60;
+
 
 function clamp(n: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
 export function ActiveVotePanel({ assembly, vote }: ActiveVotePanelProps) {
-  const { count: ballotCount, isLoading } = useVoteBallotCount({
+  const { count: ballotCount, isLoading, isUnavailable } = useVoteBallotCount({
     assemblyId: assembly.id,
     voteId: vote.id,
     status: vote.state,
@@ -53,7 +53,8 @@ export function ActiveVotePanel({ assembly, vote }: ActiveVotePanelProps) {
     ? clamp(Math.round((100 * ballotCount) / eligibleCount!), 0, 100)
     : 0;
 
-  const quorumReached = hasEligible ? participationPercent >= QUORUM_TARGET_PERCENT : false;
+  const quorumTarget = vote.quorumPct ?? 0;
+  const quorumReached = hasEligible ? 100 * ballotCount >= quorumTarget * eligibleCount! : false;
 
   const isManualClose = closesAt == null;
 
@@ -95,10 +96,10 @@ export function ActiveVotePanel({ assembly, vote }: ActiveVotePanelProps) {
         <div className="space-y-3 pt-2">
           <div className="flex items-end gap-3">
             <p className="text-4xl md:text-5xl font-bold leading-none">
-              {participationPercent}%
+              {isUnavailable ? '—' : participationPercent + '%'}
             </p>
 
-            {hasEligible && (
+            {hasEligible && !isUnavailable && (
               <span className="pb-1 text-sm text-muted-foreground">
                 {ballotCount} / {eligibleCount}
               </span>
@@ -109,7 +110,7 @@ export function ActiveVotePanel({ assembly, vote }: ActiveVotePanelProps) {
         </div>
 
         {/* QUORUM STATUS */}
-        {!isLoading && hasEligible && (
+        {!isLoading && !isUnavailable && hasEligible && (
           <div
             className={cn(
               'text-sm font-medium',
@@ -124,7 +125,7 @@ export function ActiveVotePanel({ assembly, vote }: ActiveVotePanelProps) {
             ) : (
               <span className="flex items-center gap-2">
                 <XCircle className="h-4 w-4" />
-                Quorum non atteint ({QUORUM_TARGET_PERCENT}% requis)
+                Quorum non atteint ({quorumTarget}% requis)
               </span>
             )}
           </div>

@@ -1,5 +1,7 @@
 /// <reference types="node" />
 
+import { decisionForSeal, decisionLabel } from '@/lib/vote-decision';
+import { quorumReached } from '@/lib/quorum';
 import { NextResponse } from 'next/server';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -281,10 +283,12 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
     const voteData = snap.data();
     if (!voteData) return NextResponse.json({ error: 'Vote data empty', assemblyId, voteId }, { status: 404 });
 
+    if (voteData.state !== 'locked') return NextResponse.json({ error: 'Vote not finalized' }, { status: 409 });
+
     const meta = extractPVMeta(voteId, voteData);
     const sealPayload = buildSealPayload(voteId, voteData);
 
-    if (!sealPayload.winnerId || sealPayload.ranking.length === 0) {
+    if ((!sealPayload.winnerId || sealPayload.ranking.length === 0) && voteData.results?.rulesVersion !== 1) {
       return NextResponse.json(
         {
           error: 'Vote has no finalized results for PDF',
@@ -304,6 +308,8 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
       participationPct: sealPayload.participationPct,
       winnerId: sealPayload.winnerId,
       ranking: sealPayload.ranking,
+      decision: voteData.results?.rulesVersion === 1 ? decisionForSeal(voteData.results) : undefined,
+      proposalContentHash: voteData.results?.proposalContentHash,
     });
 
     const [{ default: PDFDocument }, qrcodeMod] = await Promise.all([import('pdfkit'), import('qrcode')]);
@@ -381,9 +387,9 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
     const quorumTxt = `${meta.quorumPct}%`;
 
     const isValid =
-      sealPayload.participationPct != null ? sealPayload.participationPct >= meta.quorumPct : null;
+      quorumReached(sealPayload.ballotsCount, sealPayload.eligible, meta.quorumPct);
 
-    const validity = isValid == null ? '—' : isValid ? 'VALIDE (quorum atteint)' : 'INVALIDE (quorum non atteint)';
+    const validity = isValid == null ? '—' : isValid ? 'QUORUM ATTEINT' : 'QUORUM NON ATTEINT';
 
     const boxY = doc.y;
     const boxH = 92;
@@ -419,15 +425,24 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
     doc.y = boxY + boxH + 6;
 
     drawSectionTitle(doc, 'Résultat');
-    doc.font('FigtreeBold').fontSize(14).fillColor('#111827').text('Projet vainqueur');
+    doc.font('FigtreeBold').fontSize(14).fillColor('#111827').text(decisionLabel(voteData.results));
     doc.moveDown(0.3);
     doc.font('Figtree').fontSize(10).fillColor('#111827');
-    doc.text(`${sealPayload.winnerId}`);
+    if (sealPayload.winnerId) doc.text(sealPayload.winnerId);
+    if (voteData.results?.tiedWinnerIds?.length) doc.text('Ex æquo : ' + voteData.results.tiedWinnerIds.join(', '));
     doc.moveDown(0.6);
 
     drawSectionTitle(doc, 'Intégrité & vérification');
+    if (voteData.results?.proposalContentHash) {
+      doc.font('Figtree').fontSize(9).fillColor('#111827').text('Propositions et médias figés à l’ouverture — empreinte du contenu :');
+      doc.text(voteData.results.proposalContentHash);
+      doc.moveDown(0.4);
+    } else {
+      doc.font('Figtree').fontSize(9).fillColor('#6B7280').text('Archive historique : aucune version du contenu des propositions à l’ouverture n’est disponible.');
+      doc.moveDown(0.4);
+    }
     doc.font('Figtree').fontSize(9).fillColor('#6B7280').text(
-      'Ce document est scellé cryptographiquement. Toute modification invalide le scellé.'
+      'Le scellé authentifie les données de résultat retenues par le serveur, pas le PDF entier ni l’exhaustivité des bulletins. Le quorum est un constat séparé du classement.'
     );
     doc.moveDown(0.6);
 
@@ -481,7 +496,7 @@ export async function GET(_req: Request, { params }: { params: Promise<RoutePara
     doc.moveDown(0.8);
 
     const rankingRows = sealPayload.ranking.map((r, idx) => ({
-      rank: idx + 1,
+      rank: voteData.results?.fullRanking?.[idx]?.rank ?? idx + 1,
       title: (r.title || r.projectId || '').trim() || '(Sans titre)',
       id: r.projectId,
       score: String(r.score),

@@ -1,5 +1,7 @@
 'use client';
 
+import { decisionLabel } from '@/lib/vote-decision';
+import { projectsForVote, type ProposalSource } from '@/lib/vote-projects';
 import Link from 'next/link';
 import Image from 'next/image';
 import { doc, collection } from 'firebase/firestore';
@@ -17,17 +19,19 @@ import { DEFAULT_ASSEMBLY_ID } from '@/config/assembly';
 type PublicLastResult = {
   voteId?: string;
   voteTitle?: string;
-  winnerId?: string;
+  winnerId?: string | null;
   winnerLabel?: string;
+  decisionStatus?: string;
+  tiedWinnerIds?: string[];
   fullRanking?: Array<{ id: string; score?: number }>;
   closedAt?: { seconds?: number } | number | string | null;
   totalBallots?: number | null;
 };
 
-type VoteDoc = {
+type VoteDoc = ProposalSource & {
   ballotCount?: number | null;
   eligibleCountAtOpen?: number | null;
-  results?: { totalBallots?: number | null } | null;
+  results?: { totalBallots?: number | null; total?: number | null } | null;
   lockedAt?: any;
   closedAt?: any;
   updatedAt?: any;
@@ -103,12 +107,12 @@ export function LastVoteResultCard() {
 
   const voteTitle = results.voteTitle || 'Scrutin';
 
-  const winnerProject = projects?.find((p) => p.id === results.winnerId);
+  const winnerProject = projectsForVote(voteDoc, projects ?? []).find((p) => p.id === results.winnerId);
 
   const winnerLabel =
     results.winnerLabel ||
     winnerProject?.title ||
-    'Projet retenu';
+    'Résultat du scrutin';
 
   const winnerImageUrl = winnerProject?.imageUrl;
 
@@ -120,6 +124,8 @@ export function LastVoteResultCard() {
 
   const frozenTotal =
     (typeof results.totalBallots === 'number' ? results.totalBallots : null) ??
+    (typeof (results as any).total === 'number' ? (results as any).total : null) ??
+    (typeof voteDoc?.results?.total === 'number' ? voteDoc.results.total : null) ??
     (typeof voteDoc?.results?.totalBallots === 'number' ? voteDoc.results?.totalBallots : null) ??
     null;
 
@@ -170,16 +176,17 @@ export function LastVoteResultCard() {
           </div>
         ) : (
           <div className="flex h-36 items-end rounded-2xl border border-white/60 bg-gradient-to-br from-primary/10 via-white/40 to-white/20 p-4">
-            <p className="text-sm font-medium text-muted-foreground">Projet retenu</p>
+            <p className="text-sm font-medium text-muted-foreground">Résultat du scrutin</p>
           </div>
         )}
 
         <div className="space-y-2">
           <p className="text-[10px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-            Projet retenu
+            Résultat du scrutin
           </p>
           <p className="text-xl font-bold leading-tight text-foreground md:text-2xl">
             {winnerLabel}
+            {results.decisionStatus && <span className="block text-sm">{decisionLabel(results)} {results.tiedWinnerIds?.join(', ')}</span>}
           </p>
         </div>
 
