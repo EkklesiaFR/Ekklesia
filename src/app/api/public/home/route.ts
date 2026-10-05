@@ -50,7 +50,8 @@ export async function GET() {
     const db = getFirestore(app);
 
     const membersQuery = db.collection('members').where('status', '==', 'active');
-    const projectsQuery = db.collection('projects').orderBy('createdAt', 'desc').limit(5);
+    // Filter before limiting. No chronological ordering: no composite index required.
+    const projectsQuery = db.collection('projects').where('status', '==', 'candidate').limit(5);
 
     const [membersSnap, projectsSnap] = await Promise.all([
       membersQuery.get(),
