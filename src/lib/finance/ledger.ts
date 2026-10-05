@@ -66,6 +66,21 @@ export const ledgerEntrySchema = z.discriminatedUnion('operationType', [
   normalInputSchema.extend(deltaFields).strict(),
   adjustmentInputSchema.extend(deltaFields).strict(),
 ]).superRefine((entry, ctx) => {
+  const requiredReferences = {
+    membership_payment: ['uid', 'paymentId'],
+    extra_support: ['paymentId'],
+    payment_fee: ['paymentId'],
+    refund: ['paymentId'],
+    project_commitment: ['projectId', 'awardId'],
+    project_commitment_release: ['projectId', 'awardId'],
+    project_payout: ['projectId', 'awardId'],
+    manual_adjustment: [],
+  } as const;
+  for (const field of requiredReferences[entry.operationType]) {
+    if (entry[field] === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: `${field} is required for ${entry.operationType}` });
+    }
+  }
   const expected = deltas(entry);
   const issue = (message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, message });
   if (entry.cashDeltaMinor !== expected.cashDeltaMinor || entry.commitmentDeltaMinor !== expected.commitmentDeltaMinor) {

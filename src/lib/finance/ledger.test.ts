@@ -5,7 +5,9 @@ import { timestampFromMillis } from './values';
 const at = timestampFromMillis(Date.parse('2026-10-05T10:00:00Z'));
 function input(operationType: Exclude<LedgerEntryInput['operationType'], 'manual_adjustment'>, amountMinor: number, key = operationType): LedgerEntryInput {
   return { schemaVersion: 1, operationType, currency: 'EUR', amountMinor, periodId: '2026-10',
-    effectiveAt: at, recordedAt: at, sourceType: 'test', sourceId: key, idempotencyKey: key, allocation: 'common_fund', createdBy: 'test-server' };
+    effectiveAt: at, recordedAt: at, sourceType: 'test', sourceId: key, idempotencyKey: key, allocation: 'common_fund', createdBy: 'test-server',
+    ...(operationType.startsWith('project_') ? { projectId: 'project-1', awardId: 'award-1' }
+      : { paymentId: 'payment-1', ...(operationType === 'membership_payment' ? { uid: 'member-1' } : {}) }) };
 }
 function record(operationType: Exclude<LedgerEntryInput['operationType'], 'manual_adjustment'>, amountMinor: number): LedgerRecord {
   return { operationId: operationType, entry: createLedgerEntry(input(operationType, amountMinor)) };
@@ -53,7 +55,29 @@ describe('cash and commitments reconstructed only from ledger records', () => {
       expect(calculateFundBalances([reversal, original])).toEqual({ cashMinor: 0, commitmentMinor: 0, availableMinor: 0 });
       expect(JSON.stringify(original)).toBe(before);
       expect(reversal.entry).toMatchObject({ operationType: 'manual_adjustment', reversalOf: original.operationId });
+      for (const field of ['uid', 'paymentId', 'projectId', 'awardId'] as const) {
+        expect(reversal.entry[field]).toBe(original.entry[field]);
+        expect(() => calculateFundBalances([original, { ...reversal, entry: { ...reversal.entry, [field]: 'forged' } }])).toThrow(/references differ/);
+        if (original.entry[field] !== undefined) {
+          expect(() => calculateFundBalances([original, { ...reversal, entry: { ...reversal.entry, [field]: undefined } }])).toThrow(/references differ/);
+        }
+      }
     });
+
+  it.each([
+    ['membership_payment', 'uid'], ['membership_payment', 'paymentId'],
+    ['extra_support', 'paymentId'], ['payment_fee', 'paymentId'], ['refund', 'paymentId'],
+    ['project_commitment', 'projectId'], ['project_commitment', 'awardId'],
+    ['project_commitment_release', 'projectId'], ['project_commitment_release', 'awardId'],
+    ['project_payout', 'projectId'], ['project_payout', 'awardId'],
+  ] as const)('rejects %s without required reference %s in construction and stored entries', (type, field) => {
+    const validInput = input(type, 100);
+    const validEntry = createLedgerEntry(validInput);
+    for (const value of [undefined, '', ' ']) {
+      expect(() => createLedgerEntry({ ...validInput, [field]: value })).toThrow();
+      expect(ledgerEntrySchema.safeParse({ ...validEntry, [field]: value }).success).toBe(false);
+    }
+  });
 
   it('requires a reason and derives manual adjustment deltas from its target and direction', () => {
     const adjustment: LedgerEntryInput = { ...input('extra_support', 100), operationType: 'manual_adjustment',

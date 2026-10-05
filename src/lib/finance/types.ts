@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import {
   compareTimestamps, documentIdSchema, FUND_TIMEZONE, nonEmptyStringSchema,
-  nonNegativeMinorSchema, parisParts, periodIdSchema, signedMinorSchema, timestampSchema,
+  nonNegativeMinorSchema, parisParts, periodIdSchema, positiveMinorSchema, signedMinorSchema, timestampSchema,
 } from './values';
 
 export const paymentSchema = z.object({
   schemaVersion: z.literal(1),
   uid: documentIdSchema,
   currency: z.literal('EUR'),
-  grossAmountMinor: nonNegativeMinorSchema,
+  grossAmountMinor: positiveMinorSchema,
   membershipAmountMinor: z.union([z.literal(0), z.literal(100)]),
   supportAmountMinor: nonNegativeMinorSchema,
   feeAmountMinor: nonNegativeMinorSchema,
@@ -29,12 +29,16 @@ export const paymentSchema = z.object({
   }
   if (value.refundedAmountMinor > value.grossAmountMinor) issue('Refund exceeds gross');
   if (compareTimestamps(value.updatedAt, value.createdAt) < 0) issue('updatedAt precedes createdAt');
+  if (value.membershipAmountMinor === 0 && (value.membershipPeriodStart !== undefined || value.membershipPeriodEnd !== undefined)) {
+    issue('Support-only payments must not have a membership period');
+  }
   if (!!value.membershipPeriodStart !== !!value.membershipPeriodEnd) issue('Payment period requires both boundaries');
   if (value.membershipPeriodStart && value.membershipPeriodEnd && compareTimestamps(value.membershipPeriodStart, value.membershipPeriodEnd) >= 0) {
     issue('Payment period must have a positive duration');
   }
   const settled = ['confirmed', 'partially_refunded', 'refunded'].includes(value.status);
   if (settled && !value.confirmedAt) issue('Settled payment requires confirmedAt');
+  if (!settled && value.confirmedAt !== undefined) issue('Only settled payments may have confirmedAt');
   if (settled && value.membershipAmountMinor === 100 && !value.membershipPeriodStart) issue('Settled membership payment requires its period');
   if (value.confirmedAt && (compareTimestamps(value.confirmedAt, value.createdAt) < 0 || compareTimestamps(value.confirmedAt, value.updatedAt) > 0)) {
     issue('confirmedAt must be between createdAt and updatedAt');

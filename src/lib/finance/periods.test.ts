@@ -10,7 +10,9 @@ function record(id: string, operationType: Exclude<LedgerEntryInput['operationTy
   const effectiveAt = ts(iso);
   return { operationId: id, entry: createLedgerEntry({ schemaVersion: 1, operationType, currency: 'EUR', amountMinor,
     periodId: periodIdFor(effectiveAt), effectiveAt, recordedAt: calculatedAt, sourceType: 'fixture', sourceId: id,
-    idempotencyKey: id, allocation: 'common_fund', createdBy: 'test-server' }) };
+    idempotencyKey: id, allocation: 'common_fund', createdBy: 'test-server',
+    ...(operationType.startsWith('project_') ? { projectId: 'project-1', awardId: 'award-1' }
+      : { paymentId: 'payment-1', ...(operationType === 'membership_payment' ? { uid: 'member-1' } : {}) }) }) };
 }
 
 it.each([

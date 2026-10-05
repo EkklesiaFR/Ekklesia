@@ -79,6 +79,9 @@ membershipAmountMinor + supportAmountMinor = grossAmountMinor (avant frais)
 ```
 
 Zéro en part cotisation permet un soutien seul ; une cotisation est toujours 100.
+Le brut est strictement positif, même pour un soutien seul. Un paiement sans
+cotisation ne porte aucune borne de période d'adhésion. `confirmedAt` est obligatoire
+pour confirmed/partially_refunded/refunded et interdit pour pending/failed.
 Les frais sont distincts du brut et du remboursement ; leur montant n'est pas
 arbitrairement plafonné au brut. Un paiement confirmed/partially_refunded/refunded
 requiert `confirmedAt` et, pour une cotisation, sa période. Les remboursements
@@ -97,6 +100,15 @@ fournisseur ni une chaîne de hashes du journal. Aucun webhook n'existe dans ce 
 `createLedgerEntry` calcule les deltas ; fournir ses propres deltas à cette fonction
 est refusé. `ledgerEntrySchema` vérifie aussi les deltas d'une entrée déjà construite.
 La cotisation ledger vaut exactement 100 centimes par opération.
+
+Les références métier sont obligatoires et validées à la construction comme à la
+lecture d'une entrée : `membership_payment` exige `uid` et `paymentId` ;
+`extra_support`, `payment_fee` et `refund` exigent `paymentId` ;
+`project_commitment`, `project_commitment_release` et `project_payout` exigent
+`projectId` et `awardId`. Une contre-écriture conserve exactement les références
+de son original, y compris l'absence des références facultatives. Ces validations
+ne prouvent pas l'existence des documents référencés ; ce contrôle reste au service
+transactionnel du Lot 1B.
 
 | Type | Variation cash | Variation engagements |
 | --- | ---: | ---: |
@@ -233,11 +245,12 @@ Le lien entre cotisation et droit de vote est expressément hors de ce lot.
 
 - Lint : réussi, cinq avertissements préexistants dans des fichiers inchangés.
 - TypeScript : réussi.
-- Unitaires : 103 réussis (54 nouveaux), dix fichiers.
+- Unitaires : 123 réussis (74 nouveaux), dix fichiers, incluant les durcissements
+  de revue sur les références métier et les états Payment.
 - Auth/Firestore Emulator : 76 réussis (dix nouveaux), trois fichiers ; suites
   projets et vote existantes incluses, sur demo-ekklesia-test uniquement.
 - Build : réussi ; avertissement préexistant experimental.allowedDevOrigins.
-- Playwright vote existant : réussi, un scénario complet, 2,6 minutes au total.
+- Playwright vote existant : réussi, un scénario complet, 2,5 minutes au total.
 
 La recette navigateur utilise Chromium système 138 et une configuration Fontconfig
 temporaire vers les polices Figtree du dépôt, comme la recette précédente. Les accès

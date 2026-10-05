@@ -29,9 +29,32 @@ describe('independent membership contract', () => {
 });
 
 describe('payments represent economic operations, not webhook envelopes', () => {
+  it('rejects zero gross even when its components sum to zero', () => {
+    expect(paymentSchema.safeParse({ ...payment, grossAmountMinor: 0, membershipAmountMinor: 0,
+      supportAmountMinor: 0, feeAmountMinor: 0, membershipPeriodStart: undefined, membershipPeriodEnd: undefined }).success).toBe(false);
+  });
+  it.each([
+    { membershipPeriodStart: start }, { membershipPeriodEnd: end },
+    { membershipPeriodStart: start, membershipPeriodEnd: end },
+  ])('rejects membership periods on support-only payments: %j', period => {
+    const { membershipPeriodStart, membershipPeriodEnd, ...support } = payment;
+    expect(paymentSchema.safeParse({ ...support, membershipAmountMinor: 0, supportAmountMinor: 600, ...period }).success).toBe(false);
+  });
+  it.each(['pending', 'failed'])('forbids confirmedAt for %s payments', status => {
+    expect(paymentSchema.safeParse({ ...payment, status }).success).toBe(false);
+    const { confirmedAt, ...unconfirmed } = payment;
+    expect(paymentSchema.safeParse({ ...unconfirmed, status }).success).toBe(true);
+  });
+  it.each([
+    ['confirmed', 0], ['partially_refunded', 50], ['refunded', 600],
+  ] as const)('requires confirmedAt for %s payments', (status, refundedAmountMinor) => {
+    expect(paymentSchema.safeParse({ ...payment, status, refundedAmountMinor }).success).toBe(true);
+    expect(paymentSchema.safeParse({ ...payment, status, refundedAmountMinor, confirmedAt: undefined }).success).toBe(false);
+  });
   it('splits membership and support before fees, and permits support-only payments', () => {
     expect(paymentSchema.parse(payment).grossAmountMinor).toBe(600);
-    expect(paymentSchema.parse({ ...payment, membershipAmountMinor: 0, supportAmountMinor: 600 }).membershipAmountMinor).toBe(0);
+    expect(paymentSchema.parse({ ...payment, membershipAmountMinor: 0, supportAmountMinor: 600,
+      membershipPeriodStart: undefined, membershipPeriodEnd: undefined }).membershipAmountMinor).toBe(0);
     expect(paymentSchema.parse({ ...payment, grossAmountMinor: 100, supportAmountMinor: 0 }).supportAmountMinor).toBe(0);
   });
   it.each(['grossAmountMinor', 'membershipAmountMinor', 'supportAmountMinor', 'feeAmountMinor', 'refundedAmountMinor'] as const)
