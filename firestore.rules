@@ -200,14 +200,7 @@ service cloud.firestore {
     // =========================
     match /projects/{projectId} {
       allow get, list: if isMemberActiveRoot();
-      allow create: if isMemberActiveRoot();
-
-      allow update, delete: if isAdminActiveRoot()
-        || (
-          isSignedIn()
-          && request.auth.uid == resource.data.ownerUid
-          && resource.data.status == "submitted"
-        );
+      allow create, update, delete: if isAdminActiveRoot();
     }
 
     // =========================

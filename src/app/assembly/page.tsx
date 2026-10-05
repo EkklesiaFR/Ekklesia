@@ -65,11 +65,7 @@ function AssemblyDashboardContent() {
         </h1>
       </div>
 
-      <CommunityFundCard
-        amount={12650}
-        monthlyDelta={2350}
-        distributionLabel="à répartir en fin de mois"
-      />
+      <CommunityFundCard />
 
       <OnlinePresenceStrip
         onlineCount={onlineCount}

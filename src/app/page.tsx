@@ -134,7 +134,8 @@ export default function Home() {
                 </Link>
 
                 <p className="text-sm text-muted-foreground">
-                  Adhésion à 10€ par mois. Chaque membre dispose d&apos;une voix.
+                  Adhésion à 1 € par mois. Chaque membre dispose d&apos;une voix.
+                  {' '}Le paiement mensuel sera disponible prochainement.
                 </p>
               </div>
             )}
@@ -163,7 +164,7 @@ export default function Home() {
         <section className="space-y-5">
           <div className="space-y-2">
             <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-              Projets en cours de soutien
+              Projets présentés à l&apos;assemblée
             </p>
 
             <h2 className="text-2xl font-bold tracking-tight text-foreground md:text-3xl">
@@ -264,10 +265,11 @@ export default function Home() {
           <GlassCard intensity="soft" className="p-6 md:p-7">
             <div className="space-y-3">
               <h3 className="text-[11px] font-semibold uppercase tracking-[0.22em] text-muted-foreground">
-                10€ / mois
+                1 € / mois
               </h3>
               <p className="text-base leading-relaxed text-foreground">
-                Une adhésion simple pour participer durablement aux décisions collectives.
+                Une adhésion mensuelle pour participer durablement aux décisions collectives.
+                {' '}Le paiement sera disponible prochainement.
               </p>
             </div>
           </GlassCard>
