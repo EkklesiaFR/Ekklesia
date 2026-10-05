@@ -204,6 +204,30 @@ service cloud.firestore {
     }
 
     // =========================
+    // FINANCE — private contracts; trusted server writes only (Admin SDK).
+    // =========================
+    match /memberships/{uid} {
+      allow get: if isSelf(uid);
+      allow list, create, update, delete: if false;
+    }
+
+    match /payments/{paymentId} {
+      allow read, write: if false;
+    }
+
+    match /paymentEvents/{eventId} {
+      allow read, write: if false;
+    }
+
+    match /financialLedger/{operationId} {
+      allow read, write: if false;
+    }
+
+    match /fundPeriods/{periodId} {
+      allow read, write: if false;
+    }
+
+    // =========================
     // DEFAULT DENY
     // =========================
     match /{document=**} {
