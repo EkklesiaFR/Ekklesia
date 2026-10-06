@@ -7,7 +7,7 @@ if (!process.env.FIRESTORE_EMULATOR_HOST || !process.env.FIREBASE_AUTH_EMULATOR_
   throw new Error('Tests require Firestore AND Auth emulators; production access prohibited');
 }
 let env: RulesTestEnvironment;
-const collections = ['memberships', 'payments', 'paymentEvents', 'financialLedger', 'fundPeriods'];
+const collections = ['memberships', 'payments', 'paymentEvents', 'financialLedger', 'fundPeriods', 'financeOperationKeys', 'financeState'];
 beforeAll(async () => {
   const [host, port] = process.env.FIRESTORE_EMULATOR_HOST!.split(':');
   env = await initializeTestEnvironment({ projectId: 'demo-ekklesia-test', firestore: {
