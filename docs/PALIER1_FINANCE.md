@@ -1,9 +1,11 @@
-# Palier 1 — Contrats financiers (Lot 1A)
+# Palier 1 — Contrats financiers et moteur transactionnel (Lots 1A / 1B)
 
 Base : `64c25368eb54ec9f63e66385c5355f3803dbacdf`, après le Lot 0.
 Ce lot définit des contrats validables et des fonctions pures. Il n'active aucun
 paiement, fournisseur, checkout, webhook, écriture Firestore, initialisation de
 cagnotte ou migration. Les collections peuvent rester entièrement vides.
+Le Lot 1B, décrit plus bas, ajoute le service de persistance serveur sans l'activer
+dans un parcours produit.
 
 ## Politique produit
 
@@ -26,6 +28,8 @@ cagnotte ou migration. Les collections peuvent rester entièrement vides.
 | `paymentEvents/{eventId}` | Métadonnées d'une livraison fournisseur future | Non |
 | `financialLedger/{operationId}` | Faits financiers validés, append-oriented | **Oui, exclusivement** |
 | `fundPeriods/{YYYY-MM}` | Projection mensuelle reconstructible du journal | Non, jamais éditable comme autorité |
+| `financeOperationKeys/{keyHash}` | Réservation transactionnelle des clés (Lot 1B) | Non |
+| `financeState/current` | Projection courante et sérialisation des opérations (Lot 1B) | Non |
 
 Un paiement peut être décrit par plusieurs événements et produire plusieurs
 écritures : cotisation, soutien et frais. La projection ne doit additionner ni
@@ -215,6 +219,8 @@ comme une nouvelle recette ; son traitement nécessitera un contrat ultérieur e
 | paymentEvents | aucun accès | aucun accès | futur service |
 | financialLedger | aucun accès | aucun accès | futur service |
 | fundPeriods | aucun accès | aucun accès | futur service |
+| financeOperationKeys | aucun accès | aucun accès | moteur du Lot 1B |
+| financeState | aucun accès | aucun accès | moteur du Lot 1B |
 
 L'accès au membership dépend du chemin du document, jamais du champ uid reçu.
 Un compte pending peut lire sa propre adhésion sans être déjà adhérent.
@@ -260,3 +266,195 @@ aucune configuration produit n'a été modifié pour cette recette.
 Revue du diff : tous les blocs de règles préexistants sont conservés octet pour
 octet. Aucun fichier existant du vote, de l'UI, de l'authentification ou des dépendances
 n'est modifié. Aucune donnée de production lue/écrite et aucun déploiement.
+
+## Lot 1B — Moteur transactionnel serveur
+
+Base : `fcca4a884a3bf06b77d6c8754b8d12534f1a0d92`. Ce lot ajoute uniquement
+un service serveur, sans API, UI, fournisseur, checkout, webhook ni déploiement.
+Il ne touche pas au vote. Les tests utilisent exclusivement les émulateurs du
+projet `demo-ekklesia-test`.
+
+### Organisation et appel
+
+Tous les modules de `src/lib/server/finance/` importent `server-only` :
+
+- `finance-service.ts` : autorisation, commandes, transaction, contrôles métier ;
+- `firestore-values.ts` : conversions explicites entre TimestampValue et Timestamp Admin ;
+- `idempotency.ts` : SHA-256 et sérialisation canonique ;
+- `projections.ts` : mise à jour incrémentale des mois ;
+- `errors.ts` : erreurs métier identifiables par `FinanceError.code`.
+
+`applyFinanceOperation(db, command, actor)` ouvre une transaction Admin SDK.
+`applyFinanceOperations` traite un lot ordonné de commandes, toutes avec des clés
+distinctes et le même acteur. Les deltas sont exclusivement calculés par les
+fonctions du Lot 1A. `createdBy`, `recordedAt` et les deltas fournis par l'appelant
+sont refusés. Le service fournit sa date d'enregistrement.
+
+La transaction lit d'abord l'état, les autorisations, les clés, les références,
+les historiques d'award concernés et les projections ; ensuite seulement elle
+écrit. Aucune requête réseau extérieure ni notification dans son callback.
+Une exception annule aussi la réservation de clé et toutes les projections.
+
+Pour le Lot 2, `prepareFinanceOperations(tx, db, commands, actor)` permet de
+préparer **toutes** les commandes financières dans une transaction déjà ouverte.
+Le résultat contient `results` et `write()` ; la préparation ne fait aucune écriture.
+Le futur orchestrateur pourra effectuer ses autres lectures, puis écrire Payment
+et appeler `write()` dans la même transaction. Il doit appeler la préparation une
+seule fois par transaction, avec l'ensemble des commandes financières, et ne jamais
+écrire avant d'avoir terminé ses lectures. `write()` n'est utilisable qu'une fois.
+Aucune transaction imbriquée n'est nécessaire. Les résultats ne deviennent définitifs
+qu'après le succès de la transaction extérieure.
+
+### Acteur et références
+
+`FinanceActor` représente une capacité construite par du code serveur fiable,
+jamais un objet accepté tel quel depuis un client :
+
+- `system` avec un nom de service non vide : cotisation, soutien, frais, remboursement ;
+- `admin` avec un UID : engagement, libération, versement, ajustement et reversal.
+
+Pour un admin, `members/{uid}` est relu dans chaque transaction, même sur replay :
+seuls `role: admin` et `status: active` autorisent l'opération. Le service déduit
+l'auteur (`system:{service}` ou `admin:{uid}`) ; une assertion `isAdmin` est refusée.
+L'authentification du futur orchestrateur, le traitement fournisseur et la légitimité
+d'une commande système ne sont pas inventés dans ce lot.
+
+Si un Payment référencé existe, son contrat et ses Timestamp sont validés ; un UID
+porté par l'entrée doit correspondre au Payment. L'absence de Payment reste permise,
+comme demandé pour ce socle. Le service ne prétend pas confirmer un encaissement,
+ni imposer encore les plafonds cumulés des composantes/remboursements d'un Payment.
+Le futur orchestrateur devra valider le nouveau Payment et ses commandes ensemble,
+y compris lorsqu'il crée le Payment dans la transaction extérieure.
+
+### Réservation et retries
+
+`financeOperationKeys/{SHA256(idempotencyKey)}` contient :
+`schemaVersion`, `idempotencyKey`, `requestHash`, `operationId`, `createdAt`.
+L'ID ledger est déterministe : `finance_{SHA256(idempotencyKey)}`.
+Les clés peuvent contenir des caractères impropres à un ID Firestore ; aucun
+remplacement de caractères ni troncature ne crée d'alias.
+
+La commande est d'abord validée/normalisée par les contrats. Son hash canonique
+inclut l'auteur dérivé, les références, le montant, le type, la date effective et
+les métadonnées de source/motif ; il exclut `recordedAt`, généré à chaque tentative.
+Les clés d'objet sont triées et les nanosecondes font partie de la représentation.
+
+- Clé absente : création de la clé **et** du ledger, mise à jour de l'état et des mois
+  dans une seule transaction. Le ledger utilise uniquement `tx.create`.
+- Même clé/même hash : retour du même ID et de l'entrée persistée, `replayed: true` ;
+  aucun nouvel effet et aucune mise à jour des dates de projection.
+- Même clé/autre hash : `IDEMPOTENCY_CONFLICT`, aucune écriture.
+- Clé ou ID déjà incohérent avec le ledger : `RECONSTRUCTION_REQUIRED` ; aucun overwrite.
+
+Une réponse perdue après commit se traite par le même replay, sans nouvelle entrée.
+Le SDK peut réexécuter le callback sous contention (jusqu'à dix tentatives dans le
+wrapper) ; le même ID est utilisé. Une contention qui épuise les retries reste une
+erreur technique à renvoyer, et la commande peut être soumise à nouveau avec sa clé.
+SHA-256 offre une résistance pratique aux collisions, pas une preuve mathématique
+d'absence de collision ; la clé originale est vérifiée dans le document réservé.
+
+### État courant et concurrence
+
+`financeState/current` est une projection privée : `schemaVersion`, `currency`,
+`cashMinor`, `commitmentMinor`, `availableMinor`, `updatedAt`, `lastOperationId`.
+Toujours `availableMinor = cashMinor - commitmentMinor`, avec calculs intermédiaires
+bigint et refus des dépassements d'entiers sûrs. **Le ledger reste l'autorité.**
+
+Chaque nouvelle opération lit et écrit le même document d'état dans sa transaction.
+Cela sérialise les vérifications de financement, y compris la première opération :
+deux engagements simultanés de 700 pour 1 000 disponibles ne peuvent réussir ensemble.
+Un état absent ne peut être initialisé à zéro que si le ledger et les projections
+mensuelles sont réellement vides. Sinon : `RECONSTRUCTION_REQUIRED`.
+
+Les engagements exigent le disponible ; les libérations et versements ne peuvent
+excéder l'encours de l'award. Un versement exige aussi la trésorerie et diminue cash
+et engagements du même montant : le disponible réservé reste inchangé.
+Une opération projet normale est refusée si son état résultant reste négatif.
+Les débits système et corrections exceptionnelles peuvent exposer un déficit,
+conformément aux calculs du Lot 1A ; ce déficit n'est jamais masqué.
+
+L'encours d'un award est obtenu par une requête sur **son** historique ledger,
+incluant les contre-écritures et les corrections portant cet award : somme des
+`commitmentDeltaMinor`, donc engagements moins libérations et versements.
+Un award reste lié au même projet, même lorsque son encours est revenu à zéro.
+Une correction portant un award doit porter aussi son projet et ne peut rendre
+son encours négatif. Aucun `projectAwards` n'est créé : l'existence du futur Award
+métier sera validée au Lot 5.
+
+### Mois et opérations rétroactives
+
+Le service lit les mois matérialisés, valide leurs contrats et leurs enchaînements,
+puis les rapproche de l'état courant. Il ne reconstruit pas tout le ledger à chaque
+paiement. Lors de la création d'un mois, la clôture du mois précédent le plus récent
+sert d'ouverture ; à défaut, zéro. Une requête bornée d'existence vérifie qu'aucun fait
+antérieur non projeté ne se cache dans l'intervalle manquant. Aucun montant simulé de
+l'UI n'est utilisé.
+
+Une opération du mois M ajoute ses catégories uniquement à M, puis ses deltas aux
+soldes d'ouverture et de clôture des mois ultérieurs déjà matérialisés. Ces derniers
+conservent leurs propres catégories. Un mois intermédiaire encore absent peut être
+créé ultérieurement à partir de la dernière clôture précédente. Toutes ces écritures
+sont atomiques avec le ledger et l'état courant.
+
+Toutes les commandes, y compris les ajustements et reversals, exigent
+`effectiveAt <= recordedAt` (instant serveur de la tentative transactionnelle).
+La comparaison utilise secondes et nanosecondes, avant toute préparation
+économique : une date strictement future, même de 1 ns, produit `INVALID_COMMAND`
+sans réservation de clé, écriture ledger ni changement d'état ou de période.
+L'égalité avec l'instant serveur est acceptée. Les opérations rétroactives restent
+autorisées ; aucune recette future ne peut être rendue disponible immédiatement.
+
+### Corrections, reconstruction et limites
+
+Un ajustement exige un admin actif, un motif et une source explicites. Une reversal
+utilise une commande dédiée (`operationType: reversal`, `reversalOf` et les métadonnées
+propres à la correction) ; le service relit l'original et utilise `createReversal`.
+Il conserve exactement les références, refuse les chaînes et les doubles reversals,
+et inclut les contre-écritures dans l'encours. Fournir directement `reversalOf` sur
+un ajustement ordinaire est interdit. Aucune entrée existante n'est modifiée/supprimée.
+
+Les conversions créent de vrais Timestamp Admin pour chaque champ de date persisté,
+sans passage par millisecondes. La lecture refuse les simples maps. Firestore natif
+[tronque à la microseconde](https://firebase.google.com/docs/firestore/manage-data/data-types) :
+l’adaptateur conserve les 0 à 999 nanosecondes restantes dans une métadonnée technique
+facultative `timestampRemainders` (par nom de champ). Les champs de date restent de
+vrais Timestamp, jamais des maps seconds/nanoseconds. La lecture valide et retire cette
+métadonnée pour restituer exactement le contrat Lot 1A, préserver les comparaisons et
+garder le hash de replay stable. Les requêtes temporelles Firestore ont la précision
+native microseconde ; les bornes mensuelles, alignées à la seconde, restent exactes.
+
+`RECONSTRUCTION_REQUIRED` bloque les nouvelles écritures en présence d'un état,
+d'une clé ou de projections détectés incohérents. La remise en état doit être une
+opération de maintenance serveur explicite et contrôlée, utilisant `validateLedger`,
+`calculateFundBalances` et `projectFundPeriod` sur l'historique complet. Ce lot ne
+propose pas de réparation automatique ni de migration ; les clés d'idempotence
+ne doivent jamais être supprimées pour contourner un conflit.
+
+Limites : un document d'état commun constitue un point de contention assumé pour
+ce palier ; lecture des mois matérialisés et de l'historique des awards concernés ;
+maximum de 100 commandes par lot et de 450 écritures financières préparées. Une
+opération rétroactive dépassant ce budget échoue avant écriture et exige une stratégie
+de maintenance ultérieure. Les contrôles courants ne garantissent pas qu'un solde
+historique de chaque instant était financé : les opérations rétroactives s'appuient
+sur la disponibilité actuelle. Les projections restent reconstructibles, pas une
+preuve cryptographique du journal. Un opérateur Admin SDK/IAM peut contourner le
+service ; aucun WORM ni audit exhaustif à chaque opération n'est promis.
+
+Les nouvelles collections `financeOperationKeys` et `financeState` refusent toute
+lecture/écriture cliente, navigateur admin compris. Les blocs de règles précédents
+sont conservés. Aucun endpoint public ni commande de reconstruction exposée.
+
+### Recette du Lot 1B
+
+- Lint et typecheck : réussis ; cinq avertissements lint préexistants, aucun nouveau.
+- Unitaires : 132 réussis dans onze fichiers, dont neuf nouveaux tests serveur.
+- Auth/Firestore Emulator : 139 réussis dans quatre fichiers, dont 63 tests du
+  moteur transactionnel ; suites projets/vote existantes conservées.
+- Build : réussi ; avertissement `experimental.allowedDevOrigins` préexistant.
+- Playwright vote existant : un scénario complet réussi (2,6 minutes), sans
+  modification du test, avec Chromium système et Fontconfig temporaire local.
+
+Les tests de concurrence inspectent les écritures avant tout retry explicite.
+Seuls ABORTED et le diagnostic exact de transaction expirée de l'Emulator sont
+rejoués ; le retry d'une commande non finançable doit produire le refus métier,
+pas être accepté comme un simple échec technique.

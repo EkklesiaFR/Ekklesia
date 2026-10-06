@@ -227,6 +227,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    match /financeOperationKeys/{keyHash} {
+      allow read, write: if false;
+    }
+
+    match /financeState/{stateId} {
+      allow read, write: if false;
+    }
+
     // =========================
     // DEFAULT DENY
     // =========================
