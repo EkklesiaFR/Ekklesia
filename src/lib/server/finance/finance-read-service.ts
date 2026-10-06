@@ -1,6 +1,6 @@
 import 'server-only';
 import type { Firestore } from 'firebase-admin/firestore';
-import { validateLedger } from '../../finance/ledger';
+import { calculateFundBalances, validateLedger } from '../../finance/ledger';
 import { compareTimestamps, safeMinor } from '../../finance/values';
 import { publicFinanceSchema, type PublicFinance } from '../../finance/public';
 import { decodeTimestamps } from './firestore-values';
@@ -24,6 +24,11 @@ export async function readPublicFinance(db: Firestore): Promise<PublicFinance> {
       const current = stateSchema.parse(decodeTimestamps(state.data()!, ['updatedAt']));
       const records = validateLedger(ledger.docs.map(doc => ({ operationId: doc.id,
         entry: ledgerEntrySchema.parse(decodeTimestamps(doc.data(), ['effectiveAt', 'recordedAt'])) })));
+      const calculated = calculateFundBalances(records);
+      if (ledger.empty || periods.empty || !records.some(record => record.operationId === current.lastOperationId)
+        || calculated.cashMinor !== current.cashMinor
+        || calculated.commitmentMinor !== current.commitmentMinor
+        || calculated.availableMinor !== current.availableMinor) return { status: 'unavailable' } as const;
       const byId = new Map(records.map(record => [record.operationId, record.entry]));
       let paid = BigInt(0);
       for (const { entry } of records) {

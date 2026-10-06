@@ -29,6 +29,7 @@ test('public empty fund, read-only API and clickable community card', async ({ p
   await expect(page.getByRole('heading', { name: 'Cagnotte commune' })).toBeVisible();
   await expect(page.getByText('Aucun mouvement financier enregistré pour le moment.')).toBeVisible();
   await expect(page.locator('dd')).toHaveCount(4);
+  await expect(page.locator('dt', { hasText: 'Trésorerie actuelle' })).toBeVisible();
   for (const amount of await page.locator('dd').allTextContents()) expect(amount.replace(/\s/g, ' ')).toBe('0,00 €');
 
   await getAuth(app).createUser({ uid: 'finance-browser-member', email: 'finance-browser@example.test', password: 'Local-test-password-123' });

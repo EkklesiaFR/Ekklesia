@@ -23,7 +23,7 @@ export default function CommunityFundPage() {
             <dl className="grid gap-4 sm:grid-cols-2">
               {([
                 ['Disponible pour les projets', data.availableMinor],
-                ['Trésorerie encaissée', data.cashMinor],
+                ['Trésorerie actuelle', data.cashMinor],
                 ['Engagements en cours', data.commitmentMinor],
                 ['Total versé aux projets', data.totalPaidToProjectsMinor],
               ] as const).map(([label, amount]) => (

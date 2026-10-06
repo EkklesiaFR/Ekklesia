@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { createLedgerEntry, createReversal } from '../src/lib/finance/ledger';
+import { projectFundPeriod } from '../src/lib/finance/periods';
 import { encodeTimestamps } from '../src/lib/server/finance/firestore-values';
 import { readPublicFinance } from '../src/lib/server/finance/finance-read-service';
 import { GET } from '../src/app/api/public/finance/route';
@@ -29,6 +30,11 @@ async function seed() {
   for (const [id, entry] of [['support', support], ['commitment', commitment], ['payout', payout]] as const) {
     await db.doc(`financialLedger/${id}`).set(encodeTimestamps(entry, ['effectiveAt', 'recordedAt']));
   }
+  const period = projectFundPeriod([
+    { operationId: 'support', entry: support }, { operationId: 'commitment', entry: commitment },
+    { operationId: 'payout', entry: payout },
+  ], '2026-10', now);
+  await db.doc('fundPeriods/2026-10').set(encodeTimestamps(period, ['startsAt', 'endsAt', 'calculatedAt']));
 }
 async function snapshot() {
   return Promise.all(['financeState', 'financialLedger', 'fundPeriods', 'financeOperationKeys'].map(async name =>
@@ -77,8 +83,40 @@ describe('public financial reads', () => {
     { availableMinor: 501 }, { currency: 'USD' }, { cashMinor: 0.5 }, { schemaVersion: 2 },
     { updatedAt: { seconds: now.seconds, nanoseconds: 0 } },
   ])('refuses an invalid state contract %j', async patch => {
+    await seed();
     await db.doc('financeState/current').set({ ...state, ...patch });
     expect(await readPublicFinance(db)).toEqual({ status: 'unavailable' });
+  });
+  it.each([
+    { cashMinor: 900, availableMinor: 600 },
+    { commitmentMinor: 400, availableMinor: 400 },
+    { lastOperationId: 'nonexistent-operation' },
+  ])('refuses a valid state contract that disagrees with its ledger %j without writing', async patch => {
+    await seed();
+    await db.doc('financeState/current').set({ ...state, ...patch });
+    const before = await snapshot();
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'unavailable' });
+    expect(await snapshot()).toStrictEqual(before);
+  });
+  it('refuses state with an empty ledger even when a period exists, without writing', async () => {
+    await seed();
+    for (const doc of (await db.collection('financialLedger').get()).docs) await doc.ref.delete();
+    const before = await snapshot();
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'unavailable' });
+    expect(await snapshot()).toStrictEqual(before);
+  });
+  it('refuses a reconciled state and ledger without any period, without writing', async () => {
+    await seed();
+    await db.doc('fundPeriods/2026-10').delete();
+    const before = await snapshot();
+    const response = await GET();
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ status: 'unavailable' });
+    expect(await snapshot()).toStrictEqual(before);
   });
   it('subtracts an annulled payout from total paid without disclosing reversal references', async () => {
     await seed();
@@ -94,7 +132,7 @@ describe('public financial reads', () => {
       .toMatchObject({ amountMinor: 200, publicLabel: null });
   });
   it('returns controlled unavailable when ledger validation fails', async () => {
-    await db.doc('financeState/current').set(state);
+    await seed();
     await db.doc('financialLedger/invalid').set({ uid: 'private' });
     const response = await GET();
     expect(response.status).toBe(503);

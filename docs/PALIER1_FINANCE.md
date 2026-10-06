@@ -507,11 +507,20 @@ financières restent inaccessibles directement depuis les clients. Les règles
 Firestore et le moteur de vote ne changent pas.
 
 Limites : cette première lecture parcourt le journal complet pour fournir un
-registre complet et un total versé exact, annulations comprises. Elle n'est pas
-une reconstruction des soldes ni une réparation automatique. Une pagination du
+registre complet, un rapprochement des soldes et un total versé exact, annulations
+comprises. Elle ne reconstruit pas les documents persistés et ne répare pas les
+données automatiquement. Une pagination du
 registre et une projection dédiée du total versé seront nécessaires si le volume
-augmente ; elles devront conserver la cohérence de l'instantané. Aucun contrôle
-exhaustif de rapprochement des soldes avec le journal n'est ajouté à cette route.
+augmente ; elles devront conserver la cohérence de l'instantané. La route vérifie
+l'existence d'une période, sans valider ses montants ni toutes les périodes.
+
+Avant de publier un état actif, la lecture recalcule les trois soldes avec
+`calculateFundBalances` sur le journal validé et exige leur égalité stricte avec
+`financeState/current`. Un journal vide, un `lastOperationId` absent du journal,
+une absence totale de périodes ou un solde divergent entraîne `unavailable`
+(HTTP 503), sans divulguer les chiffres de l'état et sans réparer ni écrire de
+données. « Trésorerie actuelle » désigne le solde après frais, remboursements et
+versements, et non le cumul historique des encaissements.
 
 Aucun paiement réel, checkout, webhook, bouton payer, prestataire ni endpoint
 d'écriture financière n'est ajouté. Toutes les fixtures financières de recette
@@ -522,9 +531,10 @@ sont strictement locales, sur le projet `demo-ekklesia-test` avec les Emulators.
 - Lint et typecheck : réussis ; cinq avertissements lint préexistants.
 - Unitaires : 135 tests réussis dans douze fichiers, dont trois tests du contrat public
   et du format monétaire exact jusqu'à la limite des entiers sûrs.
-- Auth/Firestore Emulator : 150 tests réussis dans cinq fichiers, dont onze nouveaux
+- Auth/Firestore Emulator : 155 tests réussis dans cinq fichiers, dont seize nouveaux
   cas de lecture : base vide, chiffres exacts, cohérence du disponible, historique
-  sans état, contrats invalides, absence de champs privés et annulation d'un versement.
+  sans état, contrats invalides, absence de champs privés, annulation d'un versement,
+  soldes falsifiés, référence d'opération absente, journal vide et périodes absentes.
   Les snapshots économiques restent strictement inchangés après les lectures vérifiées.
 - Build : réussi ; avertissement `experimental.allowedDevOrigins` préexistant.
 - Playwright : trois scénarios réussis, dont la card cliquable et la page vide,
