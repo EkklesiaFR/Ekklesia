@@ -5,7 +5,7 @@ import { createLedgerEntry, createReversal, ledgerEntrySchema, type LedgerEntry,
   type LedgerEntryInput, type LedgerRecord, type ReversalMetadata } from '../../finance/ledger';
 import { fundPeriodBounds } from '../../finance/periods';
 import { fundPeriodSchema, paymentSchema, type FundPeriod } from '../../finance/types';
-import { documentIdSchema, nonEmptyStringSchema, safeMinor, signedMinorSchema, timestampSchema,
+import { compareTimestamps, documentIdSchema, nonEmptyStringSchema, safeMinor, signedMinorSchema, timestampSchema,
 } from '../../finance/values';
 import { FinanceError } from './errors';
 import { decodeTimestamps, encodeTimestamps, fromAdminTimestamp, toAdminTimestamp } from './firestore-values';
@@ -92,6 +92,11 @@ export async function prepareFinanceOperations(
     } catch (error) {
       if (error instanceof FinanceError) throw error;
       throw new FinanceError('INVALID_COMMAND', error instanceof Error ? error.message : 'Invalid command');
+    }
+  }
+  for (const { entry } of prepared) {
+    if (compareTimestamps(entry.effectiveAt, now) > 0) {
+      throw new FinanceError('INVALID_COMMAND', 'effectiveAt must not be later than the server time');
     }
   }
   if (new Set(prepared.map(p => p.entry.idempotencyKey)).size !== prepared.length) {

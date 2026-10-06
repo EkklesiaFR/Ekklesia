@@ -396,6 +396,14 @@ conservent leurs propres catégories. Un mois intermédiaire encore absent peut 
 créé ultérieurement à partir de la dernière clôture précédente. Toutes ces écritures
 sont atomiques avec le ledger et l'état courant.
 
+Toutes les commandes, y compris les ajustements et reversals, exigent
+`effectiveAt <= recordedAt` (instant serveur de la tentative transactionnelle).
+La comparaison utilise secondes et nanosecondes, avant toute préparation
+économique : une date strictement future, même de 1 ns, produit `INVALID_COMMAND`
+sans réservation de clé, écriture ledger ni changement d'état ou de période.
+L'égalité avec l'instant serveur est acceptée. Les opérations rétroactives restent
+autorisées ; aucune recette future ne peut être rendue disponible immédiatement.
+
 ### Corrections, reconstruction et limites
 
 Un ajustement exige un admin actif, un motif et une source explicites. Une reversal
@@ -440,10 +448,10 @@ sont conservés. Aucun endpoint public ni commande de reconstruction exposée.
 
 - Lint et typecheck : réussis ; cinq avertissements lint préexistants, aucun nouveau.
 - Unitaires : 132 réussis dans onze fichiers, dont neuf nouveaux tests serveur.
-- Auth/Firestore Emulator : 127 réussis dans quatre fichiers, dont 51 tests du
+- Auth/Firestore Emulator : 139 réussis dans quatre fichiers, dont 63 tests du
   moteur transactionnel ; suites projets/vote existantes conservées.
 - Build : réussi ; avertissement `experimental.allowedDevOrigins` préexistant.
-- Playwright vote existant : un scénario complet réussi (2,9 minutes), sans
+- Playwright vote existant : un scénario complet réussi (2,6 minutes), sans
   modification du test, avec Chromium système et Fontconfig temporaire local.
 
 Les tests de concurrence inspectent les écritures avant tout retry explicite.

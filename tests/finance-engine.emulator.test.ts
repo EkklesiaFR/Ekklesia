@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { initializeApp, deleteApp } from 'firebase-admin/app';
 import { getFirestore, Timestamp } from 'firebase-admin/firestore';
 import { initializeTestEnvironment, type RulesTestEnvironment } from '@firebase/rules-unit-testing';
 import { calculateFundBalances, ledgerEntrySchema, type LedgerRecord } from '../src/lib/finance/ledger';
 import { projectFundPeriod } from '../src/lib/finance/periods';
+import { periodIdFor } from '../src/lib/finance/values';
 import { applyFinanceOperation, applyFinanceOperations, prepareFinanceOperations, type FinanceActor,
   type FinanceCommand } from '../src/lib/server/finance/finance-service';
 import { decodeTimestamps, encodeTimestamps, toAdminTimestamp } from '../src/lib/server/finance/firestore-values';
@@ -20,6 +21,9 @@ const db = getFirestore(app);
 let env: RulesTestEnvironment;
 const system: FinanceActor = { kind: 'system', service: 'emulator-economic-events' };
 const admin: FinanceActor = { kind: 'admin', uid: 'admin' };
+// Fixed server clock: projection fixtures through December are historical facts.
+// Spy only on Timestamp.now, keeping real timers for SDK transactions/retries.
+const serverNow = new Timestamp(Date.parse('2026-12-06T10:00:00Z') / 1000, 123456000);
 const at = (month = '2026-10') => ({ seconds: Date.parse(`${month}-05T10:00:00Z`) / 1000, nanoseconds: 123456789 });
 function command(operationType: Exclude<FinanceCommand['operationType'], 'reversal'> = 'extra_support',
   amountMinor = 100, key: string = operationType, month = '2026-10'): Exclude<FinanceCommand, { operationType: 'reversal' }> {
@@ -63,10 +67,57 @@ beforeAll(async () => {
   } });
 });
 beforeEach(async () => {
+  vi.spyOn(Timestamp, 'now').mockReturnValue(serverNow);
   await env.clearFirestore();
   await db.doc('members/admin').set({ role: 'admin', status: 'active' });
 });
+afterEach(() => { vi.restoreAllMocks(); });
 afterAll(async () => { await env.cleanup(); await deleteApp(app); });
+
+describe('effective dates cannot make future facts available now', () => {
+  const future = { seconds: serverNow.seconds, nanoseconds: serverNow.nanoseconds + 1 };
+  it.each(['membership_payment', 'extra_support', 'payment_fee', 'refund', 'project_commitment',
+    'project_commitment_release', 'project_payout', 'manual_adjustment'] as const)
+    ('rejects %s at server now + 1ns without changing any economic document', async type => {
+      await apply(command('extra_support', 1000, 'funding'));
+      await apply(command('project_commitment', 700, 'funded-award'), admin);
+      const before = await economicSnapshot();
+      await expect(apply({ ...command(type, 100, 'future', periodIdFor(future)), effectiveAt: future },
+        ['membership_payment', 'extra_support', 'payment_fee', 'refund'].includes(type) ? system : admin))
+        .rejects.toMatchObject({ code: 'INVALID_COMMAND', message: 'effectiveAt must not be later than the server time' });
+      expect(await economicSnapshot()).toStrictEqual(before);
+    });
+  it('rejects a future reversal without changing any economic document', async () => {
+    const original = await apply();
+    const before = await economicSnapshot();
+    await expect(apply({ operationType: 'reversal', reversalOf: original.operationId,
+      effectiveAt: future, periodId: periodIdFor(future), sourceType: 'correction', sourceId: 'future-reversal',
+      idempotencyKey: 'future-reversal', reason: 'Verified correction' }, admin))
+      .rejects.toMatchObject({ code: 'INVALID_COMMAND', message: 'effectiveAt must not be later than the server time' });
+    expect(await economicSnapshot()).toStrictEqual(before);
+  });
+  it('accepts effectiveAt exactly equal to server now, including nanoseconds', async () => {
+    const result = await apply({ ...command('extra_support', 100, 'now', periodIdFor(serverNow)), effectiveAt: serverNow });
+    expect(result.entry.effectiveAt).toEqual(result.entry.recordedAt);
+    expect(result.replayed).toBe(false);
+    await assertReconciled();
+  });
+  it('rejects a future first operation without initializing any economic collection', async () => {
+    const before = await economicSnapshot();
+    await expect(apply({ ...command('extra_support', 100, 'future', periodIdFor(future)), effectiveAt: future }))
+      .rejects.toMatchObject({ code: 'INVALID_COMMAND' });
+    expect(await economicSnapshot()).toStrictEqual(before);
+    for (const documents of Object.values(before)) expect(documents).toStrictEqual([]);
+  });
+  it('rejects a whole batch containing a future fact without applying the valid fact', async () => {
+    await apply();
+    const before = await economicSnapshot();
+    await expect(applyFinanceOperations(db, [command('extra_support', 100, 'valid'),
+      { ...command('extra_support', 100, 'future', periodIdFor(future)), effectiveAt: future }], system))
+      .rejects.toMatchObject({ code: 'INVALID_COMMAND' });
+    expect(await economicSnapshot()).toStrictEqual(before);
+  });
+});
 
 describe('persistent idempotence and create-only ledger', () => {
   it('creates exactly one operation and returns it unchanged for 20 replays / a lost response', async () => {
