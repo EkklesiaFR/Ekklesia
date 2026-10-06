@@ -442,7 +442,7 @@ service ; aucun WORM ni audit exhaustif à chaque opération n'est promis.
 
 Les nouvelles collections `financeOperationKeys` et `financeState` refusent toute
 lecture/écriture cliente, navigateur admin compris. Les blocs de règles précédents
-sont conservés. Aucun endpoint public ni commande de reconstruction exposée.
+sont conservés. Le Lot 1B n'expose aucun endpoint public ni commande de reconstruction.
 
 ### Recette du Lot 1B
 
@@ -458,3 +458,76 @@ Les tests de concurrence inspectent les écritures avant tout retry explicite.
 Seuls ABORTED et le diagnostic exact de transaction expirée de l'Emulator sont
 rejoués ; le retry d'une commande non finançable doit produire le refus métier,
 pas être accepté comme un simple échec technique.
+
+## Lot 1C — Cagnotte et registre publics en lecture
+
+La page officielle de transparence financière est `/cagnotte`. La card
+`CommunityFundCard` affiche le disponible réel et mène à cette page avec
+« Voir le registre → ». Aucun solde simulé n'est utilisé. Pendant le chargement,
+aucun montant n'est affiché ; une indisponibilité ne devient jamais un zéro.
+
+`GET /api/public/finance` appelle exclusivement le service serveur Admin SDK
+`readPublicFinance`. Le module est protégé par `server-only`. Une transaction
+Firestore **read-only** lit un instantané cohérent de `financeState/current`, du
+journal et de l'existence des périodes. Elle n'écrit aucun document et ne réserve
+aucune clé d'idempotence. Le contrat d'état du Lot 1B est partagé sans modifier
+ses validations ni le comportement du moteur transactionnel.
+
+- `empty` : état absent, journal vide **et** périodes vides ; soldes à zéro,
+  total versé à zéro, registre vide. La lecture n'initialise pas la base.
+- `active` : contrat de l'état validé, avec `availableMinor = cashMinor - commitmentMinor` ;
+  les trois soldes retournés sont ceux de la projection serveur réelle.
+- `unavailable` (HTTP 503) : état absent avec un historique, contrat invalide,
+  journal invalide ou erreur d'infrastructure. Aucun montant de remplacement,
+  détail technique ou erreur privée n'est retourné.
+
+La réponse utilise une liste explicite de champs publics. Chaque mouvement
+contient uniquement une date effective UTC, une catégorie publique, le
+`publicLabel` facultatif (sinon `null`) et un montant signé en centimes EUR.
+La date restitue les nanosecondes via l'adaptateur existant. Le tri est décroissant
+par date effective : une opération rétroactive apparaît à sa date économique.
+Les libellés sont rendus comme texte, sans HTML. Un `publicLabel` doit être rédigé
+pour publication par les futurs producteurs serveur ; aucune raison privée de
+correction n'est utilisée comme libellé de remplacement.
+
+Les catégories distinguent cotisation, soutien, frais, remboursement, engagement,
+libération d'engagement, versement, correction et annulation. Les frais,
+remboursements, versements et libérations sont négatifs ; les corrections suivent
+leur direction. Ces montants décrivent les mouvements de leur catégorie et ne
+doivent pas être additionnés pour déduire le disponible (un engagement n'est pas
+un mouvement de trésorerie). Le total versé est la somme des versements projet,
+diminuée de leurs reversals validées ; les corrections génériques ne sont pas
+reclassées arbitrairement en versements.
+
+Aucun `uid`, `paymentId`, `awardId`, `projectId` interne, `idempotencyKey`,
+`sourceId`, `createdBy`, motif privé, identifiant d'opération ou donnée fournisseur
+n'est exposé. L'enrichissement par un projet public reste différé. L'API est
+accessible sans authentification et désactive le cache HTTP ; les collections
+financières restent inaccessibles directement depuis les clients. Les règles
+Firestore et le moteur de vote ne changent pas.
+
+Limites : cette première lecture parcourt le journal complet pour fournir un
+registre complet et un total versé exact, annulations comprises. Elle n'est pas
+une reconstruction des soldes ni une réparation automatique. Une pagination du
+registre et une projection dédiée du total versé seront nécessaires si le volume
+augmente ; elles devront conserver la cohérence de l'instantané. Aucun contrôle
+exhaustif de rapprochement des soldes avec le journal n'est ajouté à cette route.
+
+Aucun paiement réel, checkout, webhook, bouton payer, prestataire ni endpoint
+d'écriture financière n'est ajouté. Toutes les fixtures financières de recette
+sont strictement locales, sur le projet `demo-ekklesia-test` avec les Emulators.
+
+### Recette du Lot 1C
+
+- Lint et typecheck : réussis ; cinq avertissements lint préexistants.
+- Unitaires : 135 tests réussis dans douze fichiers, dont trois tests du contrat public
+  et du format monétaire exact jusqu'à la limite des entiers sûrs.
+- Auth/Firestore Emulator : 150 tests réussis dans cinq fichiers, dont onze nouveaux
+  cas de lecture : base vide, chiffres exacts, cohérence du disponible, historique
+  sans état, contrats invalides, absence de champs privés et annulation d'un versement.
+  Les snapshots économiques restent strictement inchangés après les lectures vérifiées.
+- Build : réussi ; avertissement `experimental.allowedDevOrigins` préexistant.
+- Playwright : trois scénarios réussis, dont la card cliquable et la page vide,
+  l'indisponibilité sans faux zéro, et le parcours vote existant inchangé.
+  La fixture membre du test de card est nettoyée après chaque scénario pour
+  ne pas modifier l'électorat du scénario vote suivant.

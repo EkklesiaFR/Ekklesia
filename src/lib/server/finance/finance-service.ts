@@ -5,8 +5,9 @@ import { createLedgerEntry, createReversal, ledgerEntrySchema, type LedgerEntry,
   type LedgerEntryInput, type LedgerRecord, type ReversalMetadata } from '../../finance/ledger';
 import { fundPeriodBounds } from '../../finance/periods';
 import { fundPeriodSchema, paymentSchema, type FundPeriod } from '../../finance/types';
-import { compareTimestamps, documentIdSchema, nonEmptyStringSchema, safeMinor, signedMinorSchema, timestampSchema,
+import { compareTimestamps, documentIdSchema, nonEmptyStringSchema, safeMinor, timestampSchema,
 } from '../../finance/values';
+import { stateSchema } from './state';
 import { FinanceError } from './errors';
 import { decodeTimestamps, encodeTimestamps, fromAdminTimestamp, toAdminTimestamp } from './firestore-values';
 import { operationIdFor, operationKeyId, requestHash } from './idempotency';
@@ -23,11 +24,6 @@ const actorSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('system'), service: nonEmptyStringSchema }).strict(),
   z.object({ kind: z.literal('admin'), uid: documentIdSchema }).strict(),
 ]);
-const stateSchema = z.object({
-  schemaVersion: z.literal(1), currency: z.literal('EUR'), cashMinor: signedMinorSchema,
-  commitmentMinor: signedMinorSchema, availableMinor: signedMinorSchema,
-  updatedAt: timestampSchema, lastOperationId: documentIdSchema,
-}).strict().refine(s => BigInt(s.availableMinor) === BigInt(s.cashMinor) - BigInt(s.commitmentMinor));
 const keySchema = z.object({ schemaVersion: z.literal(1), idempotencyKey: nonEmptyStringSchema,
   requestHash: z.string().regex(/^[a-f0-9]{64}$/), operationId: documentIdSchema, createdAt: timestampSchema }).strict();
 const ledgerTimestampFields = ['effectiveAt', 'recordedAt'] as const;
